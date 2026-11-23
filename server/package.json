@@ -1,0 +1,11 @@
+{
+  "name": "bigalesso-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Server multiplayer di BIGALESSO GAMES: statici + WebSocket a stanze",
+  "main": "server.mjs",
+  "engines": { "node": ">=18" },
+  "scripts": { "start": "node server.mjs" },
+  "dependencies": { "ws": "8.18.3" }
+}
