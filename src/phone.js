@@ -51,6 +51,7 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
           <button data-go="map"><i style="--b:#4be08a">🗺️</i><span>Mappa</span></button>
           <button data-go="ai"><i style="--b:#d97757">✳️</i><span>Claude</span></button>
           <button data-go="bot"><i style="--b:#9aa7b8">🤖</i><span>Il Bot</span></button>
+          <button data-go="games"><i style="--b:#e0457b">🎮</i><span>Giochi</span></button>
         </div>
         <div class="ph-dock">T / Esc per chiudere</div>
       </section>
@@ -77,6 +78,16 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
         <header><button class="ph-back" data-go="home">‹</button><div class="ph-gt"><b>Mappa</b><small>tu · amici · posti</small></div></header>
         <canvas class="ph-map" width="360" height="560"></canvas>
       </section>
+      <section data-app="games">
+        <header><button class="ph-back" data-go="home">‹</button><div class="ph-gt"><b>Giochi</b><small>minigiochi del gruppo</small></div></header>
+        <div class="ph-list ph-games">
+          <button data-mg="chi"><b>❓ Chi l'ha detto?</b><small>indovina chi l'ha scritto nel gruppo</small></button>
+          <button data-mg="discord"><b>🎧 Compettina Discord</b><small>duello di mira al meglio delle 5</small></button>
+          <button data-mg="sushi"><b>🍣 Sushi all you can eat</b><small>60 secondi al nastro contro gli amici</small></button>
+          <button data-mg="processo"><b>⚖️ Processo AI</b><small>difenditi davanti al giudice</small></button>
+          <button data-mg="corriere"><b>📰 Corriere AI</b><small>edizione speciale sulla tua partita</small></button>
+        </div>
+      </section>
       <section data-app="ai">
         <header><button class="ph-back" data-go="home">‹</button><div class="ph-gt"><b>Claude</b><small>chi scrive le battute</small></div></header>
         <div class="ph-ai"></div>
@@ -90,7 +101,16 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
   pill.onclick = () => open('chat');
   const $ = s => root.querySelector(s);
   const msgsEl = $('.ph-msgs'), typingEl = $('.ph-typing'), form = $('.ph-compose'), inp = form.querySelector('input');
-  root.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) { e.preventDefault(); go(g.dataset.go); } });
+  root.addEventListener('click', e => {
+    const m = e.target.closest('[data-mg]');
+    if (m) { // minigames (src/minigames/index.js): close the phone, then open the game
+      e.preventDefault(); const id = m.dataset.mg; close();
+      setTimeout(() => { let ok = false; try { ok = window.__minigames && window.__minigames.open(id); } catch (err) { console.warn('minigame', id, err); }
+        if (ok === false) notify('Questo gioco si apre nel suo posto: guarda la Mappa.', 'sys'); }, 80);
+      return;
+    }
+    const g = e.target.closest('[data-go]'); if (g) { e.preventDefault(); go(g.dataset.go); }
+  });
   for (const el of [inp]) { el.addEventListener('keydown', e => { if (e.key !== 'Escape') e.stopPropagation(); }); el.addEventListener('keyup', e => e.stopPropagation()); }
   form.addEventListener('submit', e => { e.preventDefault(); const v = inp.value.trim(); inp.value = ''; if (v) send(v); });
 
@@ -515,6 +535,10 @@ function injectCSS() {
 #phone .ph-compose input{flex:1;min-width:0;border:0;border-radius:99px;padding:.65em 1em;background:#2a2733;color:#fff;font:inherit;outline:none}
 #phone .ph-compose button{border:0;border-radius:50%;width:2.6em;height:2.6em;background:#25d366;color:#082;font-size:1em;cursor:pointer;color:#fff}
 #phone .ph-list{overflow-y:auto;flex:1}
+#phone .ph-games{display:flex;flex-direction:column;gap:8px;padding:10px}
+#phone .ph-games button{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:12px 14px;border:0;border-radius:14px;background:#ffffff12;color:#fff;font:inherit;text-align:left;cursor:pointer}
+#phone .ph-games button:hover{background:#ffffff22}
+#phone .ph-games small{opacity:.65;font-size:.82em}
 #phone .ph-row{display:flex;width:100%;gap:.7em;align-items:center;padding:.55em .9em;border:0;border-bottom:1px solid #ffffff0d;background:none;color:inherit;text-align:left;cursor:pointer;font:inherit}
 #phone .ph-row:hover{background:#ffffff0a}
 #phone .ph-row .ph-av{width:2.4em;height:2.4em;font-size:1.15em}

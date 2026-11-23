@@ -264,6 +264,55 @@ function render(V, t) {
   V.skip.style.opacity = t > 1.2 && t < T_END - 2 ? 1 : 0;
 }
 
+// ------------------------------------------------------------------ compositor timeline
+// render(V, t) is sampled once (60 Hz, ~1500 style writes per element, no layout reads) and turned into Web Animations
+// on transform + opacity only. Those run on the compositor thread, so the opening stays smooth while the 3D world
+// loads and compiles shaders on the main thread. Visibility becomes opacity, so every cut happens on the compositor too
+// (layers stay visible at opacity 0: no main-thread toggling that a busy loader could delay).
+const FPS = 60;
+function bakeTimeline(V, root) {
+  const els = [...root.querySelectorAll('*')].filter(e => !e.closest('.splash'));
+  const visOwner = e => e.classList.contains('L') || V.m.includes(e);
+  const N = Math.ceil(T_END * FPS), tr = new Map();
+  for (const e of els) tr.set(e, { op: new Array(N + 1), tf: new Array(N + 1), vis: visOwner(e) ? new Array(N + 1) : null });
+  for (let i = 0; i <= N; i++) {
+    render(V, i / FPS);
+    for (const [e, r] of tr) {
+      const s = e.style;
+      let o = s.opacity === '' ? 1 : +s.opacity;
+      if (r.vis) { const v = s.visibility ? s.visibility === 'visible' : !e.classList.contains('L'); r.vis[i] = v; if (!v) o = 0; }
+      r.op[i] = Math.round(o * 1000) / 1000; r.tf[i] = s.transform || 'none';
+    }
+  }
+  const anims = [];
+  for (const [e, r] of tr) {
+    // reset the inline state written while sampling
+    e.style.opacity = ''; e.style.transform = ''; if (r.vis) e.style.visibility = 'visible';
+    const opVar = r.op.some(v => v !== r.op[0]), tfVar = r.tf.some(v => v !== r.tf[0]);
+    if (!opVar && r.op[0] !== 1) e.style.opacity = String(r.op[0]);
+    if (!tfVar && r.tf[0] !== 'none') e.style.transform = r.tf[0];
+    if (!opVar && !tfVar) { if (r.vis && !r.vis.some(Boolean)) e.style.visibility = 'hidden'; continue; }
+    const kf = [];
+    for (let i = 0; i <= N; i++) {
+      const keep = i === 0 || i === N || (opVar && (r.op[i] !== r.op[i - 1] || r.op[i] !== r.op[i + 1])) || (tfVar && (r.tf[i] !== r.tf[i - 1] || r.tf[i] !== r.tf[i + 1]));
+      if (!keep) continue;
+      const k = { offset: i / N }; if (opVar) k.opacity = r.op[i]; if (tfVar) k.transform = r.tf[i]; kf.push(k);
+    }
+    anims.push({ e, kf });
+  }
+  let list = [];
+  return {
+    start(delayMs) {
+      const start = document.timeline.currentTime + delayMs;
+      list = anims.map(({ e, kf }) => { const a = e.animate(kf, { duration: T_END * 1000, fill: 'both', easing: 'linear' }); a.startTime = start; return a; });
+      return start;
+    },
+    // main-thread housekeeping only (layer rasterisation), never the motion itself
+    tick() { },
+    cancel() { for (const a of list) try { a.cancel(); } catch (e) { } },
+  };
+}
+
 // ------------------------------------------------------------------ player
 export function playOpening(opts = {}) {
   const ui = opts.ui || null;
@@ -288,7 +337,7 @@ export function playOpening(opts = {}) {
     const root = document.createElement('div'); root.id = 'opening'; root.setAttribute('aria-label', 'Intro Bigalesso Games'); document.body.appendChild(root);
     document.body.dataset.opening = '1';
     let resolve; const p = new Promise(r => { resolve = r; });
-    let A = null, t0 = 0, raf = 0, started = false, stopped = false, V = null, splashEl = null, ldT = 0;
+    let A = null, t0 = 0, raf = 0, started = false, stopped = false, V = null, splashEl = null, ldT = 0, cancelTL = null;
     const vol = () => { const s = (ui && ui.settings) || {}; return clamp((s.master ?? 0.85) * (0.4 + 0.6 * (s.music ?? 0.7)), 0, 1); };
     // the game's own audio (replay from the menu): silent while the opening plays
     const G = window.__app && window.__app.audio, gMuted = G ? !!G.muted : true;
@@ -298,23 +347,30 @@ export function playOpening(opts = {}) {
       if (splashEl) { splashEl.remove(); splashEl = null; } clearInterval(ldT);
       A = makeTrack(vol());
       V = build(root);
+      // the whole visual timeline, baked into compositor animations (smooth even while the world loads)
+      let TL = null; try { TL = bakeTimeline(V, root); } catch (e) { console.warn('opening bake', e); }
       Promise.race([Promise.all(pre), new Promise(r => setTimeout(r, 1200))]).then(() => {
         if (stopped) return;
-        if (A) { try { A.ctx.resume(); } catch (e) { } t0 = A.ctx.currentTime + 0.12; scheduleTrack(A, t0); }
-        const p0 = performance.now() + 120;
-        const now = () => (A && A.ctx.state === 'running' ? A.ctx.currentTime - t0 : (performance.now() - p0) / 1000);
-        const loop = () => {
-          if (stopped) return;
-          const t = now();
-          if (t >= 0) render(V, t);
-          if (t >= T_END) { try { window.__save && window.__save.unlock('opening'); } catch (e) { } stop('end'); return; }
+        const LEAD = 0.12;
+        if (A) { try { A.ctx.resume(); } catch (e) { } t0 = A.ctx.currentTime + LEAD; scheduleTrack(A, t0); }
+        const lat = A ? ((A.ctx.baseLatency || 0) + (A.ctx.outputLatency || 0)) : 0; // picture waits for the speakers
+        const p0 = performance.now() + (LEAD + lat) * 1000;
+        if (TL) TL.start((LEAD + lat) * 1000);
+        const now = () => (performance.now() - p0) / 1000;
+        const finish = () => { try { window.__save && window.__save.unlock('opening'); } catch (e) { } stop('end'); };
+        if (TL) {
+          // light main-thread ticker: layer visibility housekeeping + the end; the motion itself never waits for it
+          ldT = setInterval(() => { if (stopped) return; const t = now(); TL.tick(t); if (t >= T_END) finish(); }, 100);
+        } else {
+          const loop = () => { if (stopped) return; const t = now(); if (t >= 0) render(V, t); if (t >= T_END) { finish(); return; } raf = requestAnimationFrame(loop); };
           raf = requestAnimationFrame(loop);
-        };
-        raf = requestAnimationFrame(loop);
+        }
+        cancelTL = () => TL && TL.cancel();
       });
     }
     function stop(why) {
       if (stopped) return; stopped = true; log('stop ' + why); cancelAnimationFrame(raf); clearInterval(ldT);
+      setTimeout(() => { if (cancelTL) cancelTL(); }, 600); // after the fade-out
       removeEventListener('keydown', onKey, true); root.removeEventListener('pointerdown', onPtr);
       if (A) { try { const g = A.out.gain, n = A.ctx.currentTime; g.cancelScheduledValues(n); g.setValueAtTime(g.value, n); g.linearRampToValueAtTime(0.0001, n + 0.45); } catch (e) { } setTimeout(() => { try { A.ctx.close(); } catch (e) { } }, 700); }
       root.classList.add('fade');

@@ -136,6 +136,7 @@ export function createUI() {
         <button class="mbtn primary" data-act="resume" data-desc="Torna dove eri"><span class="ic">${ICON.play}</span><span><b>Riprendi</b><small>Torna nella sala</small></span></button>
       </div>
       <div class="mlist mid">
+        <button class="mbtn" data-act="games" data-desc="Chi l'ha detto?, Processo AI, Corriere AI, compettina, sushi"><span class="ic">${ICON.joy}</span><span><b>Minigiochi</b><small>dal telefono</small></span></button>
         <button class="mbtn" data-go="map" data-desc="Dove sei e i posti che hai scoperto"><span class="ic">${ICON.home}</span><span><b>Mappa</b></span></button>
         <button class="mbtn" data-go="achievements" data-desc="Obiettivi, statistiche e record"><span><b>Obiettivi</b><small class="achCount"></small></span></button>
         <button class="mbtn" data-go="characters" data-desc="Il gruppo: soprannomi, frasi tipiche e fissazioni"><span><b>Personaggi</b></span></button>
@@ -332,6 +333,7 @@ export function createUI() {
       const a = b.dataset.act;
       if (a === 'intro') { hub.replayIntro(); return; }
       if (a === 'quit') { hub.quit(); return; }
+      if (a === 'games') { started = true; menu.hide(); emitMenu('resume'); setTimeout(() => { try { window.__phone && window.__phone.open('games'); } catch (e) { } }, 150); return; }
       if (a === 'explore' || a === 'arcade' || a === 'resume') { started = true; menu.hide(); }
       if (a === 'tomenu') { started = true; showPage('main'); rootPage = 'main'; el.menu.classList.remove('solid'); }
       emitMenu(a);
