@@ -29,11 +29,12 @@ export function streetMats() {
     vault: qmat('plaster', { vc: true, ns: 0.4 }),
     curb: qmat('stone', { color: 0xa9a49c }),
     door: new THREE.MeshStandardMaterial({ color: 0x4a2f1c, roughness: 0.6, name: 'q:door' }),
-    doorGlass: new THREE.MeshStandardMaterial({ color: 0x1a222b, roughness: 0.2, metalness: 0.5, name: 'q:doorGlass' }),
+    doorGlass: new THREE.MeshStandardMaterial({ color: 0x1a2230, roughness: 0.15, metalness: 0.6, emissive: 0x101a26, emissiveIntensity: 1, name: 'q:doorGlass' }),
     iron: new THREE.MeshStandardMaterial({ color: 0x1c1d20, roughness: 0.5, metalness: 0.7, name: 'q:iron' }),
     brass: new THREE.MeshStandardMaterial({ color: 0xc9a45a, roughness: 0.3, metalness: 1, name: 'q:brass' }),
-    glass: new THREE.MeshStandardMaterial({ color: 0x27323c, roughness: 0.12, metalness: 0.7, envMapIntensity: 1.4, name: 'q:winGlass' }),
-    glassLit: new THREE.MeshStandardMaterial({ color: 0x27323c, roughness: 0.12, metalness: 0.6, emissive: 0xffc27a, emissiveIntensity: 0, name: 'q:winLit' }),
+    glass: new THREE.MeshStandardMaterial({ color: 0x1a2230, roughness: 0.15, metalness: 0.6, envMapIntensity: 1.4, emissive: 0x101a26, emissiveIntensity: 1, name: 'q:winGlass' }), // tinted glass, never flat black
+    glassLit: new THREE.MeshStandardMaterial({ color: 0x1a2230, roughness: 0.15, metalness: 0.6, envMapIntensity: 1.4, emissive: 0xffc27a, emissiveIntensity: 0.03, name: 'q:winLit' }),
+    shopFrame: new THREE.MeshStandardMaterial({ color: 0x4a3f36, roughness: 0.45, metalness: 0.55, name: 'q:shopFrame' }), // dark bronze shop-window frame (was black iron)
     shopLit: (() => { const t = signTex('vetrina', 256, 256, (x, W, H) => { // shop interior seen through the glass
         const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#5a4630'); g.addColorStop(0.5, '#a07a4a'); g.addColorStop(1, '#3a2c1e'); x.fillStyle = g; x.fillRect(0, 0, W, H);
         x.fillStyle = 'rgba(255,230,170,0.55)'; x.fillRect(W * 0.1, 8, W * 0.8, 10);
@@ -227,7 +228,7 @@ export function buildStreet(root, { low = false, quality = 'high', interiorDoors
         const p = F.pos(u, 0, 0.012, gl);
         if (b.shop || b.portico) {
           const sg = new THREE.PlaneGeometry(Math.min(2.6, glen * 0.3), 2.2); sg.translate(0, 1.5, 0.06); BB.put(b.shop ? m.shopLit : m.homeWin, sg, p.x, 0, p.z, F.yaw);
-          const fr = new THREE.BoxGeometry(Math.min(2.6, glen * 0.3) + 0.2, 2.45, 0.06); fr.translate(0, 1.42, 0); BB.put(m.iron, fr, p.x, 0, p.z, F.yaw);
+          const fr = new THREE.BoxGeometry(Math.min(2.6, glen * 0.3) + 0.2, 2.45, 0.06); fr.translate(0, 1.42, 0); BB.put(m.shopFrame, fr, p.x, 0, p.z, F.yaw);
         } else {
           const q = F.pos(u, 1.9, 0, gl); win.frame.push({ x: q.x, y: q.y, z: q.z, ry: F.yaw }); win.closed.push({ x: q.x, y: q.y, z: q.z, ry: F.yaw, color: '#5a5f55' });
         }
@@ -315,7 +316,7 @@ export function buildStreet(root, { low = false, quality = 'high', interiorDoors
     add(gClosed, m.shutter, win.closed, { name: 'shuttersClosed' });
     if (hooks.balconies) { const rg = []; const post = new THREE.BoxGeometry(0.025, 0.9, 0.025); for (let i = 0; i < 12; i++) { const g = post.clone(); g.translate(-0.75 + i * 0.136, 0.45, 0.32); rg.push(g); } const top = new THREE.BoxGeometry(1.6, 0.04, 0.05); top.translate(0, 0.9, 0.32); rg.push(top); for (const s of [-1, 1]) { const t = new THREE.BoxGeometry(0.05, 0.04, 0.68); t.translate(s * 0.78, 0.9, 0); rg.push(t); }
       add(merge(rg), m.iron, hooks.balconies.map(o => ({ ...o, z: o.z, x: o.x })), { name: 'balconies' }); }
-    hooks.night.push(k => { m.glassLit.emissiveIntensity = k * 1.4; m.shopLit.emissiveIntensity = 0.25 + k * 0.9; m.homeWin.emissiveIntensity = k * 0.7; });
+    hooks.night.push(k => { m.glassLit.emissiveIntensity = 0.03 + k * 1.4; m.shopLit.emissiveIntensity = 0.25 + k * 0.9; m.homeWin.emissiveIntensity = k * 0.7; });
   }
 
   mark('// ---------- street lamps + p');

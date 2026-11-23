@@ -229,7 +229,7 @@ function buildSeghino(root, { low }) {
   poster('ZOMBI', 'LA NOTTE DI SEGHINO', 14.5, -1); poster('ZOMBATA', 'VENERDÌ · PORTA LE BIRRE', 10.5, 1); poster('2P', 'NESSUNO RESTA INDIETRO', 15.5, 1);
   // the cabinet spot (anchor 'zombata'): a lit floor mark + a sticky note until MINIGIOCHI puts the cabinet here
   const spot = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), new THREE.MeshBasicMaterial({ map: glowTex(), color: 0x7aff4a, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
-  spot.rotation.x = -PI / 2; spot.position.set(-11.2, 0.03, 7.4); g.add(spot); // beside the ZOMBATA cabinet (anchor 'zombata' at x -13.6)
+  spot.rotation.x = -PI / 2; spot.position.set(-11.2, 0.03, 7.4); spot.visible = false; g.add(spot); // the ZOMBATA cabinet now stands at the anchor: no placeholder glow // beside the ZOMBATA cabinet (anchor 'zombata' at x -13.6)
   const note = signMesh(plaqueTex('ZOMBATA', { bg: '#ffe86a', fg: '#1a1a1a', border: '', w: 384, h: 256, sub: 'VENERDÌ · PORTA LE BIRRE', family: '"Comic Sans MS", cursive' }), 0.45, 0.3); note.position.set(-11.2, 1.5, z0 + 0.03); g.add(note);
   // a floor lamp (warm) and a green "zombie" accent light
   B.box(black, -9.0, 0, 17.6, -8.9, 1.6, 17.7); const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.3, 14, 1, true), new THREE.MeshStandardMaterial({ color: 0xf0e0c0, emissive: 0xffc080, emissiveIntensity: 0.8, side: THREE.DoubleSide })); shade.position.set(-8.95, 1.7, 17.65); g.add(shade);
