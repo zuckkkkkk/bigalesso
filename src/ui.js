@@ -193,7 +193,7 @@ export function createUI() {
         <tr><td><kbd>C</kbd></td><td>camera: dentro lo schermo · spalla · cinema</td></tr>
         <tr><td><kbd>Esc</kbd> / <kbd>Q</kbd></td><td>alzati</td></tr></table>
         <h3>Sempre</h3><table>
-        <tr><td><kbd>Esc</kbd></td><td>menu / pausa</td></tr><tr><td><kbd>C</kbd></td><td>cambia camera</td></tr><tr><td><kbd>M</kbd></td><td>audio</td></tr><tr><td><kbd>H</kbd></td><td>comandi</td></tr><tr><td><kbd>T</kbd></td><td>chat (online)</td></tr></table>
+        <tr><td><kbd>Esc</kbd></td><td>menu / pausa</td></tr><tr><td><kbd>C</kbd></td><td>cambia camera</td></tr><tr><td><kbd>M</kbd></td><td>audio</td></tr><tr><td><kbd>H</kbd></td><td>comandi</td></tr><tr><td><kbd>T</kbd></td><td>telefono (online: chat, telefono su <kbd>P</kbd>)</td></tr><tr><td><kbd>B</kbd></td><td>ruota emote (anche tasto centrale)</td></tr><tr><td><kbd>G</kbd></td><td>trucchi del cane</td></tr></table>
       </div>
       <div class="ctab" data-ctab="pad"><table>
         <tr><td>Stick sinistro</td><td>cammina / muovi</td></tr><tr><td>Stick destro</td><td>camera</td></tr>
@@ -694,6 +694,7 @@ export function createUI() {
       { t: 'Il Corriere delle Due Torri · N. 313', lock: 'Leggi il Corriere in casa', ok: un('newspaper'), items: Array.from({ length: 12 }, (_, i) => ({ src: NEWS(i + 1), cap: 'Pagina ' + (i + 1), page: 1 })) },
       { t: 'Stampe e murales', lock: 'Guarda il murales in giardino', ok: un('mural'), items: [['mural.jpg', 'Cappelletti Man vs Tortellino Man'], ['print-tortellino.jpg', 'Tortellino Man'], ['print-over80.jpg', 'Over 80'], ['print-ciclostile.jpg', 'Il ciclostile'], ['print-fakenews.jpg', 'Fake news']].map(([f, c]) => ({ src: NEWSF(f), cap: c })) },
     ];
+    { const sf = window.__selfies ? window.__selfies.list() : []; if (sf.length) sections.unshift({ t: 'I tuoi selfie', ok: true, items: sf.map(x => ({ src: x.url, cap: 'Selfie' + (x.who ? ' con ' + x.who : '') + ' · ' + new Date(x.t).toLocaleString('it-IT') })) }); } // interact/: emote wheel (B) → Selfie
     galItems = [];
     $('#galBody').innerHTML = sections.map(sec => `<h3 class="gh">${esc(sec.t)}${sec.ok ? '' : ` <small>· ${esc(sec.lock)}</small>`}</h3><div class="ggrid${sec.items[0] && sec.items[0].page ? ' pages' : ''}">` +
       sec.items.map(it => { if (!sec.ok) return `<div class="gcell lock"><span>🔒</span></div>`; const i = galItems.push(it) - 1; return `<button class="gcell" data-gi="${i}" aria-label="${esc(it.cap)}"><img loading="lazy" decoding="async" alt="" src="${esc(it.src)}"><span>${esc(it.cap)}</span></button>`; }).join('') + '</div>').join('');

@@ -257,7 +257,7 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
       const door = V(a.x + Math.sin(a.yaw) * 0.9, 1.7, a.z + Math.cos(a.yaw) * 0.9);
       let n = 0;
       items.push({ id: 'knock_' + ho.id, label: () => 'Bussa da ' + ho.name, anchor: () => a, top: () => door, range: 1.6,
-        act: () => { if (audio) { audio.sfx('click'); setTimeout(() => audio.sfx('click'), 180); setTimeout(() => audio.sfx('click'), 360); } h.toast(KNOCK[(n++ + ho.id.length) % KNOCK.length](ho.name)); window.dispatchEvent(new CustomEvent('bigalesso:knock', { detail: { house: ho.id, name: ho.name } })); } });
+        act: () => { if (audio) { audio.sfx('click'); setTimeout(() => audio.sfx('click'), 180); setTimeout(() => audio.sfx('click'), 360); } h.toast(KNOCK[(n++ + ho.id.length) % KNOCK.length](ho.name)); try { window.__iaDoorbell && window.__iaDoorbell(ho, door); } catch (e) { } window.dispatchEvent(new CustomEvent('bigalesso:knock', { detail: { house: ho.id, name: ho.name } })); } });
     }
     // checkpoint: show the documents -> the barrier goes up
     { const a = at(-38.6, 29.8); items.push({ id: 'checkpoint', label: () => (S.barrier && S.barrier.target > 0.5) ? 'Abbassa la sbarra' : 'Mostra i documenti', anchor: () => a, top: () => V(-38.6, 1.9, 30.5), range: 1.8,
@@ -280,8 +280,8 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
     { const a = at(44.3, 22.6); a.yaw = 0; let n = 0; items.push({ id: 'edicola', label: () => 'Compra il Corriere', anchor: () => a, top: () => V(44.3, 1.9, 23.2), range: 1.6,
       act: () => { if (audio) audio.sfx('paper'); h.toast(['Corriere delle Due Torri: «Sempre in prima pagina»', 'L\'edicolante: «Oggi c\'è l\'inserto sul Gulag»', 'L\'edicolante: «Il numero nuovo? Lo stanno ancora scrivendo»'][n++ % 3]); window.dispatchEvent(new CustomEvent('bigalesso:edicola')); } }); }
     // Seghino's TV
-    { const a = anchors.seghino_room; items.push({ id: 'seghino_tv', label: () => 'Guarda la TV', anchor: () => a, top: () => V(-11.2, 1.3, 19.4), range: 1.8,
-      act: () => { if (audio) audio.sfx('tvzap'); h.toast('Sullo schermo: ZOMBATA — premi start. Il cabinato arriva presto'); } }); }
+    { const a = anchors.seghino_room; items.push({ id: 'seghino_tv', label: () => 'Cambia canale', anchor: () => a, top: () => V(-11.2, 1.3, 19.4), range: 1.8,
+      act: () => { if (window.__iaTV && window.__iaTV()) return; if (audio) audio.sfx('tvzap'); h.toast('Sullo schermo: ZOMBATA — premi start. Il cabinato arriva presto'); } }); }
     // the dog follows through the new doors: rebuild dogplay's portals + ours
     try {
       const dog = ctx.dog; if (dog && typeof dog.setEnv === 'function' && level.zoneAt) {

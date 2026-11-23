@@ -56,6 +56,7 @@ export function createLife(root, { getQuality = () => 'high' } = {}) {
   function update(dt, t, player) {
     if (!S.ready) return; applyQuality(false); if (!G.visible) return;
     dt = Math.min(dt, 0.1);
+    if (S.feed) { S.feed.t -= dt; if (S.feed.t <= 0) S.feed = null; } // crumbs thrown by the player (interact/index.js)
     for (const w of S.walkers) {
       if (!w.on) continue;
       const d = player ? Math.hypot(player.x - w.o.position.x, player.z - w.o.position.z) : 0;
@@ -83,10 +84,12 @@ export function createLife(root, { getQuality = () => 'high' } = {}) {
         const ph = p.t * 2.2 + p.idx; const peck = Math.max(0, Math.sin(ph * 1.7)) ** 6;
         if (p.neck && p.n0) { p.neck.quaternion.copy(p.n0).multiply(q.setFromAxisAngle(ax, peck * 0.7 + Math.sin(p.t * 9 + p.idx) * 0.06)); }
         if (p.head && p.h0) { p.head.quaternion.copy(p.h0).multiply(q.setFromAxisAngle(ax, peck * 0.4)); }
+        const fd = S.feed && p.o.position.distanceTo(S.feed.pos) < 16; // crumbs: walk (hop) to them, no fear
+        if (fd) { const fp = S.feed.pos; const tx = fp.x + Math.cos(p.idx * 2.4) * 0.35, tz = fp.z + Math.sin(p.idx * 2.4) * 0.35; p.o.rotation.y = Math.atan2(tx - p.o.position.x, tz - p.o.position.z); if (p.hop <= 0 && Math.hypot(tx - p.o.position.x, tz - p.o.position.z) > 0.3) p.hop = 0.35; }
         if (p.hop > 0) { p.hop -= dt; const k = 1 - p.hop / 0.35; p.o.position.y = Math.sin(k * PI) * 0.08; p.o.translateZ(dt * 0.9); if (p.hop <= 0) p.o.position.y = 0; }
         else if (Math.random() < dt * 0.25) { p.hop = 0.35; p.o.rotation.y += (Math.random() - 0.5) * 1.6; }
-        if (p.o.position.distanceTo(p.home) > 1.6) p.o.rotation.y = Math.atan2(p.home.x - p.o.position.x, p.home.z - p.o.position.z);
-        if (d < 2.6) { // flutter away
+        if (!fd && p.o.position.distanceTo(p.home) > 1.6) p.o.rotation.y = Math.atan2(p.home.x - p.o.position.x, p.home.z - p.o.position.z);
+        if (d < 2.6 && !fd) { // flutter away
           p.st = 'flee'; p.t = 0; const away = tmp.set(p.o.position.x - player.x, 0, p.o.position.z - player.z).normalize();
           p.vel.set(away.x * 2.6 + (Math.random() - 0.5), 2.4 + Math.random(), away.z * 2.6 + (Math.random() - 0.5)); p.o.rotation.y = Math.atan2(p.vel.x, p.vel.z);
         }
@@ -96,7 +99,7 @@ export function createLife(root, { getQuality = () => 'high' } = {}) {
         p.k = Math.max(0, 1 - p.t / 1.3); p.o.scale.setScalar(Math.max(0.001, p.k));
         if (p.t > 1.3) { p.st = 'gone'; p.t = 0; p.o.visible = false; }
       } else if (p.st === 'gone') {
-        if (p.t > 14 && d > 9) { p.st = 'back'; p.t = 0; p.o.position.copy(p.home); p.o.rotation.set(0, Math.random() * 6, 0); p.o.visible = true; }
+        if ((p.t > 14 && d > 9) || (S.feed && p.t > 1.2)) { p.st = 'back'; p.t = 0; p.o.position.copy(p.home); p.o.rotation.set(0, Math.random() * 6, 0); p.o.visible = true; }
       } else if (p.st === 'back') {
         p.k = Math.min(1, p.t / 0.6); p.o.scale.setScalar(Math.max(0.001, p.k)); if (p.k >= 1) { p.st = 'idle'; p.t = 0; }
       }

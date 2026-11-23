@@ -31,6 +31,7 @@ import { createSave } from './save.js';
 import { playOpening } from './opening.js';
 import './ai.js'; // window.__ai (Claude provider chain + offline fallback), window.__personas — installed on import
 import { installNPCs } from './npcs.js'; // the friends of the group as NPCs (E to talk)
+import { createInteractions } from './interact/index.js'; // emote wheel (B), friend actions, world props (interact/)
 import { installPhone } from './phone.js'; // in-game phone (T): group chat, contacts, photos, map, Claude settings
 
 // ======================= CONFIG (all tunables) =======================
@@ -229,8 +230,9 @@ async function main() {
       input.touch.active = active; input.touch.x = dx; input.touch.y = dy;
       touchIn.left = dx < -0.35 ? 1 : 0; touchIn.right = dx > 0.35 ? 1 : 0; touchIn.up = dy < -0.35 ? 1 : 0; touchIn.down = dy > 0.35 ? 1 : 0;
     },
-    down(k) { if (S.phase === 'intro') { skipIntro(); return; } touchIn[k] = 1; input.touch.btn[k] = 1; input.touch.edge.add(k); },
-    up(k) { touchIn[k] = 0; input.touch.btn[k] = 0; },
+    down(k) { if (S.phase === 'intro') { skipIntro(); return; } touchIn[k] = 1; input.touch.btn[k] = 1; input.touch.edge.add(k); touchIn['_t' + k] = performance.now(); },
+    // a quick tap still lasts ~3 frames: the cabinet games poll touchIn once per frame and would miss a 40 ms tap
+    up(k) { const rel = () => { touchIn[k] = 0; input.touch.btn[k] = 0; }, held = performance.now() - (touchIn['_t' + k] || 0); held >= 110 ? rel() : setTimeout(rel, 110 - held); },
   });
   // phone keyboard for the typewriter
   if (ui.kbd) {
@@ -409,6 +411,7 @@ async function main() {
   const MG = createMinigames({ scene, level, audio, getFX, get S() { return S; }, CONFIG, ui, low, mkCab, cabinets, man, dog, camera, renderer, playMusic: n => playMusic(n), getWorld: () => world, getInput: () => input });
   plugins.push(...MG.plugins); // minigames: Discord desk, sushi, quiz table, Processo AI, Corriere AI
   const npcs = installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, camera, input, getFX, low, S }); plugins.push(npcs.plugin); // friends of the group chat (npcs.js): clones the man's bind pose, so before his first update
+  const IA = createInteractions({ scene, man, ui, audio, getFX, level, input, S, npcs, renderer, news }); plugins.push(IA.plugin); // interact/: emotes, friend actions, props
 
   // ---------- explore world ----------
   // easter eggs: props + colliders must exist before createWorld (explore merges level colliders at init)
@@ -666,8 +669,9 @@ async function main() {
     if (S.phase === 'intro') { if (!S.freeze) S.introT += dt; introUpdate(S.introT, dt); }
     else if (S.phase === 'world') {
       eggs.preUpdate(ui.menuOpen ? 0 : dt);
+      IA.update(ui.menuOpen ? 0 : dt); // interact/: wheel input, follower, can, TV (before world.update)
       const pose = world.update(ui.menuOpen ? 0 : dt);
-      const c = pose || playCamera(t);
+      const c = IA.camera(pose, dt) || playCamera(t);
       const looking = pose && performance.now() - input.drag.last < 300;
       const k = 1 - Math.exp(-dt * (pose ? (looking ? 16 : 6.5) : (inCab ? 7 : 3)));
       S.curPos.lerp(c.pos, k); S.curLook.lerp(c.look, k); S.curFov = lerp(S.curFov, c.fov, k);
@@ -719,6 +723,7 @@ async function main() {
       man.rightTarget.copy(rt);
     }
     man.update(dt);
+    IA.post(dt); // interact/: finger pose after the man's update
     footsteps(dt);
     net.update(dt);
     npcs.update(dt); phone.update(dt); // after net.update: NPC colliders are appended to world.extraCircles
