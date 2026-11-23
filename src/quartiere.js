@@ -224,6 +224,14 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
     if (S.frame > 60) dress.gulag();
     life.update(dt, t, p);
     updatePool(dt, p, zn);
+    // first-time hint: the neighbourhood is behind the garden gate (players kept missing it)
+    if (focus && !S.visited.has('via') && !S.gateHint) {
+      S.hintT = (S.hintT || 0) + dt;
+      if (zn === 'Giardino' || S.hintT > 25) {
+        S.gateHint = 1;
+        try { if (ui && ui.toast) ui.toast(zn === 'Giardino' ? 'Il cancello in fondo al giardino è aperto: fuori c\'è Via Teletubbylandia con tutto il quartiere' : 'Esci in giardino: dal cancello si va nel quartiere (Celtic, sushi, Millennium, Petroni…)'); } catch (e) { }
+      }
+    }
     // zone change -> discovery
     if (focus && zn !== S.zone) {
       S.zone = zn;
