@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import './gltfsetup.js'; // meshopt decoder for every GLTFLoader (optimised Tripo models in assets/models)
+import { installMobile } from './mobile.js'; // touch devices: caps the pixel ratio at import, UI added after createUI
 import { createRenderer, createComposer, setupLights, applyQuality, autoQualityLevel, lowerQuality } from './scene.js';
 import { installGfx, gfxGate } from './gfx.js'; // warm-up, detail materials, blobs (round 6 GRAFICA)
 import { createUI } from './ui.js';
@@ -72,6 +73,7 @@ const low = coarse || Math.min(innerWidth, innerHeight) < 500;
 const V3 = a => new THREE.Vector3(...a);
 
 const ui = createUI();
+installMobile({ ui }); // phones/tablets only (mobile.js): extra touch buttons, overlay ✕, rotate card, pinch zoom
 const save = createSave({ ui }); // window.__save: achievements, stats, records (save.js)
 const opening = playOpening({ ui, skip: q.has('auto') || q.has('skip') || q.has('noopening') || !!window.__ASSETS_NO_OPENING }); // GTA-style opening over the loading (opening.js)
 
