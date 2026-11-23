@@ -1,0 +1,34 @@
+{
+  "name": "bigalesso-desktop",
+  "productName": "BIGALESSO GAMES",
+  "version": "2.0.0",
+  "private": true,
+  "description": "BIGALESSO GAMES – versione desktop (Electron)",
+  "main": "main.cjs",
+  "license": "MIT",
+  "author": "Bigalesso Games",
+  "scripts": {
+    "prepare-app": "node prepare.mjs",
+    "start": "node prepare.mjs && electron .",
+    "dist": "node prepare.mjs && electron-builder --publish never",
+    "dist:win": "node prepare.mjs && electron-builder --win --publish never",
+    "dist:mac": "node prepare.mjs && electron-builder --mac --publish never",
+    "dist:linux": "node prepare.mjs && electron-builder --linux --publish never"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "games.bigalesso.arcade",
+    "productName": "BIGALESSO GAMES",
+    "artifactName": "BIGALESSO-GAMES-${version}-${os}-${arch}.${ext}",
+    "directories": { "output": "release", "buildResources": "build" },
+    "files": ["main.cjs", "preload.cjs", "config.json", "app/**/*", "build/icon.png", "!app/**/*.br", "!app/**/*.gz"],
+    "asar": true,
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }, { "target": "portable", "arch": ["x64"] }], "icon": "build/icon.png" },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "shortcutName": "BIGALESSO GAMES" },
+    "mac": { "target": [{ "target": "dmg", "arch": ["universal"] }], "category": "public.app-category.arcade-games", "icon": "build/icon.png" },
+    "linux": { "target": ["AppImage"], "category": "Game", "icon": "build/icon.png" }
+  }
+}

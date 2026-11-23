@@ -1,0 +1,18 @@
+services:
+  bigalesso:
+    build:
+      context: .
+      dockerfile: Dockerfile          # oppure Dockerfile.prebuilt (prima: npm run build:prod)
+    image: bigalesso-arcade:latest
+    container_name: bigalesso-arcade
+    init: true
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      - PORT=8080
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}   # facoltativa: minigiochi e personaggi con Claude
+      # - MAX_ROOMS=500
+    mem_limit: 192m
+    memswap_limit: 192m
+    cpus: 1.0
+    restart: unless-stopped

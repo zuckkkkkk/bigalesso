@@ -1,0 +1,33 @@
+{
+  "name": "bigalesso-arcade",
+  "version": "2.0.0",
+  "private": true,
+  "description": "BIGALESSO GAMES – cabinato arcade 3D in Three.js con gioco pixel-art giocabile",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/build.mjs",
+    "build:prod": "node scripts/build.mjs --compress",
+    "build:single": "node scripts/build.mjs --single",
+    "build:artifact": "node scripts/build.mjs --artifact",
+    "build:all": "node scripts/build.mjs --single && node scripts/build.mjs --artifact",
+    "preview": "node scripts/serve.mjs dist",
+    "server": "node server/server.mjs",
+    "start": "npm run build && node server/server.mjs",
+    "docker": "docker compose up --build",
+    "docker:prebuilt": "npm run build:prod && docker build -f Dockerfile.prebuilt -t bigalesso-arcade:latest .",
+    "desktop": "cd desktop && npm install --no-audit --no-fund && npm start",
+    "desktop:dist": "cd desktop && npm install --no-audit --no-fund && npm run dist",
+    "icons": "python3 scripts/make_icons.py"
+  },
+  "dependencies": {
+    "three": "0.170.0",
+    "ws": "8.18.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

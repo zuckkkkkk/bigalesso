@@ -1,0 +1,124 @@
+{
+ "group": {
+  "name": "Teletubbylandia certificata (zona demilitarizzata)",
+  "since": 2021,
+  "founder": "ciccio",
+  "renames": [
+   "Teletubbyland (zona demilitarizzata)",
+   "Teletubbyland certificata (zona demilitarizzata)",
+   "Teletubbylandia certificata (zona demilitarizzata)"
+  ],
+  "renamedBy": "seghino"
+ },
+ "rituals": [
+  {
+   "id": "compettina",
+   "text": "\"Qualcuno per una compettina?\" — la partita a squadre serale su Discord (Warzone, CS2, Overwatch)",
+   "who": [
+    "zuck",
+    "ashish",
+    "lombu",
+    "cesco",
+    "asche"
+   ]
+  },
+  {
+   "id": "discord",
+   "text": "\"Sono su discord\" — il segnale che si gioca",
+   "who": [
+    "ashish",
+    "forla",
+    "seghino",
+    "lombu"
+   ]
+  },
+  {
+   "id": "zombata",
+   "text": "La \"zombata\" di Seghino: serata di giochi di zombi",
+   "who": [
+    "seghino"
+   ]
+  },
+  {
+   "id": "celtic",
+   "text": "Il Celtic: mercoledì sera, 21:30",
+   "who": [
+    "forla",
+    "parme",
+    "zuck"
+   ]
+  },
+  {
+   "id": "millennium",
+   "text": "Il Millennium il sabato sera, dopo un piccolo stop in Petroni",
+   "who": [
+    "asche",
+    "ashish",
+    "lombu"
+   ]
+  },
+  {
+   "id": "bellazzi",
+   "text": "Birra Bellazzi: il lunedì c'è lo sconto, chiude alle 22.30",
+   "who": [
+    "cesco",
+    "seghino",
+    "lombu"
+   ]
+  },
+  {
+   "id": "sushi",
+   "text": "Sushi a pranzo in \"polleg\" o la sera",
+   "who": [
+    "asche",
+    "ashish",
+    "parme"
+   ]
+  },
+  {
+   "id": "bot",
+   "text": "Il bot del gruppo taggato per le domande più assurde",
+   "who": [
+    "asche",
+    "forla",
+    "parme"
+   ]
+  }
+ ],
+ "jokes": [
+  "Cesco si chiama \"Ma Chi É?\" in chat",
+  "Asche manda così tanti messaggi che \"fa laggare whatsapp\"",
+  "\"discors\" invece di discord",
+  "Il Corriere delle Due Torri e il Gulag con il Processo del Secolo",
+  "Tortellino Man contro Cappelletti Man",
+  "\"FINO A TRE ANNI DI RECLUSIONE\"",
+  "Il furto della collana e del foulard all'uncinetto (Corriere n. 281)",
+  "\"Ci hanno accusato di aver rubato una collana\"",
+  "\"Cabinato 3 sarà cambio ripartitori\"",
+  "\"Claude non va? Giorno di ferie\""
+ ],
+ "games": [
+  "Warzone",
+  "CS2",
+  "Overwatch",
+  "Battlefield",
+  "xDefiant",
+  "Elden Ring",
+  "Dark Souls",
+  "Fallout",
+  "osu!"
+ ],
+ "slang": {
+  "compe": "partita competitiva",
+  "stasi": "stasera",
+  "wz": "Warzone",
+  "ow": "Overwatch",
+  "regaz": "ragazzi",
+  "soccia": "esclamazione bolognese",
+  "greve": "pesante/assurdo",
+  "palese": "ovvio",
+  "sgravato": "fortissimo/esagerato",
+  "bratan": "fratello"
+ },
+ "notice": "Personaggi in versione da gioco ispirati al gruppo: caricature affettuose, non le persone reali."
+}

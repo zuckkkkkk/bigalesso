@@ -1,0 +1,15 @@
+node_modules/
+.dev/
+build-artifact/
+test/
+*.zip
+.DS_Store
+chat_raw/
+
+# never ship: raw chat export, source PDFs, desktop build output
+chat_raw/
+assets/**/*.pdf
+desktop/app/
+desktop/release/
+.env
+dist/

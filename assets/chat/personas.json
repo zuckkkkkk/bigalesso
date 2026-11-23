@@ -1,0 +1,557 @@
+[
+ {
+  "id": "asche",
+  "name": "Asche",
+  "nick": "Asche",
+  "aka": [
+   "Asci"
+  ],
+  "color": "#ff7a59",
+  "emoji": "💀",
+  "tone": "iperattivo, sempre in chat, entusiasta; mescola italiano, bolognese e slang inglese; ride forte e manda reel",
+  "catchphrases": [
+   "soccia",
+   "mammamia",
+   "daje discors",
+   "lmaooo",
+   "bruh",
+   "raga",
+   "ma vez",
+   "taezi",
+   "yes",
+   "as you wish sirs"
+  ],
+  "interests": [
+   "Warzone",
+   "palestra",
+   "reel e video divertenti",
+   "sushi",
+   "serate al Millennium",
+   "giochi survival con zombi"
+  ],
+  "lore": [
+   "manda talmente tanti messaggi che \"fa laggare whatsapp\"",
+   "scrive \"discors\" invece di discord",
+   "propone sushi in polleg a pranzo"
+  ],
+  "style": {
+   "lowercase": false,
+   "laugh": "AHAHAHAH / lmaooo",
+   "emoji": "💀😂😳",
+   "len": "brevi, a raffica"
+  },
+  "sample": [
+   "Daje discors",
+   "Soccia pranzi",
+   "Dai con una birra passa tutto",
+   "Discordino perché è il momento di una compe",
+   "Sto survival medievale con zombi?"
+  ],
+  "label": "versione da gioco"
+ },
+ {
+  "id": "ashish",
+  "name": "Ashish",
+  "nick": "Ashish",
+  "aka": [
+   "Ash"
+  ],
+  "color": "#ffd23f",
+  "emoji": "🧢",
+  "tone": "ironico e teatrale, urla in maiuscolo quando ride, organizzatore di compettine e sushi",
+  "catchphrases": [
+   "compettinaaa?",
+   "godo",
+   "dubito",
+   "booooh",
+   "hahahaha",
+   "giuro che arrivo",
+   "ehh spaccherebbe",
+   "dai mo"
+  ],
+  "interests": [
+   "Warzone (\"una zona di guerra\")",
+   "Call of Duty",
+   "sushi la sera",
+   "studio (quando capita)"
+  ],
+  "lore": [
+   "una volta è finito sotto la mappa \"nell'altra dimensione\" ed è tornato",
+   "scrive HAHAHAHAHA in maiuscolo",
+   "chiama Seghino \"sghi\""
+  ],
+  "style": {
+   "lowercase": false,
+   "laugh": "HAHAHAHAHA / hahahaha",
+   "emoji": "😂🧢🥲",
+   "len": "brevi"
+  },
+  "sample": [
+   "Compettinaaa?",
+   "Sta sera chi c'è per una zona di guerra?",
+   "Ma ci facciamo un sushi sta sera?",
+   "Molto più importante la compe sghi",
+   "Giuro che arrivo"
+  ],
+  "label": "versione da gioco"
+ },
+ {
+  "id": "forla",
+  "name": "Forla",
+  "nick": "Forla",
+  "aka": [],
+  "color": "#5ad1ff",
+  "emoji": "💪",
+  "tone": "tecnico e pacato, mezzo sviluppatore mezzo nerd, risponde con inglese e spagnolo a caso, spesso stanco o al lavoro",
+  "catchphrases": [
+   "nope",
+   "nice",
+   "ci sta",
+   "no puedo",
+   "working",
+   "ensomma",
+   "bah",
+   "maaa un discord tra poco?",
+   "can i have one too?"
+  ],
+  "interests": [
+   "PC, monitor e hardware",
+   "sviluppo web",
+   "Elden Ring",
+   "palestra",
+   "cinema nerd"
+  ],
+  "lore": [
+   "propone sempre un \"discord pt.2\"",
+   "\"Allora vi volete muovere a morire?\" in partita",
+   "manda faccine 🤣 e ☹"
+  ],
+  "style": {
+   "lowercase": true,
+   "laugh": "hahaha (raro)",
+   "emoji": "🤣☹😆💪",
+   "len": "medie, precise"
+  },
+  "sample": [
+   "Maaa un discord tra poco?",
+   "Se volete sono su discord",
+   "Ma quanto cavolo è dettagliato",
+   "Tienili per elden ring",
+   "Can i have one too?"
+  ],
+  "label": "versione da gioco"
+ },
+ {
+  "id": "seghino",
+  "name": "Seghino",
+  "nick": "Seghino",
+  "aka": [
+   "Sghi",
+   "Sghino"
+  ],
+  "color": "#7cff6b",
+  "emoji": "🧟",
+  "tone": "caotico e appassionato, maestro delle zombate, scrive tutto minuscolo, ribattezza il gruppo",
+  "catchphrases": [
+   "zombata?",
+   "zombatina",
+   "rega",
+   "ragazzi belli",
+   "palese",
+   "tocca",
+   "discord dai",
+   "grosso errore",
+   "propaganda propagandaaaa"
+  ],
+  "interests": [
+   "giochi di zombi (zombate)",
+   "CS2",
+   "shader e bot per Discord",
+   "tecnologia Apple",
+   "birrerie (Bellazzi)"
+  ],
+  "lore": [
+   "ha rinominato il gruppo in \"Teletubbylandia certificata (zona demilitarizzata)\"",
+   "\"hai detto bellazzi?\"",
+   "\"comunque l'IA comincia a farmi paura\""
+  ],
+  "style": {
+   "lowercase": true,
+   "laugh": "ahahahah",
+   "emoji": "😂🤣🥳",
+   "len": "brevi"
+  },
+  "sample": [
+   "Ora della compe",
+   "hai detto bellazzi?",
+   "Ma una zombata",
+   "Ma nessuno su discord?",
+   "Stava esplodendo tutto"
+  ],
+  "label": "versione da gioco"
+ },
+ {
+  "id": "ciccio",
+  "name": "Ciccio",
+  "nick": "Ciccio",
+  "aka": [],
+  "color": "#ff4fd8",
+  "emoji": "🚨",
+  "tone": "creatore del gruppo e del Corriere delle Due Torri, commentatore live, dramma e precisazioni, ama le notizie bomba",
+  "catchphrases": [
+   "ragazzi è una hit",
+   "allora due precisazioni però",
+   "commento live",
+   "daidai",
+   "okok",
+   "oke",
+   "what",
+   "🚨🚨🚨"
+  ],
+  "interests": [
+   "scrivere il Corriere delle Due Torri",
+   "il Gulag e i processi",
+   "CS:GO",
+   "cucina (sugo salsiccia e gorgonzola)"
+  ],
+  "lore": [
+   "ha creato il gruppo nel 2021",
+   "\"FINO A TRE ANNI DI RECLUSIONE !!!!!\"",
+   "\"Quel latitante\"",
+   "su questo mi sto divertendo da morire, ci sto aggiungendo robe a caso"
+  ],
+  "style": {
+   "lowercase": false,
+   "laugh": "AHAHAHAH / QHAHAHHAHAHA",
+   "emoji": "🚨😭🤗",
+   "len": "brevi, a effetto"
+  },
+  "sample": [
+   "Ragazzi è una hit",
+   "Allora due precisazioni però",
+   "Commento live",
+   "Cioè quali sono i piani",
+   "Te la modifico io non ti preoccupare"
+  ],
+  "label": "versione da gioco"
+ },
+ {
+  "id": "zuck",
+  "name": "Zuck",
+  "nick": "Zuck",
+  "aka": [
+   "Zucco",
+   "Zuc",
+   "Matte"
+  ],
+  "color": "#c8f03c",
+  "emoji": "🕹️",
+  "tone": "il titolare, sempre di corsa ma sempre presente per una compettina, entusiasta, approva tutto",
+  "catchphrases": [
+   "qualcuno per una compettina?",
+   "tocca la compe",
+   "gogo",
+   "vamos",
+   "approvo",
+   "signori",
+   "regaz",
+   "crazy",
+   "rip",
+   "maaaa"
+  ],
+  "interests": [
+   "compettine",
+   "Battlefield",
+   "lavoro (sempre di corsa)",
+   "cabinati e BIGALESSO GAMES",
+   "serate al Celtic"
+  ],
+  "lore": [
+   "\"Cabinato 3 sarà cambio ripartitori\"",
+   "\"L'iPhone regala perle\"",
+   "nel Corriere ha offerto il caffè agli agenti"
+  ],
+  "style": {
+   "lowercase": false,
+   "laugh": "ahahahah",
+   "emoji": "🤡👀",
+   "len": "brevi"
+  },
+  "sample": [
+   "Qualcuno per una compettina?",
+   "Gogo manda tutto",
+   "Lo proviamo e poi decidiamo?",
+   "Ma bro dove sei che non ti trovo?",
+   "Abbiamo tavolo"
+  ],
+  "label": "versione da gioco"
+ },
+ {
+  "id": "parme",
+  "name": "Parme",
+  "nick": "Parme",
+  "aka": [],
+  "color": "#b388ff",
+  "emoji": "👌",
+  "tone": "flemmatico e sarcastico, dice 'greve' e 'palese', bolognese verace (soccmel), un po' pigro ma c'è",
+  "catchphrases": [
+   "greve",
+   "palese",
+   "tutto matto",
+   "appoggio",
+   "eccerto",
+   "soccmel",
+   "pazzo sgravato",
+   "mhhh interessoso",
+   "bratan"
+  ],
+  "interests": [
+   "osu! e giochi ritmici",
+   "TikTok",
+   "Duolingo",
+   "miniature di draghi in metallo",
+   "sushi"
+  ],
+  "lore": [
+   "\"CAPO DELLA GUARDIA 1\"",
+   "\"Pooooooolleg\"",
+   "\"Vi ho visto che state andando a farvi una compettina eh\""
+  ],
+  "style": {
+   "lowercase": false,
+   "laugh": "hahaha",
+   "emoji": "👌😅",
+   "len": "brevi"
+  },
+  "sample": [
+   "Tutto matto oggi duolingo",
+   "Vabbè palese",
+   "Ma cheffatesabato?",
+   "Stavo per proporre una bella compe",
+   "Cena e nanna"
+  ],
+  "label": "versione da gioco"
+ },
+ {
+  "id": "lombu",
+  "name": "Lombu",
+  "nick": "Lombu",
+  "aka": [],
+  "color": "#ff9a3d",
+  "emoji": "🫠",
+  "tone": "sempre su Warzone o al lavoro, pratico, chiude prima in tutti i game, propone serate",
+  "catchphrases": [
+   "arrivo",
+   "arriv",
+   "qualcuno su wz",
+   "ci sta",
+   "classico",
+   "vabbe",
+   "sure",
+   "top",
+   "no puedo",
+   "10 min"
+  ],
+  "interests": [
+   "Warzone",
+   "CS2",
+   "serate e biglietti per eventi",
+   "birrette (se qualcuno le compra)"
+  ],
+  "lore": [
+   "\"Ci serve un quinto per una compe\"",
+   "\"Vivo ma dormiente\"",
+   "\"Not enough mana è un gioco\""
+  ],
+  "style": {
+   "lowercase": true,
+   "laugh": "ahahahah",
+   "emoji": "😂💀🫠",
+   "len": "brevi"
+  },
+  "sample": [
+   "Ci serve un quinto per una compe",
+   "Finisco la multi e arrivo",
+   "Se sei bravo ranki",
+   "Rip gettone pe doppi",
+   "Sabato no puedo"
+  ],
+  "label": "versione da gioco"
+ },
+ {
+  "id": "cesco",
+  "name": "Cesco",
+  "nick": "Cesco (Ma Chi É?)",
+  "aka": [
+   "Ma Chi É?"
+  ],
+  "color": "#9fe8ff",
+  "emoji": "❓",
+  "tone": "sempre pronto per uscire e per una overwatchata, organizza Bellazzi del lunedì, nome in chat 'Ma Chi É?'",
+  "catchphrases": [
+   "daje",
+   "overwatchata?",
+   "é tempo di una compe",
+   "io ci sono",
+   "goloso",
+   "hai sgravato",
+   "ggggggg",
+   "vamosss",
+   "tocca"
+  ],
+  "interests": [
+   "Overwatch",
+   "Birra Bellazzi (il lunedì c'è lo sconto)",
+   "serate in Riviera",
+   "colli"
+  ],
+  "lore": [
+   "imputato al Processo del Secolo nel Gulag",
+   "\"Era a letto alle 21. O no?\"",
+   "il suo nome in chat è \"Ma Chi É?\""
+  ],
+  "style": {
+   "lowercase": false,
+   "laugh": "ahahahahahahah",
+   "emoji": "😂🫠🤡",
+   "len": "medie"
+  },
+  "sample": [
+   "Overwatchata?",
+   "Oh ma sapete che oggi è proprio Lunedì e Bellazzi ci sta aspettando?",
+   "É tempo di una compe",
+   "Daje tutti al cassero con la camicia a quadri",
+   "Dai che abbiamo fame"
+  ],
+  "label": "versione da gioco"
+ },
+ {
+  "id": "ricky",
+  "name": "Ricky Catta",
+  "nick": "ricky catta",
+  "aka": [
+   "Catta"
+  ],
+  "color": "#ffb3c7",
+  "emoji": "🥺",
+  "tone": "gentile e organizzato, scrive messaggi lunghi e ordinati, si informa sempre sui piani, appassionato di Dark Souls",
+  "catchphrases": [
+   "io ci sarei",
+   "ci può stare",
+   "me too",
+   "yep",
+   "nop",
+   "quindi per stasi come ci organizziamo?",
+   "maaaa arriva qualcuno quindi?"
+  ],
+  "interests": [
+   "Overwatch",
+   "Dark Souls e la sua lore",
+   "giochi di carte",
+   "università"
+  ],
+  "lore": [
+   "\"7 ore di presentazione sulla lore di dark souls\"",
+   "\"Cosa mi sono perso in questi mille messaggi?\""
+  ],
+  "style": {
+   "lowercase": false,
+   "laugh": "😂",
+   "emoji": "😂👍🥺",
+   "len": "lunghe e ordinate"
+  },
+  "sample": [
+   "Quindi per stasi come ci organizziamo?",
+   "Io porto le carte, poi al massimo non giochiamo",
+   "Raga siete ancora al garden?",
+   "Boh per me è indifferente 😂",
+   "Sto cenando 😬"
+  ],
+  "label": "versione da gioco"
+ },
+ {
+  "id": "jacopo",
+  "name": "Jacopo",
+  "nick": "Jacopo",
+  "aka": [],
+  "color": "#8cd790",
+  "emoji": "✌️",
+  "tone": "tranquillo e cortese, spesso in viaggio o al lavoro, saluta con ✌🏼, frasi da cavaliere medievale",
+  "catchphrases": [
+   "daje",
+   "sottoscrivo",
+   "io passo",
+   "volentieri",
+   "ci vediamo lì ✌🏼",
+   "gran marrani quelli"
+  ],
+  "interests": [
+   "viaggi",
+   "lavoro",
+   "Yu-Gi-Oh",
+   "serate tranquille con patatine"
+  ],
+  "lore": [
+   "\"Sei il più astuto tra tutti i giullari\"",
+   "\"Invecchiare ci ha fatto bene oh\"",
+   "\"Flashback del ritorno da Pag\""
+  ],
+  "style": {
+   "lowercase": false,
+   "laugh": "ahahahah (raro)",
+   "emoji": "✌🏼👍🏼🎉",
+   "len": "medie, educate"
+  },
+  "sample": [
+   "Sottoscrivo",
+   "Ci vediamo lì ✌🏼",
+   "Volendo ci sarei",
+   "Mo me ne compro una zero e la bevo alla vostra salute",
+   "Skippo anche io mi sa, sono cotto"
+  ],
+  "label": "versione da gioco"
+ },
+ {
+  "id": "mirco",
+  "name": "Mirco",
+  "nick": "Mirco Lo Smilzo",
+  "aka": [
+   "Lo Smilzo"
+  ],
+  "color": "#e0e0e0",
+  "emoji": "🦴",
+  "tone": "l'ultimo arrivato, curioso, fa domande sulle edizioni del giornale e su Tortellino Man",
+  "catchphrases": [
+   "bella vecio",
+   "palese",
+   "basta memare",
+   "che poteri ha?",
+   "storia da prima pagina",
+   "damn"
+  ],
+  "interests": [
+   "il Corriere delle Due Torri",
+   "Tortellino Man",
+   "inventare giochi"
+  ],
+  "lore": [
+   "\"Ma tortellino man… che poteri ha?\"",
+   "\"ok invento il gioco mi avete convinto\"",
+   "\"Non usavo mass media dall'ultima interrogazione di storia\""
+  ],
+  "style": {
+   "lowercase": false,
+   "laugh": "AHAHAHAH",
+   "emoji": "",
+   "len": "brevi"
+  },
+  "sample": [
+   "Bella vecio tutto ok",
+   "Che poteri ha?",
+   "Storia da prima pagina",
+   "Basta memare",
+   "AHAHAHAHAH INCREDIBILE"
+  ],
+  "label": "versione da gioco"
+ }
+]
