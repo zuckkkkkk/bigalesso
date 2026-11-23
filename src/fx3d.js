@@ -266,7 +266,7 @@ export function createFX(scene, camera, opts = {}) {
       if (hemiBase) { lights.hemi.color.copy(hemiBase.sky).lerp(skyCol, o * 0.7); lights.hemi.groundColor.copy(hemiBase.gnd).lerp(gndCol, o * 0.7); }
     }
     if (cab) { if (n > 0.001) scaleProp(cab.marqueeMat, 'emissiveIntensity', 1 + 0.5 * n); if (cab.screenMat) cab.screenMat.uniforms.bright.value = 1.55 + 0.25 * n; }
-    moon.intensity = (0.55 + 0.6 * (state.out || 0)) * n;
+    moon.intensity = (0.28 + 0.32 * (state.out || 0)) * n; // cold, dim moonlight
     // gfx: the moon stays in the light list (intensity 0 by day): toggling it changed the light count and
     // recompiled every lit shader at dusk; one unshadowed directional light is cheap
     neon.userData._st.boost = n;

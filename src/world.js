@@ -762,8 +762,8 @@ export function buildLevel(scene, opts = {}) {
     lampGlass.emissiveIntensity = n * 2.2;
     // point lights cost every lit pixel even at intensity 0: only enable them at night
     const lampsOn = n > 0.04;
-    for (const L of gardenLamps) { L.visible = lampsOn; L.intensity = n * 34; }
-    loungeLamp.visible = lampsOn; loungeLamp.intensity = n * 16; lampMat.emissiveIntensity = 0.4 + n * 2.0;
+    for (const L of gardenLamps) { L.visible = lampsOn; L.intensity = n * 15; } // pools of light, not floodlights: night has to read as night
+    loungeLamp.visible = lampsOn; loungeLamp.intensity = n * 11; lampMat.emissiveIntensity = 0.4 + n * 2.0;
     sky.position.copy(cam ? cam.position : fp);
     if (root.userData.jetMat && cam) root.userData.jetMat.uniforms.uScale.value = (opts.renderer ? opts.renderer.getDrawingBufferSize(new THREE.Vector2()).y : innerHeight) * cam.projectionMatrix.elements[5] * 0.5;
     if (root.userData.platter) root.userData.platter.rotation.y -= dt * 3.5;

@@ -163,7 +163,7 @@ export function createNightZombies(M) {
     if (enabled() && n > 0.04) {
       build();
       if (!torch.visible) torch.visible = true;
-      const want = out ? n * (st.on ? 60 : 38) : 0;
+      const want = out ? n * (st.on ? 30 : 18) : 0;
       torch.intensity += (want - torch.intensity) * Math.min(1, dt * 4);
       const yaw = w.yaw ?? man.root.rotation.y, f = V(Math.sin(yaw), 0, Math.cos(yaw));
       torch.position.copy(p).add(V(0, 1.35, 0)).addScaledVector(f, 0.25); torchT.position.copy(p).addScaledVector(f, 6).add(V(0, 0.1, 0)); torchT.updateMatrixWorld();
