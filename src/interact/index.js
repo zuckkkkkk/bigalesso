@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { createWheel } from './wheel.js';
 import { EMOTE_REACT, ACTION_LINES, rnd, reactPrompt } from './lines.js';
 import { persona, personaPrompt, emitEvent, unlock as aiUnlock } from '../ai.js';
+import { createVespa } from './vespa.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const PI = Math.PI;
@@ -42,6 +43,8 @@ const ACH = {
   can: ['ia_can', 'Calcetto', 'Hai calciato la lattina', '🥫'],
   doorbell: ['ia_bell', 'Scampanellata', 'Hai suonato a un amico', '🔔'],
   tv: ['ia_tv', 'Zapping', 'Hai fatto zapping da Seghino', '📺'],
+  vespa: ['ia_vespa', 'Vespista', 'Sei salito su una Vespa', '🛵'],
+  vespa300: ['ia_vespa300', 'Giro dei portici', 'Hai fatto 300 metri in Vespa', '🛵'],
 };
 function unlock(key) { const a = ACH[key]; if (!a) return; try { aiUnlock(a[0], { title: a[1], desc: a[2], icon: a[3], group: 'Interazioni' }); } catch (e) { } }
 function ev(text) { try { emitEvent('interact', { text }); } catch (e) { } }
@@ -93,6 +96,10 @@ export function createInteractions(ctx) {
       speak(n, rnd(EMOTE_REACT[kind] || EMOTE_REACT.wave), what);
     }, 450 + i * 1100));
   }
+
+  // rideable vespe (vespa.js)
+  const VS = createVespa({ scene, man, audio, input, level, toast, ev, unlock,
+    say: (line, what) => { const n = nearFriends(9, 1)[0]; if (n && !n.talking) { face(n); speak(n, line, what); } } });
 
   // props: phone + beer bottles (built once, parented to hands while used)
   const phoneMesh = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.15, 0.009), new THREE.MeshStandardMaterial({ color: 0x111318, roughness: 0.35, metalness: 0.4 }));
@@ -379,10 +386,19 @@ export function createInteractions(ctx) {
         break;
       }
       case 'sit': {
-        out.crouchT = 1; out.leanT = -0.1; out.kneelT = 0;
-        out.rL = { pos: mp().clone().addScaledVector(f, 0.25).addScaledVector(s, -0.2).add(V(0, 0.55, 0)), w: 0.8, palm: 'down', grip: 0.3 };
-        out.rR = { pos: mp().clone().addScaledVector(f, 0.25).addScaledVector(s, 0.2).add(V(0, 0.55, 0)), w: 0.8, palm: 'down', grip: 0.3 };
-        if (t > 0.6 && (keys.backP || keys.actP)) endAct();
+        const B = m.bench; if (!B) { endAct(); break; }
+        const F = B.F, R = V(-Math.cos(B.y), 0, Math.sin(B.y)); // facing F; R = his right
+        if (m.up === undefined && t > 0.6 && (keys.backP || keys.actP)) m.up = t;
+        const w = m.up !== undefined ? 1 - smooth((t - m.up) / 0.5) : smooth(t / 0.55);
+        const seat = B.b.clone().addScaledVector(F, 0.3);
+        mp().copy(m.up !== undefined ? B.p.clone().lerp(seat, w) : (m.from || B.p).clone().lerp(seat, w)); W.yaw = B.y;
+        const hip = B.b.clone().addScaledVector(F, -0.1); hip.y = B.seatY + 0.09;
+        man.sit = { src: 'bench', hip, feet: { Left: B.b.clone().addScaledVector(F, 0.44).addScaledVector(R, -0.13).setY(0.09), Right: B.b.clone().addScaledVector(F, 0.44).addScaledVector(R, 0.13).setY(0.09) }, w, tilt: -0.04 };
+        const lap = hip.clone().addScaledVector(F, 0.3).add(V(0, 0.1, 0));
+        out.rL = { pos: lap.clone().addScaledVector(R, -0.15), w: w * 0.9, palm: 'down', grip: 0.3 };
+        out.rR = { pos: lap.clone().addScaledVector(R, 0.15), w: w * 0.9, palm: 'down', grip: 0.3 };
+        out.lookW = 0.5; out.lookAt = hip.clone().addScaledVector(F, 4).add(V(0, 1.0, 0));
+        if (m.up !== undefined && t - m.up > 0.5) { man.sit = null; mp().copy(B.p); endAct(); }
         if (t > 4 && !m.told) { m.told = 1; unlock('bench'); }
         break;
       }
@@ -438,11 +454,16 @@ export function createInteractions(ctx) {
     const Q = () => window.__quartiere;
     // benches in the piazzetta (street.js hooks.benchSpots)
     const benches = () => (Q() && Q().street && Q().street.benchSpots) || [];
+    // the seat faces ry + PI: the procedural bench has its backrest at local +Z, park_bench.glb (placed at ry + PI) at its -Z
     for (let i = 0; i < 3; i++) {
-      const spot = () => { const b = benches()[i]; if (!b) return null; const y = b.ry || 0; return { p: V(b.x + Math.sin(y) * 0.45, 0, b.z + Math.cos(y) * 0.45), y, top: V(b.x, 1.0, b.z) }; };
-      items.push({ id: 'ia_bench' + i, label: () => 'Siediti sulla panchina', range: 1.1,
+      const spot = () => {
+        const b = benches()[i]; if (!b) return null; const y = (b.ry || 0) + PI, F = V(Math.sin(y), 0, Math.cos(y));
+        const SH = Q() && Q().street; const tripo = !!(SH && SH.benchIms && SH.benchIms[0] && SH.benchIms[0].visible === false);
+        return { b: V(b.x, 0, b.z), F, y, p: V(b.x + F.x * 0.86, 0, b.z + F.z * 0.86), seatY: tripo ? 0.53 : 0.485, top: V(b.x, 1.0, b.z) };
+      };
+      items.push({ id: 'ia_bench' + i, label: () => 'Siediti sulla panchina', range: 1.2,
         anchor: () => { const s = spot(); return s ? s.p : FAR; }, top: () => { const s = spot(); return s ? s.top : FAR; },
-        act: () => { const s = spot(); if (!s) return; H.goTo(s.p, s.y, () => { startAct('sit', {}); toast('Seduto · E o Esc per alzarti'); }); } });
+        act: () => { const s = spot(); if (!s) return; H.goTo(s.p, s.y, () => { startAct('sit', { bench: s, from: mp().clone() }); toast('Seduto · E o Esc per alzarti'); }); } });
     }
     // pigeons: piazzetta + Via Petroni
     for (const [x, z] of [[44.8, 25.0], [44.0, 53.5]]) {
@@ -463,7 +484,12 @@ export function createInteractions(ctx) {
     // Seghino's fridge: a beer from the fridge
     items.push({ id: 'ia_fridge', label: () => 'Prendi una birra dal frigo', anchor: () => FRIDGE, top: () => V(-15.2, 1.6, 18.2), range: 1.0,
       act: () => H.goTo(FRIDGE, -PI / 2, () => { sfx('door'); startAct('drink', { n: null, dur: 3.0 }); toast(rnd(['Seghino non se ne accorgerà', 'Birra del frigo di Seghino: rubata', 'Fresca, cazzo'])); ev('ha rubato una birra dal frigo di Seghino'); }) });
-    return { items, owns: m => m === 'ia', update, camera: modeCamera };
+    items.push(...VS.items(W, H, () => H.setMode('vespa')));
+    return {
+      items, owns: m => m === 'ia' || m === 'vespa',
+      update: (mode, dt, I, keys) => (mode === 'vespa' ? VS.update(W, H, dt, I, keys) : update(mode, dt, I, keys)),
+      camera: (pose, dt) => (W.mode === 'vespa' ? VS.camera(W, pose, dt) : modeCamera(pose, dt)),
+    };
   }
   const FAR = V(1e5, 0, 1e5);
   const FRIDGE = V(-14.45, 0, 18.2);
@@ -567,6 +593,8 @@ export function createInteractions(ctx) {
       if (!free() && !(W && W.mode === 'explore')) wheel.hide();
       wheel.move(input.drag.dx, input.drag.dy); input.drag.dx = 0; input.drag.dy = 0;
     }
+    VS.pre(W);
+    if (man.sit && man.sit.src === 'bench' && !(W.mode === 'ia' && W.m.kind === 'sit')) man.sit = null;
     if (W.mode !== 'ia' && man.model.rotation.x !== 0) man.model.rotation.x = 0;
     if (W.mode !== 'ia' && phoneMesh.visible) phoneMesh.visible = false;
     if (W.mode !== 'ia' && myBottle.visible) myBottle.visible = false;
@@ -608,5 +636,5 @@ export function createInteractions(ctx) {
   }
   scene.add(phoneMesh); // parked until a hand takes it
 
-  return { plugin, update: preUpdate, post, camera, wheel, state: st };
+  return { plugin, update: preUpdate, post, camera, wheel, state: st, vespa: VS };
 }

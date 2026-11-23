@@ -83,6 +83,7 @@ export class Man {
     this.crouch = 0; // 0..1
     this.kneel = 0; // 0..1 one-knee kneel
     this.kneelSide = 'Right'; // which knee goes on the floor (the other foot is planted forward)
+    this.sit = null; // seated pose: { hip: Vector3 (world, pelvis), feet: { Left, Right: Vector3 (world, ankles) }, w: 0..1, tilt?: rad (+ = chest forward) }
     this.reach = { left: null, right: null }; // {pos:Vector3, w:0..1, palm:'down'|'forward'|'in'|'up'|'side'|'face', grip:0..1, pole?, dir?, normal?}
     this.smile = 0.15; this.mouth = 0;
     this.active = []; // procedural gestures
@@ -275,6 +276,7 @@ export class Man {
     const kn = this.kneel * live, cr = this.crouch * live * (1 - Math.min(1, this.kneel));
     if (kn > 0.001) this.applyKneel(kn, fwd, left);
     if (cr > 0.001) this.applyCrouch(cr, fwd, left);
+    if (this.sit && this.sit.w > 0.001) this.applySit(this.sit, live, fwd, left);
     // cabinet lean
     const lean = this.lean * live;
     if (lean > 0.001) for (const [n, kk] of [['Spine', 0.35], ['Spine1', 0.35], ['Spine2', 0.3]]) { _q.setFromAxisAngle(left, lean * kk); this.rotateWorld(B[n], _q); }
@@ -349,6 +351,26 @@ export class Man {
       // restore planted foot orientation
       const pq = L.foot.parent.getWorldQuaternion(Q()).invert();
       L.foot.quaternion.copy(pq.multiply(L.fq)); L.foot.updateMatrixWorld(true);
+    }
+  }
+
+  // seated (benches, the Vespa): pelvis to a world point, ankles to world targets (knees forward), feet kept flat;
+  // runs before the arms so reaching hands (handlebar, thighs) solve on the seated body
+  applySit(S, live, fwd, left) {
+    const B = this.bones, e = sm(S.w) * live; if (e <= 0.001 || !S.hip) return;
+    const legs = ['Left', 'Right'].map(s => ({ s, up: B[s + 'UpLeg'], lo: B[s + 'Leg'], foot: B[s + 'Foot'] }));
+    for (const L of legs) { L.fp = wp(L.foot); L.fq = L.foot.getWorldQuaternion(Q()); }
+    const hips = B.Hips, h0 = wp(hips);
+    const d = S.hip.clone().sub(h0).multiplyScalar(e);
+    hips.position.add(d.applyQuaternion(hips.parent.getWorldQuaternion(Q()).invert()).divide(hips.parent.getWorldScale(V()))); hips.updateMatrixWorld(true);
+    const tilt = (S.tilt || 0) * e;
+    if (Math.abs(tilt) > 1e-3) { _q.setFromAxisAngle(left, tilt); this.rotateWorld(B.Spine, _q); }
+    for (const L of legs) {
+      const tgt = S.feet && S.feet[L.s]; if (!tgt) continue;
+      const a = wp(L.up);
+      const knee = a.clone().addScaledVector(fwd, 0.9).addScaledVector(UP, 0.35).addScaledVector(left, (L.s === 'Left' ? 1 : -1) * 0.06);
+      this.twoBone(L.up, L.lo, L.foot, L.fp.clone().lerp(tgt, e), knee);
+      L.foot.quaternion.copy(L.foot.parent.getWorldQuaternion(Q()).invert().multiply(L.fq)); L.foot.updateMatrixWorld(true);
     }
   }
 

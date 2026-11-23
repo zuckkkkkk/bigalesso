@@ -104,8 +104,11 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
   for (const [x0, z] of [[8.0, 20.5], [29.0, 20.5], [-38.2, 20.6]]) box(x0 - 0.45, z - 0.4, x0 + 3.45, z + 0.4);
   for (const b of SH.benchSpots) C.push({ type: 'circle', c: [b.x, b.z], r: 0.55 });
   for (const t of SH.trees) C.push({ type: 'circle', c: [t.x, t.z], r: 0.35 });
+  // the follow camera stays out of trunks and leafy crowns (it used to end up inside the piazzetta trees)
+  for (const t of SH.trees) { const k = t.s || 1; blk(t.x - 0.45, 0, t.z - 0.45, t.x + 0.45, 3.4 * k, t.z + 0.45); blk(t.x - 2.6 * k, 3.4 * k, t.z - 2.6 * k, t.x + 2.6 * k, 8 * k, t.z + 2.6 * k); }
   box(42.95, 22.8, 45.65, 24.8); // edicola
-  for (const [x, z] of [[6.2, 28.7], [7.2, 28.8], [41.6, 47.4]]) C.push({ type: 'circle', c: [x, z], r: 0.45 });
+  blk(42.95, 0, 22.8, 45.65, 2.9, 24.8); // edicola: the camera stays out of the kiosk too
+  // the parked vespe: dynamic colliders owned by interact/vespa.js (they can be ridden and parked elsewhere)
 
   const areas = {
     // visible from the west half of the street (through the checkpoint) and from inside; never from the house/garden
@@ -154,7 +157,7 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
       const m4 = new THREE.Matrix4(); L.list.forEach((o, i) => { L.poolIm.setMatrixAt(i, m4.compose(V(o.x, 0.02, o.z), new THREE.Quaternion(), V(7, 1, 7))); SH.lampSpots[i] = V(o.x, 3.6, o.z); });
       L.poolIm.instanceMatrix.needsUpdate = true;
     }
-    for (const h of SH.tripo) { if (h.name !== 'fiat500' && h.name !== 'vespa') continue; try { await swapInstanced(h.name, h.ims); } catch (e) { console.warn(e); } }
+    for (const h of SH.tripo) { if (h.name !== 'fiat500' && h.name !== 'vespa') continue; try { const r = await swapInstanced(h.name, h.ims); if (Array.isArray(r)) h.swapped = r; } catch (e) { console.warn(e); } }
     await dress.street();
     warm(streetG);
     for (const id of Object.keys(places)) placeModels(id);

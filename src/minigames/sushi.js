@@ -305,7 +305,20 @@ export function sushiPlugin(M) {
     }
     function stop() { if (G && !G.over) Bt.end(); G = null; hud.classList.remove('on'); res.classList.remove('on'); zone.visible = false; for (let i = 0; i < 4; i++) { stacks[i].visible = false; if (tags[i]) tags[i].sp.visible = false; } }
     function start() { goTo(Bt.stand.clone(), Bt.yaw, () => { setMode('mg_sushi'); }); }
-    W.mgOpen = W.mgOpen || {}; W.mgOpen.sushi = () => { if (W.mode === 'explore' && H.manPos().distanceTo(Bt.stand) < 4) { start(); return true; } toast('Il sushi all you can eat si gioca al nastro: ' + (window.__quartiere ? 'ristorante in Via Teletubbylandia' : 'chiosco in giardino')); return false; };
+    W.mgOpen = W.mgOpen || {}; W.mgOpen.sushi = () => { if (W.mode === 'explore' && H.manPos().distanceTo(Bt.stand) < 4) { start(); return true; } travel(); return true; };
+    // from the phone / menu: fade to black, "Mezz'ora dopo, al sushi…", reappear at the belt and sit down
+    function travel() {
+      if (W.mode !== 'explore' && W.mode !== 'goto') { toast('Finisci quello che stai facendo, poi andiamo al sushi'); return; }
+      const f = document.createElement('div');
+      f.style.cssText = 'position:fixed;inset:0;z-index:40;background:#000;opacity:0;transition:opacity .45s;display:grid;place-items:center;color:#fff;font:400 clamp(28px,4vw,56px)/1 var(--gta,Impact,sans-serif);letter-spacing:.04em;text-transform:uppercase;pointer-events:none';
+      f.textContent = window.__quartiere ? "Mezz'ora dopo, al sushi…" : 'Al chiosco del sushi…'; document.body.appendChild(f);
+      requestAnimationFrame(() => { f.style.opacity = '1'; });
+      setTimeout(() => {
+        try { const a = window.__app, st = Bt.stand, y = Bt.yaw || 0; a.man.root.position.set(st.x - Math.sin(y) * 0.6, 0, st.z - Math.cos(y) * 0.6); W.yaw = y; if ('camYaw' in W) W.camYaw = y + Math.PI; } catch (e) { }
+        start();
+        setTimeout(() => { f.style.opacity = '0'; setTimeout(() => f.remove(), 600); }, 450);
+      }, 650);
+    }
     const items = [{ id: 'mg-sushi', label: () => 'Siediti: sushi all you can eat', anchor: () => Bt.stand, top: () => Bt.top, range: 1.2, act: () => { if (W.carry) { toast('Prima posa l\'estintore'); return; } start(); } }];
     const pp = V();
     function plateInZone() { const s = Bt.seat(0); let best = -1, bd = 0.14; for (let i = 0; i < Bt.NP; i++) { const p = Bt.pos(i, pp); if (!p) continue; const d = Math.hypot(p.x - s.x, p.z - s.z); if (d < bd) { bd = d; best = i; } } return best; }

@@ -96,14 +96,14 @@ export async function swapInstanced(name, ims, size, fit) {
   ims = ims.filter(Boolean); if (!ims.length) return false;
   const base = ims[0]; const n = base.count, norm = normalised(sc, size, fit);
   sc.updateMatrixWorld(true);
-  const m4 = new THREE.Matrix4(), inst = new THREE.Matrix4();
+  const m4 = new THREE.Matrix4(), inst = new THREE.Matrix4(); const out = [];
   sc.traverse(o => {
     if (!o.isMesh) return;
     const geo = bakeGeometry(o.geometry, new THREE.Matrix4().multiplyMatrices(norm, o.matrixWorld));
-    const im = new THREE.InstancedMesh(geo, o.material, n);
+    const im = new THREE.InstancedMesh(geo, o.material, n); out.push(im);
     for (let i = 0; i < n; i++) { base.getMatrixAt(i, inst); m4.copy(inst); // keep translation + rotation, drop the procedural scale
       const p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3(); m4.decompose(p, q, s); m4.compose(p, q, new THREE.Vector3(1, 1, 1)); im.setMatrixAt(i, m4); }
     im.castShadow = true; im.receiveShadow = true; im.computeBoundingSphere(); base.parent.add(im);
   });
-  for (const b of ims) b.visible = false; return true;
+  for (const b of ims) b.visible = false; return out.length ? out : true; // the new meshes (interact/vespa.js moves single instances)
 }

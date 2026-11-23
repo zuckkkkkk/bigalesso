@@ -356,6 +356,7 @@ export function buildStreet(root, { low = false, quality = 'high', interiorDoors
     hooks.tripo.push({ name: 'fiat500', ims: [body, glass, wheels] });
     const vg = vespaGeo(); const ves = [{ x: 6.2, z: 28.7, ry: 0.3, color: '#8fd3c0' }, { x: 7.2, z: 28.8, ry: 0.2, color: '#e9e2c8' }, { x: 41.6, z: 47.4, ry: PI / 2 + 0.2, color: '#c0302a' }].map(o => ({ ...o, y: 0 }));
     const vim = instances(vg, m.carBody, ves, { name: 'vespe' }); root.add(vim); hooks.tripo.push({ name: 'vespa', ims: [vim] });
+    hooks.vespaSpots = ves; hooks.vespaGeo = vg; // interact/vespa.js: rideable
     const bg = bikeGeo(); const bikes = [];
     for (const x of [-9.5, -8.9, -8.3, 9.2, 9.8, 16.6, 17.2, 31.4]) bikes.push({ x, y: 0, z: ST.curbFar + 0.55, ry: 0.1 * (R() - 0.5) });
     for (const z of [50, 50.6, 63.5]) bikes.push({ x: 42.25, y: 0, z, ry: PI / 2 });
