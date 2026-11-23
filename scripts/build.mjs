@@ -47,6 +47,8 @@ for (const f of NEWS281) fs.copyFileSync(A('news281/' + f), path.join(OUT, 'news
 // opening panels (assets/opening, scripts/opening_assets.py), menu font, app icons
 const copyDir = (dir, re) => { if (!fs.existsSync(A(dir))) return []; const fl = fs.readdirSync(A(dir)).filter(f => re.test(f)); fs.mkdirSync(path.join(OUT, dir), { recursive: true }); for (const f of fl) fs.copyFileSync(A(dir + '/' + f), path.join(OUT, dir, f)); return fl; };
 const OPENING = copyDir('opening', /^(panel|thumb)-[\w-]+\.jpg$/);
+// the baked opening video (scripts/opening_video.py): web/Docker/desktop builds only (the artifact and single-file builds fall back to the DOM timeline)
+const OPENING_VIDEO = mode !== 'artifact' && !single && fs.existsSync(A('opening/opening.mp4')) ? (fs.copyFileSync(A('opening/opening.mp4'), path.join(OUT, 'opening', 'opening.mp4')), true) : false;
 copyDir('fonts', /^anton\.woff2$/);
 const ICONS = copyDir('icons', /^icon-(192|512|maskable-512)\.png$/);
 fs.writeFileSync(path.join(OUT, 'manifest.webmanifest'), JSON.stringify({

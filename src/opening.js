@@ -62,6 +62,7 @@ const CSS = `
 #opening .bars:before,#opening .bars:after{content:"";position:absolute;left:0;right:0;height:7.5vh;background:#000;z-index:3}
 #opening .bars:before{top:0}#opening .bars:after{bottom:0}
 #opening .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:4}
+#opening .vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;opacity:0;transition:opacity .25s}#opening .vid.on{opacity:1}
 #opening .skip{position:absolute;right:3vw;bottom:2.4vh;z-index:5;font:500 12px/1 var(--ui,system-ui);letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.6);transition:opacity .6s;opacity:0}
 #opening .splash{position:absolute;inset:0;display:grid;place-items:center;text-align:center;z-index:6;cursor:pointer;
   background:radial-gradient(90% 70% at 50% 60%,#2a0b3e 0%,#0b0412 70%,#000 100%)}
@@ -75,9 +76,9 @@ const CSS = `
 @media (prefers-reduced-motion:reduce){#opening .splash .press{animation:none}}`;
 
 // ------------------------------------------------------------------ audio
-function makeTrack(vol) {
-  const C = window.AudioContext || window.webkitAudioContext; if (!C) return null;
-  let ctx; try { ctx = new C(); } catch (e) { return null; }
+function makeTrack(vol, given) {
+  const C = window.AudioContext || window.webkitAudioContext; if (!C && !given) return null;
+  let ctx = given; if (!ctx) try { ctx = new C(); } catch (e) { return null; }
   const out = ctx.createGain(); out.gain.value = 0;
   const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.2;
   out.connect(comp); comp.connect(ctx.destination);
@@ -313,6 +314,36 @@ function bakeTimeline(V, root) {
   };
 }
 
+// ------------------------------------------------------------------ offline capture (scripts/opening_video.mjs)
+// Renders stills of the timeline and the synth track offline, to bake the opening into a video file
+// (assets/opening/opening.mp4) that the browser decodes in hardware: smooth whatever the main thread is doing.
+export function openingCapture(host) {
+  if (!document.getElementById('openingCss')) { const st = document.createElement('style'); st.id = 'openingCss'; st.textContent = CSS; document.head.appendChild(st); }
+  const root = document.createElement('div'); root.id = 'opening'; (host || document.body).appendChild(root);
+  const V = build(root);
+  const imgs = [...root.querySelectorAll('img')];
+  return {
+    T_END,
+    ready: () => Promise.all(imgs.map(i => (i.decode ? i.decode().catch(() => { }) : Promise.resolve()))).then(() => document.fonts && document.fonts.ready),
+    frame: t => { render(V, t); },
+    async audio(sampleRate = 48000) {
+      const len = Math.ceil((T_END + 1.2) * sampleRate);
+      const ctx = new OfflineAudioContext(2, len, sampleRate);
+      const A = makeTrack(1, ctx); scheduleTrack(A, 0);
+      const buf = await ctx.startRendering();
+      // 16-bit PCM WAV, base64
+      const ch = [buf.getChannelData(0), buf.getChannelData(1)], n = buf.length;
+      const out = new DataView(new ArrayBuffer(44 + n * 4));
+      const w = (o, str) => { for (let i = 0; i < str.length; i++) out.setUint8(o + i, str.charCodeAt(i)); };
+      w(0, 'RIFF'); out.setUint32(4, 36 + n * 4, true); w(8, 'WAVE'); w(12, 'fmt '); out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, 2, true);
+      out.setUint32(24, sampleRate, true); out.setUint32(28, sampleRate * 4, true); out.setUint16(32, 4, true); out.setUint16(34, 16, true); w(36, 'data'); out.setUint32(40, n * 4, true);
+      for (let i = 0, o = 44; i < n; i++) for (let c = 0; c < 2; c++, o += 2) out.setInt16(o, Math.max(-1, Math.min(1, ch[c][i])) * 32767, true);
+      const u8 = new Uint8Array(out.buffer); let bin = ''; for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+      return btoa(bin);
+    },
+  };
+}
+
 // ------------------------------------------------------------------ player
 export function playOpening(opts = {}) {
   const ui = opts.ui || null;
@@ -336,6 +367,24 @@ export function playOpening(opts = {}) {
     const pre = PANELS.map(n => { const i = new Image(); i.src = src(n); return i.decode ? i.decode().catch(() => { }) : Promise.resolve(); });
     const root = document.createElement('div'); root.id = 'opening'; root.setAttribute('aria-label', 'Intro Bigalesso Games'); document.body.appendChild(root);
     document.body.dataset.opening = '1';
+    // baked video (scripts/opening_video.py): hardware-decoded, smooth while the world loads. The DOM timeline below is
+    // the fallback (artifact/single-file builds, no video support, or a video that doesn't load in time).
+    let vid = null, vidOk = null;
+    if (!window.__ASSETS && location.protocol !== 'file:' && !/[?&]domopening\b/.test(location.search)) {
+      vid = document.createElement('video'); vid.className = 'vid'; vid.preload = 'auto'; vid.playsInline = true; vid.disablePictureInPicture = true;
+      vid.setAttribute('playsinline', ''); vid.src = './opening/opening.mp4';
+      vid.addEventListener('error', () => { vidOk = false; }, { once: true });
+      vid.addEventListener('canplaythrough', () => { if (vidOk === null) vidOk = true; }, { once: true });
+      vid.addEventListener('canplay', () => { if (vidOk === null && vid.readyState >= 3) vidOk = true; }, { once: true });
+      root.appendChild(vid); try { vid.load(); } catch (e) { vidOk = false; }
+    }
+    const videoReady = () => new Promise(r => {
+      if (!vid || vidOk === false || typeof vid.play !== 'function') return r(false);
+      if (vidOk) return r(true);
+      const to = setTimeout(() => r(vid.readyState >= 3), 1600);
+      vid.addEventListener('canplay', () => { clearTimeout(to); r(true); }, { once: true });
+      vid.addEventListener('error', () => { clearTimeout(to); r(false); }, { once: true });
+    });
     let resolve; const p = new Promise(r => { resolve = r; });
     let A = null, t0 = 0, raf = 0, started = false, stopped = false, V = null, splashEl = null, ldT = 0, cancelTL = null;
     const vol = () => { const s = (ui && ui.settings) || {}; return clamp((s.master ?? 0.85) * (0.4 + 0.6 * (s.music ?? 0.7)), 0, 1); };
@@ -345,6 +394,24 @@ export function playOpening(opts = {}) {
       if (started || stopped) return; started = true; log('begin ' + (why || ''));
       if (G && !gMuted && G.setMuted) try { G.setMuted(true); } catch (e) { }
       if (splashEl) { splashEl.remove(); splashEl = null; } clearInterval(ldT);
+      videoReady().then(ok => { if (stopped) return; if (ok) playVideo(); else { if (vid) { vid.remove(); vid = null; } playDom(); } });
+    }
+    const finish = () => { try { window.__save && window.__save.unlock('opening'); } catch (e) { } stop('end'); };
+    function playVideo() {
+      log('video');
+      vid.volume = clamp(vol() * 1.1, 0, 1); vid.classList.add('on');
+      const skipEl = document.createElement('div'); skipEl.className = 'skip'; skipEl.textContent = 'Premi un tasto per saltare'; root.appendChild(skipEl);
+      setTimeout(() => { if (!stopped) skipEl.style.opacity = 1; }, 1200);
+      setTimeout(() => { skipEl.style.opacity = 0; }, (T_END - 2) * 1000);
+      let last = -1, still = 0;
+      vid.addEventListener('ended', finish, { once: true });
+      // watchdog: a stalled stream (network) never blocks the game
+      ldT = setInterval(() => { if (stopped) return; if (vid.currentTime === last) { if ((still += 0.5) > 6) finish(); } else { still = 0; last = vid.currentTime; } }, 500);
+      const p = vid.play();
+      if (p && p.catch) p.catch(() => { vid.muted = true; const p2 = vid.play(); if (p2 && p2.catch) p2.catch(() => { clearInterval(ldT); vid.remove(); vid = null; playDom(); }); });
+    }
+    function playDom() {
+      log('dom');
       A = makeTrack(vol());
       V = build(root);
       // the whole visual timeline, baked into compositor animations (smooth even while the world loads)
@@ -357,7 +424,6 @@ export function playOpening(opts = {}) {
         const p0 = performance.now() + (LEAD + lat) * 1000;
         if (TL) TL.start((LEAD + lat) * 1000);
         const now = () => (performance.now() - p0) / 1000;
-        const finish = () => { try { window.__save && window.__save.unlock('opening'); } catch (e) { } stop('end'); };
         if (TL) {
           // light main-thread ticker: layer visibility housekeeping + the end; the motion itself never waits for it
           ldT = setInterval(() => { if (stopped) return; const t = now(); TL.tick(t); if (t >= T_END) finish(); }, 100);
@@ -372,6 +438,7 @@ export function playOpening(opts = {}) {
       if (stopped) return; stopped = true; log('stop ' + why); cancelAnimationFrame(raf); clearInterval(ldT);
       setTimeout(() => { if (cancelTL) cancelTL(); }, 600); // after the fade-out
       removeEventListener('keydown', onKey, true); root.removeEventListener('pointerdown', onPtr);
+      if (vid) { const v0 = vid.volume; let k = 0; const fade = setInterval(() => { k++; try { vid.volume = Math.max(0, v0 * (1 - k / 8)); } catch (e) { } if (k >= 8) { clearInterval(fade); try { vid.pause(); } catch (e) { } } }, 55); }
       if (A) { try { const g = A.out.gain, n = A.ctx.currentTime; g.cancelScheduledValues(n); g.setValueAtTime(g.value, n); g.linearRampToValueAtTime(0.0001, n + 0.45); } catch (e) { } setTimeout(() => { try { A.ctx.close(); } catch (e) { } }, 700); }
       root.classList.add('fade');
       if (G && !gMuted && G.setMuted) setTimeout(() => { try { G.setMuted(false); } catch (e) { } }, 400);

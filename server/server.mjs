@@ -26,6 +26,7 @@ const MIME = {
   '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.glb': 'model/gltf-binary',
   '.txt': 'text/plain; charset=utf-8', '.woff2': 'font/woff2', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav',
   '.webmanifest': 'application/manifest+json; charset=utf-8', '.ktx2': 'image/ktx2', '.bin': 'application/octet-stream',
+  '.mp4': 'video/mp4', '.webm': 'video/webm',
 };
 // build with --compress writes .br/.gz next to text files and the GLB: served as-is (no CPU, no RAM spent compressing)
 const ENC = [['br', '.br'], ['gzip', '.gz']];
@@ -58,6 +59,18 @@ function sendFile(file, req, res, st, u) {
   if (etag) { headers.ETag = etag; headers['Last-Modified'] = new Date(st.mtimeMs).toUTCString(); }
   if (path.basename(file) === 'sw.js') headers['Service-Worker-Allowed'] = '/';
   if (etag && req.headers['if-none-match'] === etag) { res.writeHead(304, headers).end(); return; }
+  // byte ranges for media (the opening video): Safari requires them, Chrome uses them to start playback early
+  if ((ext === '.mp4' || ext === '.webm') && st) {
+    headers['Accept-Ranges'] = 'bytes'; delete headers.Vary;
+    const m = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
+    if (m) {
+      let a = m[1] === '' ? Math.max(0, st.size - +m[2]) : +m[1], b = m[1] !== '' && m[2] !== '' ? Math.min(+m[2], st.size - 1) : st.size - 1;
+      if (a > b || a >= st.size) { res.writeHead(416, { 'Content-Range': `bytes */${st.size}` }).end(); return; }
+      headers['Content-Range'] = `bytes ${a}-${b}/${st.size}`; headers['Content-Length'] = b - a + 1;
+      if (req.method === 'HEAD') { res.writeHead(206, headers).end(); return; }
+      res.writeHead(206, headers); fs.createReadStream(file, { start: a, end: b }).on('error', () => res.destroy()).pipe(res); return;
+    }
+  }
   const accept = String(req.headers['accept-encoding'] || '');
   const tryEnc = i => {
     if (i >= ENC.length) return send(file, st && st.size);

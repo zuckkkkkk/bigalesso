@@ -16,7 +16,7 @@ self.addEventListener('fetch', e => {
   const r = e.request;
   if (r.method !== 'GET') return;
   const u = new URL(r.url);
-  if (u.origin !== location.origin || SKIP.test(u.pathname)) return;
+  if (u.origin !== location.origin || SKIP.test(u.pathname) || /\.(mp4|webm)$/.test(u.pathname) || r.headers.has('range')) return; // media: network with byte ranges
   if (r.mode === 'navigate') {
     e.respondWith(fetch(r).then(res => { const cp = res.clone(); caches.open(CACHE).then(c => c.put('index.html', cp)).catch(() => { }); return res; })
       .catch(() => caches.match('index.html').then(m => m || caches.match('./'))));
