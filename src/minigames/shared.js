@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import quotesData from '../../assets/chat/quotes.json';
 import personasData from '../../assets/chat/personas.json';
 import loreData from '../../assets/chat/lore.json';
+import banterData from '../../assets/chat/banter.json';
 
 export const rnd = (a, b) => a + Math.random() * (b - a);
 export const pick = a => a[Math.floor(Math.random() * a.length)];
@@ -46,7 +47,10 @@ export async function ask(opts, fallback, timeout = 12000) {
   } catch (e) { return fb(); }
 }
 export const aiOnline = () => { try { const a = window.__ai; if (!a || typeof a.status !== 'function') return false; const s = a.status(); return typeof s === 'string' ? s !== 'offline' : !!(s && (s.online || s.ok)); } catch (e) { return false; } };
-export const SAFE = 'Tono goliardico e affettuoso tra amici; niente insulti personali, volgarità pesanti, bestemmie, politica, religione, salute o temi sensibili; non inventare fatti gravi sulle persone. Rispondi in italiano.';
+export const SAFE = 'Registro da chat tra amici venticinquenni bolognesi: parolacce benvenute (cazzo, merda, coglione, stronzo, vaffanculo, che palle, sti cazzi, porca troia, socmel, burdèl) e prese per il culo tra amici, frasi brevissime. Limiti fissi: niente bestemmie, niente insulti discriminatori (omofobi, razzisti, sessisti, sulla disabilità o sul corpo), niente sesso su persone reali, niente politica, religione, salute, droghe, soldi o dati personali; non inventare fatti gravi veri sulle persone. Rispondi in italiano.';
+// offline banter (assets/chat/banter.json): banter(id, kind) per persona (greet|idle|win|lose|night|roast), banterPool(name) for discord|sushi|processo_verdetti|processo_pene|corriere|zombata|bot
+export const banterPool = name => (banterData[name] || []).slice();
+export function banter(id, kind) { const P = (banterData.persona && banterData.persona[id]) || {}; const pool = [...(P[kind] || []), ...((banterData.generic && banterData.generic[kind]) || [])]; return pool.length ? pick(pool) : null; }
 // strips quotes/markdown the model may add, cuts to n chars
 export function clean(s, n = 160) { s = String(s || '').replace(/^["“«\s]+|["”»\s]+$/g, '').replace(/\*\*|__|#+ /g, '').trim(); return s.length > n ? s.slice(0, n - 1).replace(/\s+\S*$/, '') + '…' : s; }
 

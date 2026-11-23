@@ -467,7 +467,7 @@ export function installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, ca
 
   function greetLine(id) {
     const p = persona(id);
-    return rnd([`Bella Zuck!`, `Zuck! ${cap(rnd(p.catchphrases))}`, `Ue Zucco`, `${cap(rnd(p.catchphrases))}`, offline(id, 'saluto')]);
+    return rnd([`Bella Zuck!`, `Zuck! ${cap(rnd(p.catchphrases))}`, `Ue Zucco`, `${cap(rnd(p.catchphrases))}`, offline(id, 'saluto'), offline(id, 'saluto'), offline(id, 'roast')]);
   }
   // idle behaviour: wander near home, greet, chat in pairs, dance at night
   function think(n, dt, d, night, list) {
@@ -578,7 +578,7 @@ export function installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, ca
     TALK = { n, msgs: [], turn: 0, used: [], busy: false, t: 0 };
     n.state = 'talk'; n.target = null; n.dance = 0; n.man.stopClip && n.man.stopClip('Dance', 0.3);
     document.body.dataset.overlay = 'npc';
-    dlg.open(n.p, { onChoose: choose, onClose: () => closeTalk(true) });
+    dlg.open(n.p, { onChoose: choose, onClose: () => closeTalk(true), onActions: window.__npcActions ? () => { if (TALK && TALK.n === n) window.__npcActions(n, () => closeTalk(false)); } : null });
     aiTurn('');
     if (!talked.has(n.id)) { talked.add(n.id); saveTalked(talked); }
     unlock('npc_first', { title: 'Due chiacchiere', desc: 'Hai parlato con un amico del gruppo', icon: '💬' });
@@ -589,7 +589,7 @@ export function installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, ca
     const T = TALK; if (!T) return;
     TALK = null; dlg.close();
     if (document.body.dataset.overlay === 'npc') delete document.body.dataset.overlay;
-    if (bye) { T.n.say(cap(rnd(['daje', 'bella', 'a dopo', ...T.n.p.catchphrases.slice(0, 3)])) + ' ✌🏼', 3); T.n.man.gesture('wave'); }
+    if (bye) { T.n.say(cap(rnd(['daje', 'bella', 'a dopo', 'vai va, coglione', 'ciao stronzo', 'dai mo, sparisci', ...T.n.p.catchphrases.slice(0, 3)])) + ' ✌🏼', 3); T.n.man.gesture('wave'); }
     T.n.state = 'idle'; T.n.wait = 6;
     if (W && W.mode === 'npcTalk' && H) H.setMode('explore');
   }
@@ -629,6 +629,7 @@ export function installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, ca
       if (!dlg.typing()) {
         for (let i = 0; i < 3; i++) if (I.pressed('Digit' + (i + 1)) || I.pressed('Numpad' + (i + 1))) dlg.pick(i);
         if (I.pressed('Digit4') || I.pressed('Tab')) dlg.free();
+        if (I.pressed('Digit5') || I.pressed('Numpad5')) dlg.actions();
         if (keys.actP) dlg.skip();
         if (keys.backP) { closeTalk(true); return {}; }
       }
@@ -683,7 +684,7 @@ function buildDialog() {
 #npcDlg .foot{margin-top:8px;font-size:11px;opacity:.45;display:flex;justify-content:space-between}`;
   const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
   const root = document.createElement('div'); root.id = 'npcDlg';
-  root.innerHTML = `<div class="box"><div class="who"><b></b><small>versione da gioco</small></div><div class="line"></div><ol></ol><input type="text" maxlength="160" hidden><div class="foot"><span class="prov"></span><span>1-3 scegli · 4 scrivi · Esc saluta</span></div></div>`;
+  root.innerHTML = `<div class="box"><div class="who"><b></b><small>versione da gioco</small></div><div class="line"></div><ol></ol><input type="text" maxlength="160" hidden><div class="foot"><span class="prov"></span><span>1-3 scegli · 4 scrivi · 5 azioni · Esc saluta</span></div></div>`;
   document.body.appendChild(root);
   const $ = s => root.querySelector(s);
   const lineEl = $('.line'), ol = $('ol'), inp = $('input'), whoEl = $('.who b'), provEl = $('.prov');
@@ -698,6 +699,7 @@ function buildDialog() {
     ol.innerHTML = '';
     choices.forEach((c, i) => { const li = document.createElement('li'); li.innerHTML = `<kbd>${i + 1}</kbd><span></span>`; li.querySelector('span').textContent = c; li.onclick = () => api.pick(i); ol.appendChild(li); });
     if (choices.length > 1) { const li = document.createElement('li'); li.className = 'alt'; li.innerHTML = '<kbd>4</kbd><span>Scrivi tu…</span>'; li.onclick = () => api.free(); ol.appendChild(li); }
+    if (cb && cb.onActions) { const li = document.createElement('li'); li.className = 'alt'; li.innerHTML = '<kbd>5</kbd><span>Fai qualcosa… (birra, cinque, braccio di ferro, selfie, seguimi)</span>'; li.onclick = () => api.actions(); ol.appendChild(li); }
     const li = document.createElement('li'); li.className = 'alt'; li.innerHTML = '<kbd>Esc</kbd><span>Ciao, ci vediamo</span>'; li.onclick = () => cb && cb.onClose(); ol.appendChild(li);
   }
   function step() {
@@ -714,6 +716,7 @@ function buildDialog() {
     typing: () => document.activeElement === inp || shown < full.length,
     skip() { if (shown < full.length) { shown = full.length; lineEl.textContent = full; render(); } },
     pick(i) { if (shown < full.length || !cb || !choices[i]) return; cb.onChoose(choices[i]); },
+    actions() { if (cb && cb.onActions) cb.onActions(); },
     free() { if (!cb) return; inp.hidden = false; inp.placeholder = `Scrivi a ${name}… (Invio)`; inp.focus(); },
   };
   return api;

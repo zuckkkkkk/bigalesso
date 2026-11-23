@@ -2,13 +2,13 @@
 // desktop UI with the "Compettina" voice channel full of personas and a quick aim duel (best of 5) against one of them,
 // with trash talk from the AI (or the persona's catchphrases offline).
 import * as THREE from 'three';
-import { V, rnd, pick, clamp, shuffle, persona, personas, catchphrase, ask, SAFE, clean, esc, createOverlay, unlock, record, getRec, phone, logEvent, anchor, cv, canvasTex } from './shared.js';
+import { V, rnd, pick, clamp, shuffle, persona, personas, catchphrase, ask, SAFE, clean, esc, createOverlay, unlock, record, getRec, phone, logEvent, anchor, cv, canvasTex, banter, banterPool } from './shared.js';
 
 const COMPE = ['zuck', 'ashish', 'lombu', 'cesco', 'asche', 'forla', 'seghino'];
 const FALLBACK_TALK = {
-  win: ['gg ez', 'troppo lento bratan', 'torna su osu', 'skill issue palese', 'easy compe'],
-  lose: ['lag', 'avevo il mouse scarico', 'rematch subito', 'ok questa la ammetto', 'era hackerato'],
-  start: ['compettina? daje', 'tocca la compe', 'vediamo chi ha i riflessi', 'pronto a perdere?'],
+  win: ['gg ez', 'troppo lento bratan', 'torna su osu', 'skill issue palese', 'easy compe', 'ti ho fatto il culo', 'mira di merda, fra', 'godo, coglione', 'torna al tutorial, testa di cazzo', 'socmel che lento'],
+  lose: ['lag', 'avevo il mouse scarico', 'rematch subito', 'ok questa la ammetto', 'era hackerato', 'ma vaffanculo', 'porca troia, laggo', 'che merda di mouse', 'rivincita subito, stronzo', 'che palle'],
+  start: ['compettina? daje', 'tocca la compe', 'vediamo chi ha i riflessi', 'pronto a perdere?', 'preparati a prenderlo in culo', 'dai mo, coglione', 'chi perde paga le birrette', 'burdèl, si gioca'],
 };
 const CSS = `
 #mg-discord .dc{position:relative;margin:auto;width:min(1180px,94vw);height:min(700px,88vh);display:grid;grid-template-columns:72px 230px 1fr 250px;background:#313338;border-radius:10px;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.6);font:14px/1.35 "gg sans","Noto Sans",system-ui,sans-serif;color:#dbdee1}
@@ -135,7 +135,7 @@ export function discordPlugin(M) {
       const p = persona(id);
       const txt = await ask({ model: 'fast', maxTokens: 50, persona: id,
         system: `Sei ${p.name}, un amico in una chiamata Discord durante una "compettina" (sfida di riflessi). Stile: ${p.tone}. Intercalari: ${(p.catchphrases || []).join(', ')}. Rispondi con UNA battuta breve (max 12 parole), trash talk amichevole. ${SAFE}`,
-        prompt: situation }, () => (Math.random() < 0.5 ? catchphrase(id) + ' ' : '') + pick(FALLBACK_TALK[kind] || FALLBACK_TALK.start), 6000);
+        prompt: situation }, () => { const r = Math.random(); if (r < 0.3) { const b = banter(id, kind === 'win' ? 'win' : kind === 'lose' ? 'lose' : 'roast'); if (b) return b; } if (r < 0.55) return pick(banterPool('discord')); return (Math.random() < 0.5 ? catchphrase(id) + ' ' : '') + pick(FALLBACK_TALK[kind] || FALLBACK_TALK.start); }, 6000);
       say(id, clean(txt, 110));
     }
     function begin() {

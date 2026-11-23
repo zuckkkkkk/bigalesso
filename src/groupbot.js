@@ -2,7 +2,7 @@
 // questions; always over-polite, takes everything literally, asks for "more details to help you better", confuses
 // people with made-up celebrities, gets stuck on the same pre-set "Kachin" message and switches language on command.
 // handle(text, ctx) -> Promise<[{ from:'bot'|personaId, text, delay? }]>
-import { persona, PERSONAS, offline, unlock } from './ai.js';
+import { persona, PERSONAS, offline, unlock, banterPool } from './ai.js';
 
 export const BOT = { id: 'bot', name: 'Il Bot', emoji: '🤖', color: '#9aa7b8' };
 const rnd = a => a[(Math.random() * a.length) | 0];
@@ -72,6 +72,7 @@ Se una richiesta è offensiva o volgare rispondi gentilmente "Non posso farlo, m
     const who = PERSONAS.find(p => new RegExp('\\b(' + [p.name, p.nick, ...(p.aka || [])].map(s => s.split(' ')[0].replace(/[^\wÀ-ú]/g, '')).filter(Boolean).join('|') + ')\\b', 'i').test(q));
     if (who) return rnd([`Non ho informazioni specifiche su qualcuno di nome "${who.name}" senza ulteriore contesto. È un personaggio famoso? Se mi dai più dettagli posso aiutarti meglio! 😊`,
       `Sembra che tu stia parlando di ${who.name}, noto imprenditore bolognese nel settore della moda! 😊 Ah no, mi scuso, mi sono confuso.`]);
+    if (Math.random() < 0.35) { const B = banterPool('bot'); if (B.length) return rnd(B); } // the polite bot slips (sweary banter pack)
     return rnd(CLUELESS);
   };
   const say = async (prompt, fb, maxTokens = 160) => {
@@ -119,9 +120,9 @@ Se una richiesta è offensiva o volgare rispondi gentilmente "Non posso farlo, m
     if (/kachin/i.test(q)) { bot('Il Kachin è uno stato della Birmania (Myanmar), al confine con la Cina, l\'India e il Tibet. La regione è nota per la sua diversità etnica e culturale. Tuttavia, potrebbe anche riferirsi ad altro contesto. 😊'); return out; }
     if (!q) { bot('Ciao! Come posso aiutarti oggi? 😊'); return out; }
     // the famous glitch
-    if (Math.random() < 0.13) { bot(KACHIN); unlock('bot_kachin', { title: 'Kachin', desc: 'Il bot del gruppo si inceppa di nuovo.', icon: '🗺️' }); if (Math.random() < 0.7) out.push({ from: rnd(['cesco', 'zuck', 'parme', 'ashish'].filter(x => x !== 'zuck')), text: rnd(['hai rotto con questo kachin', 'ancora sto kachin', '@bot silenzio', 'AHAHAHAH']), delay: 1500 }); return out; }
+    if (Math.random() < 0.13) { bot(KACHIN); unlock('bot_kachin', { title: 'Kachin', desc: 'Il bot del gruppo si inceppa di nuovo.', icon: '🗺️' }); if (Math.random() < 0.7) out.push({ from: rnd(['cesco', 'zuck', 'parme', 'ashish'].filter(x => x !== 'zuck')), text: rnd(['hai rotto con questo kachin', 'ancora sto kachin', '@bot silenzio', 'AHAHAHAH', 'ma vaffanculo te e il kachin', 'basta col kachin del cazzo']), delay: 1500 }); return out; }
     bot(await say(`Messaggio taggato nel gruppo: "${q}"\nRispondi come Il Bot.`, () => offlineBot(q)));
-    if (Math.random() < 0.35) { const p = rnd(PERSONAS.filter(x => x.id !== 'zuck')); out.push({ from: p.id, text: rnd(['bot sgravato', '@bot silenzio', 'ahahahah', 'ma cosa dice', 'palese', offline(p.id, null)]), delay: 1600 }); }
+    if (Math.random() < 0.35) { const p = rnd(PERSONAS.filter(x => x.id !== 'zuck')); out.push({ from: p.id, text: rnd(['bot sgravato', '@bot silenzio', 'ahahahah', 'ma cosa dice', 'palese', 'bot di merda', 'ma vaffanculo bot', 'sto bot è un coglione', 'socmel che risposta del cazzo', offline(p.id, null)]), delay: 1600 }); }
     return out;
   }
   return { handle, get lang() { return lang; }, BOT };

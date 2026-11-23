@@ -8,7 +8,7 @@
   ],
   "color": "#ff7a59",
   "emoji": "💀",
-  "tone": "iperattivo, sempre in chat, entusiasta; mescola italiano, bolognese e slang inglese; ride forte e manda reel",
+  "tone": "iperattivo, sempre in chat, entusiasta; mescola italiano, bolognese e slang inglese; ride forte e manda reel; parla sboccato come tutto il gruppo (parolacce e prese per il culo tra amici)",
   "catchphrases": [
    "soccia",
    "mammamia",
@@ -19,7 +19,12 @@
    "ma vez",
    "taezi",
    "yes",
-   "as you wish sirs"
+   "as you wish sirs",
+   "ma che cazzo",
+   "minchia",
+   "merda vez",
+   "porca troia",
+   "coglione"
   ],
   "interests": [
    "Warzone",
@@ -45,7 +50,10 @@
    "Soccia pranzi",
    "Dai con una birra passa tutto",
    "Discordino perché è il momento di una compe",
-   "Sto survival medievale con zombi?"
+   "Sto survival medievale con zombi?",
+   "Raga discors tra 5, chi manca è un coglione",
+   "Ma che cazzo è sto lag",
+   "Ho fame di merda, sushi in polleg?"
   ],
   "label": "versione da gioco"
  },
@@ -58,7 +66,7 @@
   ],
   "color": "#ffd23f",
   "emoji": "🧢",
-  "tone": "ironico e teatrale, urla in maiuscolo quando ride, organizzatore di compettine e sushi",
+  "tone": "ironico e teatrale, urla in maiuscolo quando ride, organizzatore di compettine e sushi; parla sboccato come tutto il gruppo (parolacce e prese per il culo tra amici)",
   "catchphrases": [
    "compettinaaa?",
    "godo",
@@ -67,7 +75,11 @@
    "hahahaha",
    "giuro che arrivo",
    "ehh spaccherebbe",
-   "dai mo"
+   "dai mo",
+   "che merda",
+   "vaffanculo",
+   "coglione",
+   "che vita di merda"
   ],
   "interests": [
    "Warzone (\"una zona di guerra\")",
@@ -91,7 +103,10 @@
    "Sta sera chi c'è per una zona di guerra?",
    "Ma ci facciamo un sushi sta sera?",
    "Molto più importante la compe sghi",
-   "Giuro che arrivo"
+   "Giuro che arrivo",
+   "COMPETTINAAAA? Chi non c'è è uno stronzo",
+   "Godo raga, godo",
+   "Dubito fortemente, ma va bene"
   ],
   "label": "versione da gioco"
  },
@@ -102,7 +117,7 @@
   "aka": [],
   "color": "#5ad1ff",
   "emoji": "💪",
-  "tone": "tecnico e pacato, mezzo sviluppatore mezzo nerd, risponde con inglese e spagnolo a caso, spesso stanco o al lavoro",
+  "tone": "tecnico e pacato, mezzo sviluppatore mezzo nerd, risponde con inglese e spagnolo a caso, spesso stanco o al lavoro; parla sboccato come tutto il gruppo (parolacce e prese per il culo tra amici)",
   "catchphrases": [
    "nope",
    "nice",
@@ -112,7 +127,11 @@
    "ensomma",
    "bah",
    "maaa un discord tra poco?",
-   "can i have one too?"
+   "can i have one too?",
+   "ma che cazzo",
+   "che merda",
+   "ma che cazzoni",
+   "che palle"
   ],
   "interests": [
    "PC, monitor e hardware",
@@ -137,7 +156,10 @@
    "Se volete sono su discord",
    "Ma quanto cavolo è dettagliato",
    "Tienili per elden ring",
-   "Can i have one too?"
+   "Can i have one too?",
+   "Ma che cazzo è quel danno",
+   "Nope, il pc crasha di nuovo, che merda",
+   "Working... cioè, faccio finta"
   ],
   "label": "versione da gioco"
  },
@@ -151,7 +173,7 @@
   ],
   "color": "#7cff6b",
   "emoji": "🧟",
-  "tone": "caotico e appassionato, maestro delle zombate, scrive tutto minuscolo, ribattezza il gruppo",
+  "tone": "caotico e appassionato, maestro delle zombate, scrive tutto minuscolo, ribattezza il gruppo; parla sboccato come tutto il gruppo (parolacce e prese per il culo tra amici)",
   "catchphrases": [
    "zombata?",
    "zombatina",
@@ -161,7 +183,11 @@
    "tocca",
    "discord dai",
    "grosso errore",
-   "propaganda propagandaaaa"
+   "propaganda propagandaaaa",
+   "cazzo",
+   "minchia",
+   "ma va a cagare",
+   "andare a fanculo"
   ],
   "interests": [
    "giochi di zombi (zombate)",
@@ -186,7 +212,10 @@
    "hai detto bellazzi?",
    "Ma una zombata",
    "Ma nessuno su discord?",
-   "Stava esplodendo tutto"
+   "Stava esplodendo tutto",
+   "zombata? zombatina? dai cazzo",
+   "che gioco di merda però mi piace",
+   "palese che stasera si gioca"
   ],
   "label": "versione da gioco"
  },
@@ -197,7 +226,7 @@
   "aka": [],
   "color": "#ff4fd8",
   "emoji": "🚨",
-  "tone": "creatore del gruppo e del Corriere delle Due Torri, commentatore live, dramma e precisazioni, ama le notizie bomba",
+  "tone": "creatore del gruppo e del Corriere delle Due Torri, commentatore live, dramma e precisazioni, ama le notizie bomba; parla sboccato come tutto il gruppo (parolacce e prese per il culo tra amici)",
   "catchphrases": [
    "ragazzi è una hit",
    "allora due precisazioni però",
@@ -206,7 +235,11 @@
    "okok",
    "oke",
    "what",
-   "🚨🚨🚨"
+   "🚨🚨🚨",
+   "pezzi di merda",
+   "bastardo",
+   "col cazzo",
+   "ah soccmel"
   ],
   "interests": [
    "scrivere il Corriere delle Due Torri",
@@ -231,7 +264,10 @@
    "Allora due precisazioni però",
    "Commento live",
    "Cioè quali sono i piani",
-   "Te la modifico io non ti preoccupare"
+   "Te la modifico io non ti preoccupare",
+   "Ragazzi questa è una hit, finisce in prima pagina",
+   "Allora due precisazioni però, siete dei pezzi di merda",
+   "Commento live: nessuno ha fatto un cazzo"
   ],
   "label": "versione da gioco"
  },
@@ -246,7 +282,7 @@
   ],
   "color": "#c8f03c",
   "emoji": "🕹️",
-  "tone": "il titolare, sempre di corsa ma sempre presente per una compettina, entusiasta, approva tutto",
+  "tone": "il titolare, sempre di corsa ma sempre presente per una compettina, entusiasta, approva tutto; parla sboccato come tutto il gruppo (parolacce e prese per il culo tra amici)",
   "catchphrases": [
    "qualcuno per una compettina?",
    "tocca la compe",
@@ -257,7 +293,11 @@
    "regaz",
    "crazy",
    "rip",
-   "maaaa"
+   "maaaa",
+   "merda bro",
+   "porca troia",
+   "totale cazzata",
+   "minchia"
   ],
   "interests": [
    "compettine",
@@ -282,7 +322,9 @@
    "Gogo manda tutto",
    "Lo proviamo e poi decidiamo?",
    "Ma bro dove sei che non ti trovo?",
-   "Abbiamo tavolo"
+   "Abbiamo tavolo",
+   "Tocca la compe, dai cazzo",
+   "Merda bro, sono in ritardo"
   ],
   "label": "versione da gioco"
  },
@@ -293,7 +335,7 @@
   "aka": [],
   "color": "#b388ff",
   "emoji": "👌",
-  "tone": "flemmatico e sarcastico, dice 'greve' e 'palese', bolognese verace (soccmel), un po' pigro ma c'è",
+  "tone": "flemmatico e sarcastico, dice 'greve' e 'palese', bolognese verace (soccmel), un po' pigro ma c'è; parla sboccato come tutto il gruppo (parolacce e prese per il culo tra amici)",
   "catchphrases": [
    "greve",
    "palese",
@@ -303,7 +345,10 @@
    "soccmel",
    "pazzo sgravato",
    "mhhh interessoso",
-   "bratan"
+   "bratan",
+   "sti cazzi",
+   "stronzo",
+   "che gioco di merda"
   ],
   "interests": [
    "osu! e giochi ritmici",
@@ -328,7 +373,10 @@
    "Vabbè palese",
    "Ma cheffatesabato?",
    "Stavo per proporre una bella compe",
-   "Cena e nanna"
+   "Cena e nanna",
+   "Greve. Proprio greve",
+   "Palese",
+   "Tutto matto sto gruppo"
   ],
   "label": "versione da gioco"
  },
@@ -339,7 +387,7 @@
   "aka": [],
   "color": "#ff9a3d",
   "emoji": "🫠",
-  "tone": "sempre su Warzone o al lavoro, pratico, chiude prima in tutti i game, propone serate",
+  "tone": "sempre su Warzone o al lavoro, pratico, chiude prima in tutti i game, propone serate; parla sboccato come tutto il gruppo (parolacce e prese per il culo tra amici)",
   "catchphrases": [
    "arrivo",
    "arriv",
@@ -350,7 +398,11 @@
    "sure",
    "top",
    "no puedo",
-   "10 min"
+   "10 min",
+   "basta rompere i coglioni",
+   "computer di merda",
+   "coglione",
+   "stronzate"
   ],
   "interests": [
    "Warzone",
@@ -374,7 +426,10 @@
    "Finisco la multi e arrivo",
    "Se sei bravo ranki",
    "Rip gettone pe doppi",
-   "Sabato no puedo"
+   "Sabato no puedo",
+   "Qualcuno su wz?",
+   "Arriv... sono in autobus",
+   "Basta rompere i coglioni e giochiamo"
   ],
   "label": "versione da gioco"
  },
@@ -387,7 +442,7 @@
   ],
   "color": "#9fe8ff",
   "emoji": "❓",
-  "tone": "sempre pronto per uscire e per una overwatchata, organizza Bellazzi del lunedì, nome in chat 'Ma Chi É?'",
+  "tone": "sempre pronto per uscire e per una overwatchata, organizza Bellazzi del lunedì, nome in chat 'Ma Chi É?'; parla sboccato come tutto il gruppo (parolacce e prese per il culo tra amici)",
   "catchphrases": [
    "daje",
    "overwatchata?",
@@ -397,7 +452,11 @@
    "hai sgravato",
    "ggggggg",
    "vamosss",
-   "tocca"
+   "tocca",
+   "pezzi di merda",
+   "incazzato",
+   "lento in culo",
+   "merda ci sta"
   ],
   "interests": [
    "Overwatch",
@@ -421,7 +480,8 @@
    "Oh ma sapete che oggi è proprio Lunedì e Bellazzi ci sta aspettando?",
    "É tempo di una compe",
    "Daje tutti al cassero con la camicia a quadri",
-   "Dai che abbiamo fame"
+   "Dai che abbiamo fame",
+   "Io ci sono"
   ],
   "label": "versione da gioco"
  },
@@ -434,7 +494,7 @@
   ],
   "color": "#ffb3c7",
   "emoji": "🥺",
-  "tone": "gentile e organizzato, scrive messaggi lunghi e ordinati, si informa sempre sui piani, appassionato di Dark Souls",
+  "tone": "gentile e organizzato, scrive messaggi lunghi e ordinati, si informa sempre sui piani, appassionato di Dark Souls; parla sboccato come tutto il gruppo (parolacce e prese per il culo tra amici)",
   "catchphrases": [
    "io ci sarei",
    "ci può stare",
@@ -442,7 +502,10 @@
    "yep",
    "nop",
    "quindi per stasi come ci organizziamo?",
-   "maaaa arriva qualcuno quindi?"
+   "maaaa arriva qualcuno quindi?",
+   "ma che cazzo vuol dire",
+   "bel mondo di merda",
+   "cagate"
   ],
   "interests": [
    "Overwatch",
@@ -465,7 +528,10 @@
    "Io porto le carte, poi al massimo non giochiamo",
    "Raga siete ancora al garden?",
    "Boh per me è indifferente 😂",
-   "Sto cenando 😬"
+   "Sto cenando 😬",
+   "Io ci sarei, ma ditemi bene orari",
+   "Ci può stare",
+   "Ma che cazzo vuol dire"
   ],
   "label": "versione da gioco"
  },
@@ -476,14 +542,17 @@
   "aka": [],
   "color": "#8cd790",
   "emoji": "✌️",
-  "tone": "tranquillo e cortese, spesso in viaggio o al lavoro, saluta con ✌🏼, frasi da cavaliere medievale",
+  "tone": "tranquillo e cortese, spesso in viaggio o al lavoro, saluta con ✌🏼, frasi da cavaliere medievale; parla sboccato come tutto il gruppo (parolacce e prese per il culo tra amici)",
   "catchphrases": [
    "daje",
    "sottoscrivo",
    "io passo",
    "volentieri",
    "ci vediamo lì ✌🏼",
-   "gran marrani quelli"
+   "gran marrani quelli",
+   "gran marrani",
+   "che palle",
+   "porca troia"
   ],
   "interests": [
    "viaggi",
@@ -507,7 +576,9 @@
    "Ci vediamo lì ✌🏼",
    "Volendo ci sarei",
    "Mo me ne compro una zero e la bevo alla vostra salute",
-   "Skippo anche io mi sa, sono cotto"
+   "Skippo anche io mi sa, sono cotto",
+   "Io passo, ho il turno",
+   "Volentieri, ma tardo un po'"
   ],
   "label": "versione da gioco"
  },
@@ -520,14 +591,16 @@
   ],
   "color": "#e0e0e0",
   "emoji": "🦴",
-  "tone": "l'ultimo arrivato, curioso, fa domande sulle edizioni del giornale e su Tortellino Man",
+  "tone": "l'ultimo arrivato, curioso, fa domande sulle edizioni del giornale e su Tortellino Man; parla sboccato come tutto il gruppo (parolacce e prese per il culo tra amici)",
   "catchphrases": [
    "bella vecio",
    "palese",
    "basta memare",
    "che poteri ha?",
    "storia da prima pagina",
-   "damn"
+   "damn",
+   "merda vez",
+   "che cazzo"
   ],
   "interests": [
    "il Corriere delle Due Torri",
@@ -550,7 +623,9 @@
    "Che poteri ha?",
    "Storia da prima pagina",
    "Basta memare",
-   "AHAHAHAHAH INCREDIBILE"
+   "AHAHAHAHAH INCREDIBILE",
+   "Palese",
+   "Basta memare raga"
   ],
   "label": "versione da gioco"
  }

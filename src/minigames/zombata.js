@@ -23,7 +23,7 @@ const OBST = [ // arena props (x, y, w, h, kind)
 const PICKS = ['birra', 'mitra', 'fucile', 'molotov', 'gettone'];
 const PICK_COL = { birra: '#ffb020', mitra: '#60c0ff', fucile: '#ff7050', molotov: '#ff3030', gettone: '#ffe040' };
 const PICK_NAME = { birra: 'BIRRETTA +1', mitra: 'MITRA!', fucile: 'FUCILE!', molotov: 'MOLOTOV +1', gettone: '+500' };
-const TAUNTS = ['ZOMBATA?', 'ZOMBATINA', 'REGA', 'PALESE', 'TOCCA', 'DISCORD DAI', 'GROSSO ERRORE', 'RAGAZZI BELLI'];
+const TAUNTS = ['ZOMBATA?', 'ZOMBATINA', 'REGA', 'PALESE', 'TOCCA', 'DISCORD DAI', 'GROSSO ERRORE', 'RAGAZZI BELLI', 'PORCA TROIA', 'STI CAZZI', 'COGLIONE', 'DAI MO', 'SOCMEL', 'CHE PALLE', 'VAFFA'];
 
 export class ZombataGame {
   constructor(emit) {

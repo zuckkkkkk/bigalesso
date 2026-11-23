@@ -2,7 +2,7 @@
 // Pick a (silly) accusation from the group's lore and a side, argue for 3 rounds (choices or your own words),
 // the AI judge gives the verdict and a goliardic sentence. Offline: scripted opponent + score-based verdict.
 import * as THREE from 'three';
-import { V, rnd, pick, shuffle, clamp, persona, personas, catchphrase, ask, SAFE, clean, esc, createOverlay, unlock, phone, logEvent, anchor } from './shared.js';
+import { V, rnd, pick, shuffle, clamp, persona, personas, catchphrase, ask, SAFE, clean, esc, createOverlay, unlock, phone, logEvent, anchor, banterPool } from './shared.js';
 
 // light, harmless accusations (running jokes of the group; nothing criminal about real people)
 const CHARGES = {
@@ -31,7 +31,9 @@ const CHOICES = {
     { t: 'Tutti nel gruppo l\'hanno fatto almeno una volta', s: 2 }, { t: 'Propongo un patteggiamento in birrette', s: 1 },
   ],
 };
-const PENE = ['offrire le birrette al prossimo Celtic', 'una settimana senza compettine', 'scrivere "discord" correttamente cento volte', 'pagare il sushi a tutti', 'fare da autista il sabato al Millennium', 'leggere ad alta voce tutto il Corriere', 'tre anni di… zombate obbligatorie', 'cambiare foto profilo del gruppo per un mese'];
+const PENE_BASE = ['offrire le birrette al prossimo Celtic', 'una settimana senza compettine', 'scrivere "discord" correttamente cento volte', 'pagare il sushi a tutti', 'fare da autista il sabato al Millennium', 'leggere ad alta voce tutto il Corriere', 'tre anni di… zombate obbligatorie', 'cambiare foto profilo del gruppo per un mese'];
+const PENE = [...PENE_BASE, ...banterPool('processo_pene')];
+const VERDETTI = banterPool('processo_verdetti');
 const CSS = `
 #mg-proc .pr{position:relative;margin:auto;width:min(980px,94vw);height:min(660px,88vh);display:grid;grid-template-rows:auto 1fr auto;background:#120c08;border:1px solid #5a4020;border-radius:14px;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.65);font:15px/1.45 Georgia,"Times New Roman",serif;color:#f1e6d0}
 #mg-proc .hd{display:flex;align-items:center;gap:12px;padding:12px 18px;background:linear-gradient(90deg,#3a0a0a,#1a0c08);border-bottom:1px solid #5a4020}
@@ -133,7 +135,7 @@ export function processoPlugin(M) {
       const t = thinking('judge'); t.classList.add('judge');
       const hist = P.args.map(a => `${a.who === 'me' ? (P.role === 'accusa' ? 'ACCUSA' : 'DIFESA') : (P.role === 'accusa' ? 'DIFESA' : 'ACCUSA')}: ${a.text}`).join('\n');
       const offWin = P.score + rnd(-1, 1) >= 6;
-      const off = () => `${(P.role === 'accusa') === offWin ? 'COLPEVOLE' : 'INNOCENTE'}\n${offWin ? 'La corte trova più convincenti i tuoi argomenti' : 'La controparte è stata più convincente'}, e il Corriere ne darà notizia in prima pagina.\nPena: ${pick(PENE)}`;
+      const off = () => `${(P.role === 'accusa') === offWin ? 'COLPEVOLE' : 'INNOCENTE'}\n${VERDETTI.length && Math.random() < 0.6 ? pick(VERDETTI) : (offWin ? 'La corte trova più convincenti i tuoi argomenti, coglione fortunato' : 'La controparte è stata più convincente, che figura di merda')}, e il Corriere ne darà notizia in prima pagina.\nPena: ${pick(PENE)}`;
       const raw = await ask({ model: 'smart', maxTokens: 160,
         system: `Sei il Giudice del "Processo del Secolo", tribunale goliardico del Gulag sotto la casa, in un gruppo di amici. Valuta gli argomenti di accusa e difesa con ironia e decidi. Formato ESATTO su tre righe:\nCOLPEVOLE oppure INNOCENTE\nmotivazione (max 35 parole, divertente)\nPena: una pena goliardica innocua (max 12 parole)\n${SAFE}`,
         prompt: `Imputato: ${persona(P.id).name}. Capo d'accusa: ${P.charge}.\n${hist}` }, off, 12000);

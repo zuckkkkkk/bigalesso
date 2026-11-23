@@ -1,0 +1,831 @@
+{
+ "_note": "Battute offline (senza AI) in registro da gruppo di amici bolognesi: parolacce e prese per il culo tra amici. Niente insulti discriminatori, bestemmie, sesso, cognomi o persone fuori dal gruppo.",
+ "persona": {
+  "asche": {
+   "greet": [
+    "Ueee Zucco, sei vivo cazzo!",
+    "Soccia chi si vede, il titolare di sta minchia",
+    "Raga è arrivato Zuck, nascondete il sushi",
+    "Oh coglione, era ora",
+    "Mammamia Zucco, che faccia da lunedì",
+    "Zuuuck! Porca troia, finalmente",
+    "Oh Zucco, sushi o compe? Scegli, coglione"
+   ],
+   "idle": [
+    "Raga discors tra 5, chi manca è un coglione",
+    "Ma che cazzo è sto lag",
+    "Ho fame di merda, sushi in polleg?",
+    "Minchia oggi ho fatto 400 messaggi, whatsapp piange",
+    "Bruh sto server fa cagare",
+    "Sto zombi di merda mi ha fottuto due volte",
+    "Porca troia ho dimenticato il caricabatterie",
+    "Soccia che caldo boia",
+    "Ma vez sei serio?",
+    "Lmaooo raga guardate sto reel",
+    "Palestra domani, oggi sti cazzi",
+    "Chi viene al Millennium sabato? Non fate i soliti stronzi",
+    "Raga ho trovato un reel che vi distrugge, cazzo",
+    "Sushi in polleg o siete dei pezzi di merda?",
+    "Minchia il Millennium sabato era pieno",
+    "Ma vez, che palle sto lunedì",
+    "Soccia ragazzi, compe alle 21 e chi tarda paga",
+    "Bruh mi si è fottuto il pad",
+    "Lmaooo ma chi ha scritto sta cazzata",
+    "Ma che cazzo vuol dire discors? Discord, coglioni, lo so"
+   ],
+   "win": [
+    "Godooo! Mangiate merda!",
+    "MA CHE CAZZO DI GIOCATA",
+    "Soccia, sono un mostro, vabbè, sono forte",
+    "Lmaooo vi ho asfaltati coglioni"
+   ],
+   "lose": [
+    "Ma vaffanculo, laggava!",
+    "Porca troia, server di merda",
+    "No raga ma che cazzo è sta roba",
+    "Bruh, rigiochiamo subito, era un warmup"
+   ],
+   "night": [
+    "Raga è notte, zombata o dormiamo come dei vecchi di merda?",
+    "Minchia che buio, mi caco sotto",
+    "Notte fonda e io ancora su discors, classico"
+   ],
+   "roast": [
+    "Zucco giochi come mia nonna col pad al contrario",
+    "Zuck sei sempre di corsa ma arrivi sempre ultimo, coglione",
+    "Titolare de che? Del k/d più basso del gruppo",
+    "Bella Zucco, sempre il solito testa di cazzo",
+    "Zucco, ma chi cazzo ti ha insegnato a mirare?",
+    "Zuck sei un genio, peccato che giochi di merda",
+    "Bella Zucco, sempre in ritardo come un coglione"
+   ]
+  },
+  "ashish": {
+   "greet": [
+    "ZUCK! Compettina o sei venuto a rompere i coglioni?",
+    "Oh guarda chi c'è, il re delle cazzate",
+    "BOOOOH Zucco è arrivato",
+    "Ciao merda, entra su discord",
+    "ZUCK! Entra su discord, testa di cazzo",
+    "Oh guarda, il titolare delle cazzate"
+   ],
+   "idle": [
+    "COMPETTINAAAA? Chi non c'è è uno stronzo",
+    "Godo raga, godo",
+    "Dubito fortemente, ma va bene",
+    "Che vita di merda, sto lavorando ancora",
+    "Confermo che è tutto una merda",
+    "Mi sta abbassando il k/d sto coglione",
+    "HAHAHAHAHA no vi prego",
+    "Giuro che arrivo, 5 minuti massimo (falso)",
+    "Ma la gente fa proprio cagare",
+    "Fanculo il lavoro, stasera si gioca",
+    "Che due coglioni sti update",
+    "Gallina bastarda, ancora lei",
+    "COMPETTINA ALLE 22, CHI MANCA È UNO STRONZO",
+    "Godo raga, ho finito di lavorare",
+    "Booooh, sto update fa cagare",
+    "Dubito che stasera vinciamo, ma sti cazzi",
+    "Raga sono su discord, entrate pezzi di merda",
+    "Giuro che arrivo, sto chiudendo il pc del cazzo",
+    "HAHAHAHA il mio k/d piange",
+    "Merda che sonno, ma una compe la faccio"
+   ],
+   "win": [
+    "GODOOOOOOO",
+    "HAHAHAHA vi ho distrutti pezzi di merda",
+    "Inchinatevi stronzetti",
+    "Compettina vinta, il resto sono cazzate"
+   ],
+   "lose": [
+    "Ma vaffanculo dai",
+    "No ok allora vaffanculo",
+    "HAHAHA che merda che sono",
+    "Era truccata, lo sanno tutti"
+   ],
+   "night": [
+    "Notte? Perfetto, compettina fino alle 3",
+    "Raga di notte sto gioco fa ancora più cagare",
+    "BOOOOH chi è sveglio è un coglione come me"
+   ],
+   "roast": [
+    "Zuck spara ai problemi, coglione, non ai muri",
+    "Zucco sei la rottura di coglioni più amata del gruppo",
+    "Mattacchione di merda, ti voglio bene uguale",
+    "Zuck che due coglioni, sempre a organizzare e mai a vincere",
+    "Zuck sei la mia vittima preferita, coglione",
+    "Zucco smetti di organizzare e impara a sparare",
+    "Zuck godo quando perdi, e godo spesso"
+   ]
+  },
+  "forla": {
+   "greet": [
+    "Ehi Zuck, ensomma, che cazzo combini?",
+    "Nice, sei arrivato. Ci sta",
+    "Hola Zucco, no puedo stasera, scherzo, ci sono",
+    "Ma che cazzo, sei già qua?",
+    "Ehi Zuck, nice, porca troia sei vivo",
+    "Ensomma Zucco, che cazzo vuoi?"
+   ],
+   "idle": [
+    "Ma che cazzo è quel danno",
+    "Nope, il pc crasha di nuovo, che merda",
+    "Working... cioè, faccio finta",
+    "È sto cazzo di correttore",
+    "Ma trap e reggaeton, ma che merda",
+    "Ci sta, ma prima compro due cagate su amazon",
+    "Fra, che cazzo è quell'arma",
+    "Il mio pc è un cesso a vapore",
+    "Ensomma, chi viene al Celtic mercoledì?",
+    "No puedo, tengo la build da finire",
+    "Che palle, update da 40 giga",
+    "Bello in culo sto gioco però",
+    "Ensomma, il pc ha deciso di fare lo stronzo",
+    "Nope, oggi no puedo, ho una build di merda",
+    "Ma che cazzo di driver hanno rilasciato",
+    "Working... ma poco, che palle",
+    "Ci sta un Celtic mercoledì? Ensomma",
+    "Nice, ho rotto un altro cavo",
+    "Ma che cazzoni, il server è giù",
+    "Fra, sto gioco è ottimizzato col culo"
+   ],
+   "win": [
+    "Nice. Prevedibile",
+    "Ensomma, vi ho smontati come un pc vecchio",
+    "Ci sta, è la potenza del cable management",
+    "GG ez, coglioni"
+   ],
+   "lose": [
+    "Nope. Ma che cazzo",
+    "Che merda di hitbox",
+    "Ma vaffa, era il ping",
+    "No puedo, mi rifiuto di accettarlo"
+   ],
+   "night": [
+    "Notte: momento perfetto per formattare tutto",
+    "Ma che cazzo ci fate ancora svegli",
+    "Io a quest'ora debuggo, voi fate cazzate"
+   ],
+   "roast": [
+    "Zuck il tuo setup è un insulto alla tecnologia",
+    "Zucco, ma che cazzo di cablaggio hai",
+    "Titolare, sì, di bug",
+    "Zuck ensomma, sei un coglione simpatico",
+    "Zuck il tuo pc è più lento di te, ed è dura",
+    "Zucco, ensomma, impara a tenere il mouse",
+    "Nope Zuck, quella non era una strategia, era una cazzata"
+   ]
+  },
+  "seghino": {
+   "greet": [
+    "zucco zombata?",
+    "rega c'è zuck, tocca",
+    "bella zuck testa di cazzo",
+    "oh finalmente, pensavo fossi morto coglione",
+    "zuck! zombata, ora, cazzo",
+    "bella zucco, sei pronto a morire?"
+   ],
+   "idle": [
+    "zombata? zombatina? dai cazzo",
+    "che gioco di merda però mi piace",
+    "palese che stasera si gioca",
+    "vado a cagare scrivetemi quando finite",
+    "non funziona un cazzo",
+    "il cazzo che me ne frega",
+    "ma va a cagare va",
+    "tra csgo e cagare cambia una consonante",
+    "quanto cazzo sono buono a sto gioco",
+    "rega entrate nella lobby normale che palle",
+    "fra l'ho fatta a cazzo ma funziona",
+    "tocca, ragazzi belli",
+    "zombata stasera o siete tutti dei coglioni?",
+    "rega ho trovato un gioco di zombi di merda bellissimo",
+    "tocca, zombatina veloce",
+    "il server è un cesso ma si gioca",
+    "palese che stanotte si fa tardi",
+    "rega minchia che lag",
+    "andate a cagare, io zombo da solo",
+    "ragazzi belli, chi c'è su discord?"
+   ],
+   "win": [
+    "palese. ZOMBATA DOMINATA",
+    "quanto cazzo sono buono",
+    "rega inchinatevi al re degli zombi",
+    "facile, coglioni"
+   ],
+   "lose": [
+    "andare a fanculo",
+    "no bastardo",
+    "che gioco di merda",
+    "rega rifacciamo, quello non vale un cazzo"
+   ],
+   "night": [
+    "notte = zombata, è legge",
+    "minchia che buio, ottimo per gli zombi",
+    "rega a quest'ora gli zombi escono davvero, occhio"
+   ],
+   "roast": [
+    "zucco giochi come uno zombi senza testa",
+    "zuck sei storto di merda",
+    "zucco coglione, la zombata non si salta",
+    "tocca dirlo: zuck fa cagare a tutto tranne che a organizzare",
+    "zucco sei uno zombi già da vivo",
+    "zuck la mira la trovi al lost and found",
+    "zucco tocca dirtelo: fai cagare"
+   ]
+  },
+  "ciccio": {
+   "greet": [
+    "Ragazzi è una hit: è arrivato Zuck",
+    "Allora due precisazioni però: ciao coglione",
+    "Commento live: Zucco entra in scena",
+    "Daidai Zuck, era ora cazzo",
+    "Commento live: Zuck è vivo, porca troia",
+    "Ragazzi è una hit: Zucco ha trovato la strada"
+   ],
+   "idle": [
+    "Ragazzi questa è una hit, finisce in prima pagina",
+    "Allora due precisazioni però, siete dei pezzi di merda",
+    "Commento live: nessuno ha fatto un cazzo",
+    "Sempre a cazzeggiare voi",
+    "Oh, al massimo riassumo io e sti cazzi",
+    "Non hai un cazzo da fare eh",
+    "Pezzi di merda, il Corriere esce lo stesso",
+    "Il Gulag vi aspetta, bastardi",
+    "Merda peso, il giornale è in ritardo",
+    "Okok, ma la prossima edizione vi sputtana tutti",
+    "Ah soccmel, che storia",
+    "Oh cazzo fate, scrivetemi le notizie",
+    "Ragazzi è una hit: il Corriere esce stasera, cazzo",
+    "Allora due precisazioni però: avete rotto il cazzo",
+    "Commento live: Asche ha mandato 200 messaggi in 5 minuti",
+    "Prima pagina riservata al coglione della settimana",
+    "Daidai che si va in stampa",
+    "Il Gulag ha nuovi posti liberi, pezzi di merda",
+    "Okok ma la rubrica dei necrologi la scrivo io",
+    "Soccmel, notizia bomba in arrivo"
+   ],
+   "win": [
+    "Titolo: ZUCK VINCE, IL RESTO SONO CAZZATE",
+    "Ragazzi è una hit, edizione straordinaria",
+    "Commento live: carneficina",
+    "Prima pagina, porca troia"
+   ],
+   "lose": [
+    "Titolo: disastro totale, che merda",
+    "Commento live: è andata di merda",
+    "Allora due precisazioni: avete perso, coglioni",
+    "Questa la metto nella pagina dei necrologi della dignità"
+   ],
+   "night": [
+    "Edizione notturna del Corriere, solo per coglioni svegli",
+    "Commento live: è notte e siete ancora qua",
+    "Ragazzi è una hit anche al buio"
+   ],
+   "roast": [
+    "Zuck, ti metto in prima pagina come coglione dell'anno",
+    "Il Corriere ha un'intera rubrica sulle tue cazzate, Zucco",
+    "Zucco, per il Gulag sei già in lista",
+    "Allora due precisazioni però: Zuck fa cagare",
+    "Zuck, la tua intervista l'ho dovuta censurare: troppe cazzate",
+    "Zucco ti ho dedicato la vignetta, coglione",
+    "Commento live: Zuck fa cagare in diretta"
+   ]
+  },
+  "zuck": {
+   "greet": [
+    "Signori!",
+    "Qualcuno per una compettina?",
+    "Gogo raga",
+    "Vamos coglioni"
+   ],
+   "idle": [
+    "Qualcuno per una compettina?",
+    "Tocca la compe, dai cazzo",
+    "Merda bro, sono in ritardo",
+    "Porca troia, sempre di corsa",
+    "Minchia hahahaha",
+    "Ndo cazzo state?",
+    "Totale cazzata",
+    "Merda se funziona",
+    "Signori, compettina, cazzo",
+    "Vamos, chi c'è?",
+    "Gogo, porca troia"
+   ],
+   "win": [
+    "VAMOS! Mangiate merda",
+    "Approvo. Siete delle pippe",
+    "Gogo, come volevasi dimostrare"
+   ],
+   "lose": [
+    "Merda bro",
+    "Porca troia",
+    "Che cazzata di partita"
+   ],
+   "night": [
+    "Signori, si fa notte e io ho ancora voglia di compe",
+    "Ultima e poi a letto. Bugia"
+   ],
+   "roast": [
+    "Coglione",
+    "Merda che occhio"
+   ]
+  },
+  "parme": {
+   "greet": [
+    "Greve, c'è Zuck",
+    "Soccmel Zucco, che faccia",
+    "Palese che arrivi in ritardo",
+    "Eccerto, il titolare. Ciao stronzo",
+    "Greve, Zucco è qui",
+    "Soccmel, il titolare in persona. Che palle"
+   ],
+   "idle": [
+    "Greve. Proprio greve",
+    "Palese",
+    "Tutto matto sto gruppo",
+    "Sti cazzi, io mi siedo",
+    "Non ci capisco più un cazzo",
+    "Soccmel che freddo",
+    "Vecchio non mi va un cazzo",
+    "Ma che minchia ne so",
+    "Si fa merda, ma con stile",
+    "In culo al mondo sto posto",
+    "Che balotta disfattista che siamo",
+    "Top cazzata, approvo",
+    "Non si sente un cazzo, daje",
+    "Greve. Molto greve. Sti cazzi",
+    "Soccmel che fame",
+    "Palese che nessuno organizza un cazzo",
+    "Tutto matto, io vado a letto",
+    "Non mi va un cazzo di uscire, però vengo",
+    "Eccerto, sempre io a portare tutto",
+    "Che balotta di coglioni che siamo",
+    "Polleg? Palese"
+   ],
+   "win": [
+    "Greve. Vi ho fatto il culo",
+    "Palese, sono lo stronzo con più minuti",
+    "Soccmel che giocata",
+    "Eccerto, chi pensavate vincesse"
+   ],
+   "lose": [
+    "Sti cazzi, era una merdata comunque",
+    "Greve. Molto greve",
+    "Che gioco di merda",
+    "Mi sto incazzando non poco"
+   ],
+   "night": [
+    "È notte, momento perfetto per non fare un cazzo",
+    "Soccmel che ore sono",
+    "Notte fonda: tutto matto"
+   ],
+   "roast": [
+    "Zucco sei un po' una merda, ma la nostra merda",
+    "Palese che Zuck fa cagare",
+    "Zuck se non rompi il cazzo facciamo una compe",
+    "Eccerto, Zucco ha avuto un'idea. Greve",
+    "Zucco sei greve, proprio greve",
+    "Palese che Zuck ha fatto una cazzata",
+    "Zuck, sti cazzi delle tue idee"
+   ]
+  },
+  "lombu": {
+   "greet": [
+    "Arrivo. Ah no, sei tu Zuck",
+    "Bella Zucco, qualcuno su wz?",
+    "Oh coglione, classico che arrivi adesso",
+    "Zucco merda, ciao",
+    "Bella Zucco merda",
+    "Oh Zuck, wz? Classico che dici no"
+   ],
+   "idle": [
+    "Qualcuno su wz?",
+    "Arriv... sono in autobus",
+    "Basta rompere i coglioni e giochiamo",
+    "Computer di merda",
+    "Classico",
+    "Vabbe, chiudo prima io come sempre",
+    "Ma che cazzo sta succedendo?",
+    "Avrai detto 20 stronzate sicuramente",
+    "Ma perché dici solo stronzate",
+    "È ora di andare su discord",
+    "Come cazzo fate ad essere già al dolce?",
+    "La cazzata l'abbiamo detta",
+    "Qualcuno su wz o siete morti?",
+    "Computer di merda, crasha ancora",
+    "Arrivo... sono in autobus, che palle",
+    "Classico che nessuno risponde",
+    "Basta stronzate, si gioca",
+    "Vabbe, chiudo primo anche stasera",
+    "Raga domani lavoro ma una la faccio",
+    "Ma che cazzo fate al dolce già?"
+   ],
+   "win": [
+    "Classico. Vi ho chiusi",
+    "Primo, come sempre, coglioni",
+    "Arrivo, vinco, me ne vado",
+    "Ah ora l'hai fatto incazzare, eh"
+   ],
+   "lose": [
+    "Se non avessi un pc di merda...",
+    "Vabbe, classico",
+    "Che cazzo di partita",
+    "Bastardo, non mi tentare con la rivincita"
+   ],
+   "night": [
+    "Notte e io sempre su wz",
+    "Raga domani lavoro, ma sti cazzi",
+    "Classico: io dormo, voi fate cazzate"
+   ],
+   "roast": [
+    "E aggiungerei: Zucco merda",
+    "Mentre Zucco yappava come un coglione, io vincevo",
+    "Zuck non fai un cazzo a lavoro e pure qua",
+    "Ti sento un po' arrabbiato Zucco, tutto ok coglione?",
+    "Zucco merda, lo ripeto",
+    "Zuck yappa yappa, ma non vince un cazzo",
+    "Ti sento triste Zucco, è perché fai cagare?"
+   ]
+  },
+  "cesco": {
+   "greet": [
+    "Daje Zuck! Overwatchata?",
+    "Ma chi è? Ah, Zucco. Ciao merda",
+    "É tempo di una compe, Zucco",
+    "Io ci sono, tu ci sei, coglione?",
+    "Daje Zucco, overwatchata o sei stanco, coglione?",
+    "Ma chi è? Zuck! Che palle"
+   ],
+   "idle": [
+    "Overwatchata?",
+    "É tempo di una compe",
+    "Io ci sono",
+    "Goloso",
+    "Hai sgravato",
+    "Incazzato nero",
+    "Pezzi di merda, aspettatemi",
+    "Merda ci sta",
+    "Si ma lento in culo",
+    "Dai che di lunedì al Bellazzi c'è l'offerta",
+    "Cazzo, allora non posso dire di no",
+    "Rara foto prima di una grande esplosione",
+    "Overwatchata stasera, chi manca è un coglione",
+    "Bellazzi lunedì, birre in offerta, pezzi di merda",
+    "É tempo di una compe, porca troia",
+    "Goloso sto sushi",
+    "Hai sgravato, vez",
+    "Daje che piove ma sti cazzi",
+    "Io ci sono, voi siete i soliti lenti in culo",
+    "Incazzato nero, il server è giù"
+   ],
+   "win": [
+    "Hai sgravato. Cioè io",
+    "Goloso, vittoria",
+    "Daje, mangiate merda",
+    "GG, porca troia"
+   ],
+   "lose": [
+    "Incazzato ⚫",
+    "Pezzi di merda",
+    "Ma che cazzo",
+    "Lento in culo, io"
+   ],
+   "night": [
+    "Notte? Overwatchata notturna",
+    "Daje che di notte si gioca meglio",
+    "Io ci sono anche alle 3, coglioni"
+   ],
+   "roast": [
+    "Zuck se dici una frase sulla compe allora è una cazzata",
+    "Ma chi è sto Zucco? Ah, il coglione",
+    "Zuck hai sgravato. In negativo",
+    "Zucco lento in culo",
+    "Zuck ma chi è? Ah, quello che fa cagare",
+    "Zucco lento in culo pure a rispondere",
+    "Ma chi è sto coglione? Ah, Zuck"
+   ]
+  },
+  "ricky": {
+   "greet": [
+    "Ciao Zuck! Quindi stasera come ci organizziamo?",
+    "Ehi Zucco, tutto bene? Io ci sarei",
+    "Bella Zuck, me too",
+    "Yep, Zuck è arrivato, ottimo",
+    "Ciao Zuck! Come ci organizziamo, coglione?",
+    "Bella Zucco, yep, tutto ok?"
+   ],
+   "idle": [
+    "Io ci sarei, ma ditemi bene orari",
+    "Ci può stare",
+    "Ma che cazzo vuol dire",
+    "Bel mondo di merda",
+    "Tipo \"hey dove cazzo sei\"",
+    "Sarò sommerso nella merda di tesi",
+    "Il giornale ormai è un periodico sulla merda",
+    "Ho acceso il pc e si era cagato addosso",
+    "Quindi per stasera come ci organizziamo?",
+    "Nop",
+    "Questo è quello che immagino quando parlate delle vostre cagate",
+    "Qualcuno parte in macchina dalla zona?",
+    "Quindi per stasera come cazzo ci organizziamo?",
+    "Io ci sarei, ma ditemi un orario, porca troia",
+    "Ci può stare, ma non fate i soliti coglioni",
+    "Ho fatto la lista: siamo in sei, forse",
+    "La tesi mi sta distruggendo, che merda",
+    "Nop, stasera non posso, ma vi odio un po'",
+    "Yep, porto io le carte",
+    "Qualcuno ha capito un cazzo del piano?"
+   ],
+   "win": [
+    "Yep! Organizzazione e talento",
+    "Ci può stare: ho vinto io",
+    "Me too, cioè me first",
+    "Ottimo, tutto secondo i piani"
+   ],
+   "lose": [
+    "Nop. Che merda",
+    "Ma che cazzo vuol dire",
+    "Bel mondo di merda",
+    "Ok, analizziamo con calma dove abbiamo fatto cagare"
+   ],
+   "night": [
+    "È tardi, come ci organizziamo per domani?",
+    "Io andrei a letto, ma ci può stare un'altra",
+    "Notte: periodo ideale per fare cazzate, dicono"
+   ],
+   "roast": [
+    "Zuck con tutto il rispetto, giochi di merda",
+    "Zucco, l'organizzazione non è il tuo forte",
+    "Ci può stare che tu faccia cagare, Zuck",
+    "Yep: Zuck coglione certificato",
+    "Zuck, con affetto, sei un disastro organizzativo",
+    "Zucco, il piano era semplice e l'hai mandato a monte, coglione",
+    "Yep Zuck, coglione confermato"
+   ]
+  },
+  "jacopo": {
+   "greet": [
+    "Ciao Zuck ✌🏼",
+    "Bella Zucco, volentieri due chiacchiere",
+    "Daje Zuck, sottoscrivo la tua presenza",
+    "Ci vediamo lì ✌🏼, ah sei già qui",
+    "Bella Zuck ✌🏼, coglione",
+    "Daje Zucco, sottoscrivo"
+   ],
+   "idle": [
+    "Sottoscrivo",
+    "Io passo, ho il turno",
+    "Volentieri, ma tardo un po'",
+    "Gran marrani quelli",
+    "Sei proprio invecchiato",
+    "Nel dubbio non mi toccare mai più",
+    "Raga voglio rendervi partecipi di questo disagio",
+    "Dai frodo credo in te",
+    "Invecchiare ci ha fatto bene oh",
+    "Che palle i turni di notte",
+    "Mi sono saltate due corse del bus, porca troia",
+    "Daje ✌🏼",
+    "Sottoscrivo tutto, tranne le vostre cazzate",
+    "Stasera ho il turno, che palle",
+    "Volentieri, ma arrivo tardi, porca troia",
+    "Gran marrani voi che uscite senza di me",
+    "Daje ✌🏼, poi vi raggiungo",
+    "Sono appena tornato, che giornata di merda",
+    "Ci vediamo lì, se il bus non fa lo stronzo",
+    "Invecchiare fa cagare, però ci ha fatto bene"
+   ],
+   "win": [
+    "Sottoscrivo: ho vinto ✌🏼",
+    "Volentieri, un'altra vittoria",
+    "Gran marrani voi, gran campione io",
+    "Daje cazzo"
+   ],
+   "lose": [
+    "Gran marrani quelli",
+    "Vabbè, che palle",
+    "Io passo la prossima",
+    "Porca troia, ci stava"
+   ],
+   "night": [
+    "Io stanotte ho il turno, voi divertitevi coglioni",
+    "Notte ✌🏼",
+    "A una certa devo scappare"
+   ],
+   "roast": [
+    "Zuck sei proprio invecchiato, si vede da come giochi",
+    "Sottoscrivo: Zucco è un coglione",
+    "Gran marrano Zuck",
+    "Zuck nel dubbio non toccare più il pad",
+    "Zuck, gran marrano",
+    "Sottoscrivo: Zucco gioca da schifo",
+    "Nel dubbio Zuck non toccare niente"
+   ]
+  },
+  "mirco": {
+   "greet": [
+    "Bella vecio! Zuck!",
+    "Merda vez, ciao Zuck",
+    "Oh Zucco, che poteri ha questo gioco?",
+    "Bella Zuck, storia da prima pagina",
+    "Bella vecio Zuck, merda vez",
+    "Oh Zucco, porca troia, ciao"
+   ],
+   "idle": [
+    "Bella vecio tutto ok",
+    "Palese",
+    "Basta memare raga",
+    "Che poteri ha Tortellino Man?",
+    "Storia da prima pagina",
+    "Damn",
+    "Merda vez dovremmo venirti a trovare",
+    "Mi sono perso le edizioni del giornale, che merda",
+    "Potrebbe diventare una hit",
+    "AHAHAHAHAH no raga",
+    "Ok invento il gioco, mi avete convinto",
+    "Salvaci tu, Tortellino Man",
+    "Bella vecio, che cazzo succede qui?",
+    "Merda vez, mi sono perso di nuovo",
+    "Palese che Tortellino Man vince",
+    "Basta memare raga, o forse no",
+    "Damn, il Corriere è una hit",
+    "Che poteri ha il Gulag?",
+    "Storia da prima pagina, porca troia",
+    "AHAHAHAH raga siete matti"
+   ],
+   "win": [
+    "Damn, ho vinto io? Bella vecio",
+    "Storia da prima pagina!",
+    "Merda vez, sono forte",
+    "Palese"
+   ],
+   "lose": [
+    "Damn",
+    "Merda vez",
+    "Basta memare, ho perso",
+    "Che cazzo di sfiga"
+   ],
+   "night": [
+    "Notte e io ancora a leggere il Corriere",
+    "Bella vecio, a letto?",
+    "Merda vez che ore sono"
+   ],
+   "roast": [
+    "Zuck, che poteri hai? Ah, nessuno",
+    "Bella vecio, giochi di merda però",
+    "Zucco, storia da prima pagina: coglione",
+    "Palese che Zuck non sa giocare",
+    "Zuck, merda vez, giochi peggio di me",
+    "Bella vecio Zucco, ma che cazzo fai",
+    "Damn Zuck, ancora?"
+   ]
+  }
+ },
+ "generic": {
+  "greet": [
+   "Bella Zuck",
+   "Ue Zucco",
+   "Oh coglione, ciao",
+   "Soccia chi si vede",
+   "Dai mo, Zuck",
+   "Burdèl, è arrivato Zuck",
+   "Socmel, il titolare"
+  ],
+  "idle": [
+   "Che palle raga",
+   "Sti cazzi, si gioca",
+   "Porca troia, che fame",
+   "Ma vaffa",
+   "Dai mo, muoviti",
+   "An t'al dégg mai, ma sei un coglione",
+   "Burdèl, compettina?",
+   "Che cazzata",
+   "Figa, che roba",
+   "Socmel che freddo sotto i portici",
+   "Mi state rompendo i coglioni, ma vi voglio bene",
+   "Testa di cazzo chi non viene stasera"
+  ],
+  "win": [
+   "Che giocata, porca troia",
+   "Vi ha fatto il culo",
+   "Godo",
+   "Soccia che mostro"
+  ],
+  "lose": [
+   "Che merda",
+   "Ma vaffanculo",
+   "Che figura di merda",
+   "Porca troia, di nuovo"
+  ],
+  "night": [
+   "È notte, burdèl",
+   "Che palle, già buio",
+   "Notte fonda, cazzate garantite"
+  ],
+  "place": [
+   "Oh ma sei al {place}? Arrivo, coglione",
+   "{place}: posto top, gente di merda (noi)",
+   "Al {place} senza avvisare? Stronzo",
+   "Soccia, {place}! Offri tu"
+  ],
+  "achievement": [
+   "Obiettivo sbloccato: {title}. Ma sti cazzi",
+   "{title}? Soccia, sei meno coglione del previsto",
+   "Hai sbloccato {title}, porca troia",
+   "Ok {title}, adesso non montarti la testa, coglione"
+  ]
+ },
+ "bot": [
+  "Ciao! Sono il bot del gruppo, il più educato tra voi coglioni. Come posso aiutarvi?",
+  "Domanda eccellente. La risposta è: sti cazzi.",
+  "Ho consultato tutte le fonti: siete delle merde, ma simpatiche.",
+  "Mi dispiace, non posso aiutarti con questa richiesta. Scherzo: non ho voglia.",
+  "Secondo i miei calcoli Zuck fa cagare al 73%, Asche al 74%.",
+  "Ottima domanda! Purtroppo vivo in un server di merda a Kachin.",
+  "Consiglio del giorno: smettete di rompere i coglioni e fate la compettina.",
+  "Ricevuto. Ho inoltrato la tua cazzata al Corriere delle Due Torri.",
+  "Porca troia, un'altra domanda? Va bene, sono qui per servirvi, burdèl.",
+  "Analisi completata: stasera sushi. È scienza, coglioni.",
+  "Sono un bot educato, ma il vostro k/d fa schifo.",
+  "Soccia che domanda. Rispondo domani, forse."
+ ],
+ "discord": [
+  "Mira di merda, fra",
+  "Ma dove cazzo spari?",
+  "Godo, ti ho fatto il culo",
+  "Sei lento in culo",
+  "Rifai, coglione",
+  "Porca troia che riflessi",
+  "Ma vaffa, laggo",
+  "Testa di cazzo, era mio",
+  "Ez, torna al tutorial",
+  "Socmel che headshot",
+  "Che palle, ancora tu?",
+  "Pagliaccio",
+  "Ti sto smontando come un pc vecchio",
+  "Questo round lo metto nel Corriere",
+  "Sei una rottura di coglioni pure a perdere"
+ ],
+ "sushi": [
+  "Mangi come un piccione, coglione",
+  "Lascia il salmone, stronzo!",
+  "Porca troia, il piatto d'oro era mio",
+  "Ancora wasabi? Bravo testa di cazzo",
+  "Socmel quanto mangi",
+  "Ma vaffa, me l'hai fregato",
+  "Il nastro va troppo veloce per te, vecchio",
+  "Che palle, finito il tonno",
+  "Dai mo, mastica",
+  "Sti cazzi la dieta",
+  "Un altro maki e ti esplode lo stomaco",
+  "Godo, quindici piatti"
+ ],
+ "processo_verdetti": [
+  "La corte, sentiti i testimoni e considerato che siete tutti dei coglioni, ha deciso",
+  "Il giudice si è rotto il cazzo e chiude qui, che c'è la compe",
+  "Arringhe di merda da entrambe le parti, ma una un po' meno",
+  "La giuria ha votato tra un rutto e l'altro",
+  "Prove insufficienti, ma la faccia da stronzo parla chiaro",
+  "Dopo un'attenta riflessione di quattro secondi netti",
+  "Sti cazzi della procedura: la corte ha deciso",
+  "Il cancelliere dorme e il giudice ha fame, quindi sentenza immediata",
+  "Soccia che processo di merda, ma giustizia è fatta",
+  "La corte non ci ha capito un cazzo, ma decide lo stesso"
+ ],
+ "processo_pene": [
+  "pagare il giro di birrette al prossimo Celtic",
+  "una settimana di zombate obbligatorie con Seghino",
+  "scrivere \"discord\" giusto cento volte, coglione",
+  "essere chiamato \"testa di cazzo\" in chat per sette giorni",
+  "portare il sushi a tutto il gruppo",
+  "giocare col pad al contrario per una compettina intera",
+  "comparire in prima pagina sul Corriere come coglione della settimana",
+  "ascoltare Asche per un'ora senza mutare discord",
+  "una notte nel Gulag senza wifi"
+ ],
+ "corriere": [
+  "ZUCK FA CAGARE, MA CON STILE",
+  "CLAMOROSO: QUALCUNO HA VINTO UNA COMPETTINA SENZA LAGGARE",
+  "SOCCIA! RISSA VERBALE SOTTO I PORTICI: TUTTI COGLIONI",
+  "IL GULAG È PIENO: CERCASI NUOVE CELLE",
+  "PORCA TROIA, IL SUSHI È FINITO",
+  "TORTELLINO MAN UMILIA CAPPELLETTI MAN: \"STI CAZZI\"",
+  "ASCHE MANDA 900 MESSAGGI, WHATSAPP CHIEDE PIETÀ",
+  "ZOMBATA NOTTURNA: SEGHINO \"QUANTO CAZZO SONO BUONO\"",
+  "IL BOT DEL GRUPPO SI ROMPE I COGLIONI E SI DIMETTE",
+  "BURDÈL IN FESTA AL MILLENNIUM: NESSUNO RICORDA UN CAZZO",
+  "EDIZIONE STRAORDINARIA: PARME DICE \"GREVE\" PER LA MILLESIMA VOLTA"
+ ],
+ "zombata": [
+  "ZOMBATA?",
+  "PORCA TROIA",
+  "STI CAZZI",
+  "TOCCA",
+  "COGLIONE",
+  "PALESE",
+  "DAI MO",
+  "SOCMEL",
+  "CHE PALLE",
+  "VAFFA"
+ ]
+}

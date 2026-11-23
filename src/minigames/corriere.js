@@ -4,7 +4,7 @@
 // downloadable as JPEG and kept in localStorage (window.__corriereSpeciale + event 'bigalesso:corriere').
 import * as THREE from 'three';
 import { loadStatic, fitModel } from './zmodel.js';
-import { requestWarmup, V, pick, clamp, persona, ask, SAFE, clean, esc, createOverlay, unlock, getRec, myAchievements, sessionLog, logEvent, anchor, cv, canvasTex } from './shared.js';
+import { requestWarmup, V, pick, clamp, persona, ask, SAFE, clean, esc, createOverlay, unlock, getRec, myAchievements, sessionLog, logEvent, anchor, cv, canvasTex, banterPool } from './shared.js';
 
 const LS = 'bigalesso_corriere_speciale';
 const W0 = 1000, H0 = 1414;
@@ -105,12 +105,13 @@ function fallbackStory(events, tone) {
   const ev = events.slice().reverse();
   const top = ev.find(e => e.kind !== 'corriere') || null;
   const T = {
-    zombata: ['ZOMBATA, SI SOPRAVVIVE', 'Notte di paura sotto i portici: il giocatore tiene botta', 'Seghino: «palese, era tutto previsto»'],
+    zombata: ['ZOMBATA, SI SOPRAVVIVE', 'Notte di paura sotto i portici: il giocatore tiene botta', 'Seghino: «palese, quanto cazzo sono buono»'],
     quiz: ['QUIZ DEL GRUPPO, VERDETTO SHOCK', 'Chi l\'ha detto? Le frasi della chat tornano a colpire', 'In redazione nessuno ammette nulla'],
     sushi: ['ALL YOU CAN EAT: PIATTI A PERDITA D\'OCCHIO', 'Sfida al nastro trasportatore: il wasabi miete vittime', 'Polleg in allerta'],
-    discord: ['COMPETTINA, IL VERDETTO DEL MOUSE', 'Su Discord si decide chi ha i riflessi migliori', '«Era lag», dice lo sconfitto'],
+    discord: ['COMPETTINA, IL VERDETTO DEL MOUSE', 'Su Discord si decide chi ha i riflessi migliori', '«Era lag, porca troia», dice lo sconfitto'],
     processo: ['PROCESSO DEL SECOLO: SENTENZA STORICA', 'Nel Gulag la corte si pronuncia tra applausi e proteste', 'Fino a tre anni di… birrette'],
   };
+  const HL = banterPool('corriere'); if (HL.length && Math.random() < 0.5) { for (const k in T) T[k] = [pick(HL), T[k][1], T[k][2]]; }
   const t = top ? (T[top.kind] || ['SERATA MOVIMENTATA A TELETUBBYLANDIA', 'Cronaca di una serata tra cabinati e compettine', 'La redazione è sul posto']) : ['NESSUNA NOTIZIA (PER ORA)', 'Serata tranquilla a Teletubbylandia: il giornale esce lo stesso', 'Il direttore: «allora due precisazioni però»'];
   const txt = ev.length ? 'Nella serata appena trascorsa il nostro inviato ha registrato quanto segue: ' + ev.slice(0, 5).map(e => 'il giocatore ' + e.text).join('; ') + '. Fonti vicine al gruppo parlano di prestazioni «sgravate», ma la redazione invita alla prudenza.' : 'Nessun record, nessuna sentenza, nessuna zombata. Un silenzio sospetto che la redazione intende approfondire nelle prossime ore, possibilmente davanti a un cabinato.';
   return {

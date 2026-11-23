@@ -4,7 +4,7 @@
 // fallback), Contatti (call a friend: the NPC walks to you), Foto (Corriere pages, mural, prints), Mappa (zones,
 // friends, you), Claude (AI provider status + personal API key).
 // window.__phone = { open(app?), close(), toggle(), isOpen(), push({from, text}), notify(text, from?), event(type, data) }
-import { PERSONAS, QUOTES, LORE, persona, personaPrompt, loreBrief, offline, topicOf, describeEvent, emitEvent, unlock } from './ai.js';
+import { PERSONAS, QUOTES, LORE, persona, personaPrompt, loreBrief, offline, banter, topicOf, describeEvent, emitEvent, unlock } from './ai.js';
 import { createBot, isForBot, BOT } from './groupbot.js';
 
 const STORE = 'bigalesso_phone_v1';
@@ -243,8 +243,8 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
     emitEvent('minigame', { name: d.kind, text: t, win: /vinto|primo|sopravvissuto|innocente/.test(t) ? true : /perso|preso|colpevole/.test(t) ? false : undefined });
   });
   const TPL = {
-    achievement: (id, e) => rnd([`«${e.title || 'obiettivo'}» sbloccato?? sgravato`, `🚨 Zuck sblocca «${e.title || 'qualcosa'}». Prima pagina domani`, `${cap(rnd(persona(id).catchphrases))}, «${e.title || ''}» 👀`, 'Ragazzi è una hit', 'Pazzo sgravato']),
-    minigame: (id, e) => e.win === false ? rnd(['ahahah rip', 'serve allenamento', 'grosso errore', 'rip gettone', 'Dai dai ancora non è finita']) : rnd(['GG', 'sgravato', 'ok ma rivincita', 'pazzo sgravato', `${e.name || 'quella'} è roba mia però`, 'godo']),
+    achievement: (id, e) => (Math.random() < 0.6 && banter(id, 'achievement', { title: e.title || 'qualcosa' })) || rnd([`«${e.title || 'obiettivo'}» sbloccato?? sgravato`, `🚨 Zuck sblocca «${e.title || 'qualcosa'}». Prima pagina domani`, `${cap(rnd(persona(id).catchphrases))}, «${e.title || ''}» 👀`, 'Ragazzi è una hit', 'Pazzo sgravato']),
+    minigame: (id, e) => (Math.random() < 0.6 && banter(id, e.win === false ? 'roast' : 'win')) || (e.win === false ? rnd(['ahahah rip', 'serve allenamento', 'grosso errore', 'rip gettone', 'Dai dai ancora non è finita', 'che figura di merda', 'ahahah coglione', 'ma vaffa, rifai']) : rnd(['GG', 'sgravato', 'ok ma rivincita', 'pazzo sgravato', `${e.name || 'quella'} è roba mia però`, 'godo', 'porca troia che mostro', 'culo, solo culo'])),
     score: (id, e) => rnd([`${e.score} punti? ${rnd(persona(id).catchphrases)}`, 'Se sei bravo ranki', 'ok ma il record è mio', 'tocca batterlo']),
     egg: () => rnd(['Ma come l\'hai trovato', 'Storia da prima pagina', 'Greve', 'ma dove siamo finiti...', 'Ragazzi è una hit']),
     zone: (id, e) => { const z = String(e.zone || '').toLowerCase();
@@ -255,9 +255,9 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
       if (/discord/.test(z)) return rnd(['sono su discord', 'discord pt.2?', 'Daje discors']);
       if (/teletubby|colli|checkpoint/.test(z)) return rnd(['zona demilitarizzata, occhio', 'Teletubbylandia certificata', 'propaganda propagandaaaa']);
       if (/giardino/.test(z)) return rnd(['in giardino? bella', 'occhio al cane', 'tempo del gelato']);
-      return rnd([`sei in ${e.zone}?`, 'dove sei che non ti trovo?', 'arrivo 10 min']); },
+      return (Math.random() < 0.5 && banter(id, 'place', { place: e.zone })) || rnd([`sei in ${e.zone}?`, 'dove sei che non ti trovo?', 'arrivo 10 min', 'ndo cazzo sei?']); },
     talk: (id, e) => rnd([`che vi siete detti tu e ${nameOf(e.who)}?`, `${nameOf(e.who)} parla troppo`, 'gossip?']),
-    night: () => rnd(['zombata?', 'si esce stasera?', 'Qualcuno per una compettina?', 'Bellazzi?']),
+    night: (id) => (Math.random() < 0.6 && banter(id, 'night')) || rnd(['zombata?', 'si esce stasera?', 'Qualcuno per una compettina?', 'Bellazzi?', 'chi dorme è un coglione']),
   };
   function reactor(e) {
     if (e.type === 'zone') { const z = String(e.zone || '').toLowerCase(); for (const k in THEME) if (z.includes(k)) return THEME[k]; }
@@ -285,7 +285,7 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
         prompt: `Nel gruppo WhatsApp reagisci con UN solo messaggio brevissimo (max 14 parole), nel tuo stile, a questa cosa appena successa nel gioco: ${describeEvent(e)}. Solo il messaggio.`, fallback: fb }).then(go2);
     } else go2(fb());
     // a second friend sometimes piles on
-    if (important && Math.random() < 0.35) { const w2 = weightedPick(1, [who])[0]; setTimeout(() => push({ from: w2, text: styleText(w2, rnd(['AHAHAHAH', 'palese', 'sgravato', 'godo', 'daje', 'GG', 'ma dai'])) }), 5000 + Math.random() * 3000); }
+    if (important && Math.random() < 0.35) { const w2 = weightedPick(1, [who])[0]; setTimeout(() => push({ from: w2, text: styleText(w2, rnd(['AHAHAHAH', 'palese', 'sgravato', 'godo', 'daje', 'GG', 'ma dai', 'che coglione', 'porca troia', 'sti cazzi', 'socmel'])) }), 5000 + Math.random() * 3000); }
   }
   function chatter() {
     const A = window.__ai, n = Math.random() < 0.5 ? 2 : 1;

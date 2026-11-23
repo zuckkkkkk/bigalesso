@@ -3,7 +3,7 @@
 // Two belts: the quartiere's sushi restaurant (anchor 'sushi_conveyor' + window.__quartiere.places.sushi.belt, used as is)
 // or, without the quartiere, our own little kaiten kiosk in the garden. sushi_plates.glb (if present) is the centrepiece.
 import * as THREE from 'three';
-import { requestWarmup, V, rnd, smooth, shuffle, persona, personas, catchphrase, ask, SAFE, clean, esc, overlayCSS, unlock, record, phone, logEvent, anchor, cv, canvasTex, signTex } from './shared.js';
+import { requestWarmup, V, rnd, smooth, shuffle, persona, personas, catchphrase, ask, SAFE, clean, esc, overlayCSS, unlock, record, phone, logEvent, anchor, cv, canvasTex, signTex, banter, banterPool } from './shared.js';
 import { loadStatic, fitModel } from './zmodel.js';
 
 const DUR = 60;
@@ -298,9 +298,9 @@ export function sushiPlugin(M) {
       const top = rank.find(e => e.i) || rank[0]; const who = win ? top.id : rank[0].id;
       ask({ model: 'fast', maxTokens: 50, persona: who, system: `Sei ${persona(who).name}, amico al sushi all you can eat. Stile: ${persona(who).tone}. Una battuta breve (max 14 parole) sul risultato. ${SAFE}`,
         prompt: win ? `Hai perso la sfida di sushi: l'amico ha fatto ${me.n} piatti, tu ${top.n}.` : `Hai vinto la sfida di sushi con ${rank[0].n} piatti; l'amico ne ha fatti ${me.n}.` },
-        () => catchphrase(who) + (win ? ', rivincita la prossima volta' : ', polleg è casa mia'), 6000)
+        () => { const r = Math.random(); if (r < 0.4) return banter(who, win ? 'lose' : 'win') || catchphrase(who); if (r < 0.75) { const P = banterPool('sushi'); if (P.length) return P[(Math.random() * P.length) | 0]; } return catchphrase(who) + (win ? ', rivincita la prossima volta, stronzo' : ', polleg è casa mia, coglione'); }, 6000)
         .then(t => { const q = res.querySelector('.q'); if (q) q.innerHTML = `<b style="color:${esc(persona(who).color || '#fff')}">${esc(persona(who).name)}:</b> ${esc(clean(t, 120))}`; });
-      if (isRec && me.n > 5) phone(who, `${me.n} piatti?? ${catchphrase(who)}`);
+      if (isRec && me.n > 5) phone(who, `${me.n} piatti?? ${Math.random() < 0.5 ? 'Socmel, ti esplode lo stomaco' : catchphrase(who)}`);
       try { audio.ctx && audio.sfx(win ? 'clear' : 'gameover'); } catch (x) { }
     }
     function stop() { if (G && !G.over) Bt.end(); G = null; hud.classList.remove('on'); res.classList.remove('on'); zone.visible = false; for (let i = 0; i < 4; i++) { stacks[i].visible = false; if (tags[i]) tags[i].sp.visible = false; } }

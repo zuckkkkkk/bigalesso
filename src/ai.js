@@ -13,8 +13,9 @@
 import PERSONAS from '../assets/chat/personas.json';
 import QUOTES from '../assets/chat/quotes.json';
 import LORE from '../assets/chat/lore.json';
+import BANTER from '../assets/chat/banter.json';
 
-export { PERSONAS, QUOTES, LORE };
+export { PERSONAS, QUOTES, LORE, BANTER };
 
 const MODELS = { fast: 'claude-haiku-5-5', smart: 'claude-sonnet-5-5' };
 const TIERS = { fast: 'quick', smart: 'default' };
@@ -23,12 +24,16 @@ const MAX_TOKENS = { fast: 400, smart: 700 };
 const TIMEOUT = 20000;
 
 export const GUARDRAIL = [
-  'Scrivi testi per BIGALESSO, un videogioco comico ambientato a Bologna (portici, Due Torri, compettine, sushi, birrette).',
-  'I personaggi sono caricature affettuose di un gruppo di amici: è una versione da gioco, non le persone reali.',
-  'Regole fisse: italiano colloquiale con un po\' di bolognese e slang da gamer; frasi brevi e naturali, come in chat;',
-  'tono scherzoso e amichevole, mai cattivo; niente insulti, volgarità pesanti, bestemmie, contenuti sessuali, politica, religione,',
-  'salute, soldi, droghe; niente dati personali (cognomi, indirizzi, numeri, lavoro preciso); non attribuire reati o fatti gravi veri a nessuno',
-  '(le "condanne" del Gulag e del Corriere delle Due Torri sono giochi palesemente finti).',
+  'Scrivi testi per BIGALESSO, un videogioco comico ambientato a Bologna (portici, Due Torri, compettine, sushi, Celtic, Millennium, Gulag).',
+  'I personaggi sono caricature di un gruppo di amici venticinquenni bolognesi che si prendono per il culo da anni: è una versione da gioco.',
+  'Registro: parlano come in una chat di amici veri. Le parolacce sono ammesse e anzi benvenute, usate con naturalezza e spesso',
+  '(cazzo, minchia, merda, vaffanculo, stronzo, coglione, testa di cazzo, che palle, sti cazzi, porca troia, ma vaffa, cazzata, rompere i coglioni,',
+  'figa come intercalare), con il bolognese (soccia, socmel, burdèl, dai mo, an t\'al dégg). Frasi brevissime, come messaggi WhatsApp.',
+  'Prendi per il culo il giocatore (Zuck, detto Zucco) e gli altri amici del gruppo: insulti da amici, mai cattiveria vera.',
+  'Limiti fissi, senza eccezioni: niente bestemmie né offese religiose; niente insulti discriminatori (omofobi, razzisti, sessisti, sulla',
+  'disabilità o sul corpo); niente contenuti sessuali su persone reali; niente cognomi, indirizzi, numeri o dati personali; niente persone fuori',
+  'dal gruppo; niente politica, salute, droghe o soldi; non attribuire reati o fatti gravi veri a nessuno (le condanne del Gulag e del',
+  'Corriere delle Due Torri sono giochi palesemente finti).',
   'Rispondi solo con il testo richiesto, senza premesse, senza spiegare le regole e senza dire che sei un\'AI.',
 ].join(' ');
 
@@ -77,21 +82,35 @@ export function pickQuote(id, topic) {
 }
 const GENERIC = [
   'Ragazzi è una hit', 'Qualcuno per una compettina?', 'Palese', 'Daje', 'Ci sta', 'Ma una zombata?', 'Sushi stasera?', 'Arrivo 10 min',
-  'Soccia', 'Greve', 'Io ci sarei', 'Tocca la compe', 'Storia da prima pagina',
+  'Soccia', 'Greve', 'Io ci sarei', 'Tocca la compe', 'Storia da prima pagina', 'Che palle raga', 'Sti cazzi, si gioca', 'Porca troia che fame',
+  'Dai mo', 'Burdèl, compettina?', 'Socmel', 'Ma vaffa', 'Che cazzata',
 ];
-// one plausible line for a persona; topic: compe|sushi|zombi|serata|corriere|saluto|null
+// banter pack (assets/chat/banter.json): per-persona greet/idle/win/lose/night/roast + generic place/achievement pools
+const BK = { saluto: 'greet', greet: 'greet', idle: 'idle', win: 'win', lose: 'lose', night: 'night', roast: 'roast', place: 'place', achievement: 'achievement' };
+export function banter(id, kind, vars = {}) {
+  const k = BK[kind] || kind; const P = (BANTER.persona && BANTER.persona[id]) || {}; const G = BANTER.generic || {};
+  const pool = [...(P[k] || []), ...(P[k] && P[k].length > 2 ? [] : (G[k] || []))];
+  if (!pool.length) return null;
+  return rnd(pool).replace(/\{(\w+)\}/g, (m, v) => vars[v] != null ? String(vars[v]) : m);
+}
+export const banterPool = name => (BANTER[name] || []).slice();
+// one plausible line for a persona; topic: compe|sushi|zombi|serata|corriere|saluto|win|lose|night|roast|null
 export function offline(id, topic = null) {
   const p = persona(id);
-  if (!p) return rnd(GENERIC);
+  if (!p) return banter(null, topic || 'idle') || rnd(GENERIC);
   const r = Math.random();
+  // reactions and greetings: the banter pack first (swearing register), real quotes as seasoning
+  if (topic && BK[topic] && topic !== 'idle') { const b = banter(id, topic); if (b && r < 0.85) return b; }
   const q = pickQuote(id, topic);
-  if (q && (topic || r < 0.6)) return q;
-  if (r < 0.8 && p.catchphrases.length) {
+  if (q && topic && TOPICS[topic] && r < 0.55) return q;
+  if (r < 0.35) { const b = banter(id, Math.random() < 0.2 ? 'roast' : 'idle'); if (b) return b; }
+  if (q && r < 0.7) return q;
+  if (r < 0.88 && p.catchphrases.length) {
     const c = rnd(p.catchphrases);
-    const tail = { compe: ['compe stasera?', 'tocca la compe', 'sono su discord'], sushi: ['sushi?', 'polleg?'], zombi: ['zombata?'], serata: ['si esce?', 'birretta?'], corriere: ['prima pagina!', 'è una hit'] }[topic];
+    const tail = { compe: ['compe stasera?', 'tocca la compe', 'sono su discord', 'chi non viene è un coglione'], sushi: ['sushi?', 'polleg?', 'ho una fame di merda'], zombi: ['zombata?', 'zombatina, dai cazzo'], serata: ['si esce?', 'birretta?', 'Celtic, burdèl?'], corriere: ['prima pagina!', 'è una hit', 'vi sputtano tutti'] }[topic];
     return tail ? cap(c) + ', ' + rnd(tail) : cap(c);
   }
-  return p.sample && p.sample.length ? rnd(p.sample) : rnd(GENERIC);
+  return banter(id, 'idle') || (p.sample && p.sample.length ? rnd(p.sample) : rnd(GENERIC));
 }
 const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
 
@@ -332,7 +351,7 @@ export function installAI() {
     clearKey() { LS.set(KEY_LS, null); },
     hasKey,
     info: () => ({ provider: status(), last: st.provider, artifact: st.artState, artifactGranted: st.artGranted, server: st.server, byok: hasKey(), calls: st.calls, fails: st.fails, lastError: st.lastError }),
-    persona, personaPrompt, loreBrief, offline, pickQuote, topicOf, PERSONAS, QUOTES, LORE, MODELS,
+    persona, personaPrompt, loreBrief, offline, banter, banterPool, pickQuote, topicOf, PERSONAS, QUOTES, LORE, BANTER, MODELS,
     reprobe() { st.serverProbe = null; st.server = null; st.serverBackoff = 0; st.artBackoff = 0; probeServer(); if (st.artState === 'none') probeArtifact(); },
   };
   window.__ai = api;
