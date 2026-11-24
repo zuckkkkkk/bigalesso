@@ -42,7 +42,7 @@ export function installLightPad({ scene }) {
   function pad(type, n) {
     const arr = pads[type];
     while (arr.length < n) {
-      const L = type === 'PointLight' ? new THREE.PointLight(0x000000, 0, 0.01, 2) : new THREE.SpotLight(0x000000, 0, 0.01, 0.3, 0, 2);
+      const L = type === 'PointLight' ? new THREE.PointLight(0x000000, 0, 0.01, 2) : new THREE.SpotLight(0x000000, 0, 0.01, 0.3, 0.5, 2);
       L.position.set(0, -2000, 0); L.castShadow = false; L.userData.lightpad = true; L.userData.noWarm = true; L.visible = false;
       add0.call(root, L); if (L.target) { L.target.position.set(0, -2001, 0); add0.call(root, L.target); }
       arr.push(L);

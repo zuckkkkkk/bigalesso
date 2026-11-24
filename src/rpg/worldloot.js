@@ -101,8 +101,10 @@ export function createWorldLoot({ scene, level, hooks }) {
         vPh = instanceMatrix[3].x * 0.7 + instanceMatrix[3].z * 1.3;
         gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0); }`,
     fragmentShader: `uniform float uTime; varying float vY; varying vec3 vC; varying float vPh;
-      void main(){ float a = pow(1.0 - vY, 1.7) * (0.5 + 0.22 * sin(uTime * 3.0 + vPh + vY * 7.0)) * smoothstep(0.0, 0.05, vY);
-        gl_FragColor = vec4(vC * 1.7, a); }`,
+      // vY is clamped: with MSAA the interpolated uv can fall just outside 0..1 at the edges, and pow() of a negative
+      // number is NaN; NaN in the float buffers gets smeared by the bloom into big black areas on screen
+      void main(){ float y = clamp(vY, 0.0, 1.0); float a = pow(max(1.0 - y, 0.0), 1.7) * (0.5 + 0.22 * sin(uTime * 3.0 + vPh + y * 7.0)) * smoothstep(0.0, 0.05, y);
+        gl_FragColor = vec4(vC * 1.7, clamp(a, 0.0, 1.0)); }`,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false,
   });
   P.beam = new Pool(beamGeo, beamMat, 64, root, 'loot-beams'); P.beam.mesh.renderOrder = 5;

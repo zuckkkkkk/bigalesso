@@ -6,7 +6,7 @@
 // /api/* is forwarded to that server.
 // Performance: dedicated GPU (Windows graphics preference + macOS switch), no blocklist, no background throttling,
 // bigger JS heap; optional uncapped frame rate (no vsync) from the game's settings, applied on restart.
-const { app, BrowserWindow, protocol, net, ipcMain, shell, Menu } = require('electron');
+const { app, BrowserWindow, protocol, net, ipcMain, shell, Menu, screen } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { Readable } = require('node:stream');
@@ -87,8 +87,12 @@ function serve(req) {
 }
 
 function createWindow() {
+  // never bigger than the screen (laptops at 125-150% scaling are ~1280-1536 px wide): a window wider than the work
+  // area hangs off the edges and cuts the menu
+  let wa = { width: 1600, height: 900 }; try { wa = screen.getPrimaryDisplay().workAreaSize; } catch (e) { }
+  const W0 = Math.min(1600, wa.width), H0 = Math.min(900, wa.height);
   const win = new BrowserWindow({
-    width: 1600, height: 900, minWidth: 1024, minHeight: 600,
+    width: W0, height: H0, minWidth: Math.min(1024, W0), minHeight: Math.min(600, H0), center: true,
     backgroundColor: '#07030d', title: 'BIGALESSO GAMES', autoHideMenuBar: true, show: false,
     icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: {
@@ -97,7 +101,8 @@ function createWindow() {
     },
   });
   Menu.setApplicationMenu(null);
-  win.once('ready-to-show', () => { win.show(); if (setting('fullscreen') !== false) win.setFullScreen(true); });
+  win.once('ready-to-show', () => { win.show(); if (setting('fullscreen') !== false) win.setFullScreen(true); else win.maximize(); });
+  win.on('leave-full-screen', () => { if (!win.isMaximized()) win.maximize(); }); // F11 out of fullscreen: a maximized window, not one hanging off the screen
   win.webContents.on('before-input-event', (e, i) => {
     if (i.type !== 'keyDown') return;
     if (i.key === 'F11' || (i.key === 'Enter' && i.alt)) { win.setFullScreen(!win.isFullScreen()); e.preventDefault(); }

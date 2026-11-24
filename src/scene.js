@@ -62,6 +62,15 @@ export function createComposer(renderer, scene, camera, low) {
   composer.addPass(new RenderPass(scene, camera));
   if (!noAO) { AO = new AOPass(camera); AO.enabled = false; composer.addPass(AO); }
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.32, 0.45, 1.15);
+  // safety net: a NaN pixel from any shader would be blurred by the bloom into large black blocks; the bright-pass
+  // input is sanitized (isnan + IEEE max/min, which drop NaN on D3D and GL alike)
+  try {
+    const hp = bloom.materialHighPassFilter, src = 'vec4 texel = texture2D( tDiffuse, vUv );';
+    if (hp && hp.fragmentShader.includes(src)) {
+      hp.fragmentShader = hp.fragmentShader.replace(src, src + ' if ( any( isnan( texel ) ) || any( isinf( texel ) ) ) texel = vec4( 0.0 ); texel = min( max( texel, vec4( 0.0 ) ), vec4( 6.0e4 ) );');
+      hp.needsUpdate = true;
+    }
+  } catch (e) { }
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
   const final = new ShaderPass(FinalShader);
