@@ -7,7 +7,8 @@ import { qmat } from './textures.js';
 import { rng, makeNoise, fbm, clamp, smooth, canvas } from '../util.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Batch, V, instances, plaqueTex, signMesh, signTex, fitText, worldUV } from './kit.js';
-import { MEADOW, CHECK, ST } from './layout.js';
+import { MEADOW, CHECK, ST, PITCH } from './layout.js';
+const inPitch = (x, z, m = 0.6) => x > PITCH.x0 - PITCH.goalD - m && x < PITCH.x1 + PITCH.goalD + m && z > PITCH.z0 - m && z < PITCH.z1 + m; // calcetto cage (src/sport)
 
 const PI = Math.PI;
 // static props (also used for colliders before anything is built)
@@ -74,7 +75,7 @@ export function buildTeletubby(root, { low = false } = {}) {
   }
   // ---------- flowers + grass tufts in the meadow ----------
   {
-    const avoid = (x, z) => Math.hypot(x - TT.pond[0], z - TT.pond[1]) < TT.pond[2] + 0.4 || Math.hypot(x - TT.oak[0], z - TT.oak[1]) < 1.4 || (x > -50 && z > 19 && z < 35);
+    const avoid = (x, z) => Math.hypot(x - TT.pond[0], z - TT.pond[1]) < TT.pond[2] + 0.4 || Math.hypot(x - TT.oak[0], z - TT.oak[1]) < 1.4 || (x > -50 && z > 19 && z < 35) || inPitch(x, z);
     const n = low ? 600 : 1800; const heads = [], stems = [];
     const pal = ['#ffd83a', '#ff5a8a', '#ffffff', '#9a6ad8', '#ff8a2a', '#5ab0ff', '#ff3a3a'];
     for (let i = 0; i < n; i++) {
@@ -139,6 +140,7 @@ export function buildTeletubby(root, { low = false } = {}) {
     const rg = mergeGeometries([body, head, ...ears, tail].map(g => { g = g.index ? g.toNonIndexed() : g; g.deleteAttribute('uv'); return g; }));
     const rm = new THREE.MeshStandardMaterial({ color: 0xc8b8a4, roughness: 0.9 });
     const rabbits = []; for (let i = 0; i < 6; i++) rabbits.push({ x: -85 + R() * 30, z: 12 + R() * 32, ry: R() * 6, ph: R() * 10, sp: 0.6 + R() * 0.4 });
+    for (const r of rabbits) if (inPitch(r.x, r.z, 0.5)) r.z = PITCH.z0 - 3; // not inside the calcetto cage
     const im = new THREE.InstancedMesh(rg, rm, rabbits.length); im.castShadow = true; root.add(im);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s1 = V(1, 1, 1);
     hooks.anim.push((dt, t) => {
@@ -146,7 +148,7 @@ export function buildTeletubby(root, { low = false } = {}) {
         const cyc = (t * r.sp + r.ph) % 4; let y = 0;
         if (cyc < 1.2) { const k = (cyc % 0.4) / 0.4; y = Math.sin(k * PI) * 0.18; const sp = 1.1 * dt; r.x += Math.sin(r.ry) * sp; r.z += Math.cos(r.ry) * sp; }
         else if (cyc > 3.8) r.ry += (R() - 0.5) * 0.5;
-        if (r.x < MEADOW.x0 + 3 || r.x > MEADOW.x1 - 6 || r.z < MEADOW.z0 + 3 || r.z > MEADOW.z1 - 3 || Math.hypot(r.x - TT.pond[0], r.z - TT.pond[1]) < TT.pond[2] + 0.6) { r.ry += PI; r.x += Math.sin(r.ry) * 0.3; r.z += Math.cos(r.ry) * 0.3; }
+        if (r.x < MEADOW.x0 + 3 || r.x > MEADOW.x1 - 6 || r.z < MEADOW.z0 + 3 || r.z > MEADOW.z1 - 3 || Math.hypot(r.x - TT.pond[0], r.z - TT.pond[1]) < TT.pond[2] + 0.6 || inPitch(r.x, r.z, 0.3)) { r.ry += PI; r.x += Math.sin(r.ry) * 0.3; r.z += Math.cos(r.ry) * 0.3; }
         m4.compose(V(r.x, 0.02 + y, r.z), q.setFromEuler(e.set(0, r.ry, 0)), s1); im.setMatrixAt(i, m4);
       });
       im.instanceMatrix.needsUpdate = true;

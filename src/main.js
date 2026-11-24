@@ -32,10 +32,14 @@ import { buildQuartiere } from './quartiere.js';
 import { createSave } from './save.js';
 import { playOpening } from './opening.js';
 import './ai.js'; // window.__ai (Claude provider chain + offline fallback), window.__personas — installed on import
+import { installLightPad } from './lightpad.js';
 import './desktop.js'; // FPS counter (F3 / Impostazioni) + desktop-app settings (FPS illimitati, schermo intero, scheda video)
 import { installNPCs } from './npcs.js'; // the friends of the group as NPCs (E to talk)
 import { createInteractions } from './interact/index.js'; // emote wheel (B), friend actions, world props (interact/)
+import { installSport } from './sport/index.js'; // calcetto cage in Teletubbylandia: ball, 3v3 with the friends, rigori, tiri liberi
 import { installPhone } from './phone.js'; // in-game phone (T): group chat, contacts, photos, map, Claude settings
+import { installRPG } from './rpg/index.js'; // v7 looter + RPG: loot/crates/Euro, Zaino (I), XP/livelli/talenti, missioni dagli amici (J), Banco dei pegni
+import { installCombat } from './combat/index.js'; // v7: first/third person, comic weapons, health, open-world enemies (combat/)
 
 // ======================= CONFIG (all tunables) =======================
 export const CONFIG = {
@@ -87,6 +91,7 @@ async function main() {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(40, el.clientWidth / el.clientHeight, 0.03, 40);
   const lights = setupLights(scene, renderer, low);
+  if (!q.has('nolightpad') && (!low || q.has('lightpad'))) installLightPad({ scene }); // constant light count: no shader recompiles when lamps/lights turn on or off (lightpad.js); phones skip it (per-pixel cost)
   const { composer, bloom, final } = createComposer(renderer, scene, camera, low);
 
   // ---------- loading ----------
@@ -219,7 +224,7 @@ async function main() {
   // ---------- input ----------
   const input = createInput(el);
   // ---------- mouse look (pointer lock) ----------
-  const LOOK_MODES = ['explore', 'goto'];
+  const LOOK_MODES = ['explore', 'goto', 'ko']; // ko: combat K.O. (combat/index.js)
   const overlayOpen = () => !!(document.querySelector('#rdr.on') || document.body.dataset.overlay);
   input.canLock = () => !ui.coarse && S.phase === 'world' && !!world && LOOK_MODES.includes(world.mode) && !ui.menuOpen && !overlayOpen();
   // Esc releases the lock in the browser: open the pause menu (unless something else took the mouse on purpose)
@@ -299,7 +304,7 @@ async function main() {
 
   const MODE_NAMES = { paw: 'Dammi la zampa', pickball: 'La palla', throw: 'Lancio della palla', explore: '', goto: '', cabinet: 'Al cabinato', type: 'Macchina da scrivere', pet: 'Coccole al cane', shell: 'La conchiglia', grab: 'Estintore', ungrab: 'Estintore', switch: 'Interruttore', coin: 'Gettone', leaving: '', standup: '' };
   const HINTS = {
-    explore: [['W A S D', 'muoviti'], ['Shift', 'corri'], ['E', 'interagisci'], ['R', 'alternativa'], ['1 2 3', 'gesti'], ['Esc', 'menu']],
+    explore: [['W A S D', 'muoviti'], ['Shift', 'corri'], ['E', 'interagisci'], ['H', 'arma'], ['V', 'visuale'], ['1 2 3', 'gesti'], ['Esc', 'menu']],
     cabinet: [['← →', 'muovi'], ['Z', 'spara'], ['X', 'bomba'], ['Invio', 'start'], ['2', 'entra P2'], ['Esc', 'alzati']],
     cabinet2: [['W A S D', 'P1'], ['F G', 'spara/bomba P1'], ['↑ ↓', 'P2'], ['L K', 'spara/bomba P2'], ['Esc', 'alzati']],
     carry: [['W A S D', 'muoviti'], ['F', 'spruzza'], ['E', 'rimetti sul supporto']],
@@ -413,11 +418,13 @@ async function main() {
   const cron = buildCronache(scene, { level, low, getFX }); plugins.push(cron.plugin); // Corriere n. 281 side news easter eggs (cronache.js)
   // the neighbourhood beyond the garden gate (quartiere.js): colliders/zones/bounds/anchors before createWorld and buildGulag
   const quartiere = buildQuartiere({ scene, level, low, getFX, ui, audio, renderer }); plugins.push(quartiere.plugin);
+  const sport = installSport({ scene, level, man, input, ui, audio, camera, getFX, low, S }); plugins.push(sport.plugin); // sport/: colliders before createWorld, meshes now (preload/warm-up)
   // minigames (src/minigames): extra cabinets (pushed into `cabinets`, after the quartiere so its anchors exist), night zombies, plugins
   const MG = createMinigames({ scene, level, audio, getFX, get S() { return S; }, CONFIG, ui, low, mkCab, cabinets, man, dog, camera, renderer, playMusic: n => playMusic(n), getWorld: () => world, getInput: () => input });
   plugins.push(...MG.plugins); // minigames: Discord desk, sushi, quiz table, Processo AI, Corriere AI
   const npcs = installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, camera, input, getFX, low, S }); plugins.push(npcs.plugin); // friends of the group chat (npcs.js): clones the man's bind pose, so before his first update
   const IA = createInteractions({ scene, man, ui, audio, getFX, level, input, S, npcs, renderer, news }); plugins.push(IA.plugin); // interact/: emotes, friend actions, props
+  const rpg = installRPG({ scene, camera, ui, audio, level, S, man, npcs }); plugins.push(rpg.plugin); // rpg/: crates + shop colliders before createWorld, loot meshes now (warm-up)
   // ---------- preload: the whole neighbourhood + every model during the loading screen / intro ----------
   // nothing is built, decoded or swapped lazily while playing any more (that was the in-game lag); gfx.js waits for
   // this before its warm-up (texture upload + shader compile of everything), and the menu opens after that
@@ -446,6 +453,8 @@ async function main() {
   const phone = installPhone({ ui, audio, level, S, getFX, man, npcs }); // in-game phone (phone.js): T / P
   gulag.attach(world);
   eggs.attach({ world, man, dog, cab, game, audio, ui, getFX, input, S, camera, CONFIG, TRACKS, playMusic, musicBack: () => playMusic(game.state === 'attract' ? 'title' : (game.boss ? 'boss' : 'game')) });
+  // combat (combat/): after eggs.attach (chains world.extPose); its enemy pools join window.__preloadP before installGfx
+  const CB = installCombat({ scene, camera, man, dog, ui, audio, level, input, S, getWorld: () => world, getFX, npcs });
 
   // footsteps from the real foot bones: works for walk, run, turning and every clip; surface from the zone
   const _fv = new THREE.Vector3(), _lastRoot = new THREE.Vector3(); let _rootSpd = 0, _rootInit = false;
@@ -627,6 +636,7 @@ async function main() {
     // the GPU rests); once everything is warmed up the intro plays with no 3D rendering at all behind it
     if ((S.phase === 'ready' || S.phase === 'loading') && (document.body.dataset.opening || ui.menuOpen) && (frame % 8 || (document.body.dataset.opening && window.__gfx && window.__gfx.ready))) { ui.update(dt); input.endFrame(); return; }
     input.readPads();
+    CB.pre(dt); // combat: V/H/0-4/wheel/R/Q, fire + aim (consumes those keys before the world sees them)
     // global keys
     if (S.phase === 'intro' && (input.edges.size || (input.pads[0].cur[9] && !input.pads[0].prev[9]))) skipIntro();
     const typing = world.mode === 'type' || (ui.chat && ui.chat.focused);
@@ -689,10 +699,11 @@ async function main() {
     else if (S.phase === 'world') {
       eggs.preUpdate(ui.menuOpen ? 0 : dt);
       IA.update(ui.menuOpen ? 0 : dt); // interact/: wheel input, follower, can, TV (before world.update)
+      if (!ui.menuOpen) sport.pre(dt); // sport/: left click / Q / touch kicks (before world.update)
       const pose = world.update(ui.menuOpen ? 0 : dt);
-      const c = IA.camera(pose, dt) || playCamera(t);
+      const c = IA.camera(CB.camera(pose, dt), dt) || playCamera(t); // combat: first person / over the shoulder (snap = no smoothing)
       const looking = pose && performance.now() - input.drag.last < 300;
-      const k = 1 - Math.exp(-dt * (pose ? (looking ? 16 : 6.5) : (inCab ? 7 : 3)));
+      const k = c.snap ? 1 : 1 - Math.exp(-dt * (pose ? (looking ? 16 : 6.5) : (inCab ? 7 : 3)));
       S.curPos.lerp(c.pos, k); S.curLook.lerp(c.look, k); S.curFov = lerp(S.curFov, c.fov, k);
       S.lightK += ((world.lightTarget ?? 1) - S.lightK) * (1 - Math.exp(-dt * 3));
       final.uniforms.bars.value = Math.max(world.mode === 'type' || world.mode === 'shell' ? 0.45 : 0, final.uniforms.bars.value + ((world.mode === 'type' || world.mode === 'shell' ? 0.45 : 0) - final.uniforms.bars.value) * Math.min(1, dt * 3));
@@ -743,9 +754,12 @@ async function main() {
     }
     man.update(dt);
     IA.post(dt); // interact/: finger pose after the man's update
+    CB.post(dt); // combat: weapon in hand, projectiles, enemies, fx, health
     footsteps(dt);
     net.update(dt);
     npcs.update(dt); phone.update(dt); // after net.update: NPC colliders are appended to world.extraCircles
+    rpg.update(ui.menuOpen ? 0 : dt, t); // rpg/: loot physics + pickups, crates, quests, HUD, waypoint
+    sport.update(ui.menuOpen ? 0 : dt); // sport/: ball, match AI (drives the NPC bodies after npcs.update), kick pose after man.update
     // props / fx
     if (props.typewriter) props.typewriter.update(dt);
     mural.update(dt);
@@ -799,6 +813,7 @@ async function main() {
     camera.lookAt(S.curLook);
     eggs.update(dt, t); // easter eggs (after lookAt: tipsy camera sway)
     const f = fovFor(S.curFov); if (Math.abs(camera.fov - f) > 0.01) { camera.fov = f; camera.updateProjectionMatrix(); }
+    CB.afterCamera(dt); // combat: first-person viewmodel + HUD projected from 3D
     final.uniforms.time.value = t;
     if (S.phase === 'ready' || S.phase === 'loading') { final.uniforms.fade.value = 0.0; }
     perf.update(dt); // shadow-map throttle, dynamic resolution
@@ -811,7 +826,7 @@ async function main() {
   const perf = installPerf({ renderer, scene, camera, composer, lights, resize, getQuality: () => ui.settings.quality, protect: [man.root, dog.root], screens: [{ tex: screenTex }, { tex: dTex }, ...MG.screens] });
   try { installGfx({ renderer, scene, camera, composer, bloom, lights, room, level, man, dog, fx }); } catch (e) { console.warn('gfx', e); }
   requestAnimationFrame(tick);
-  window.__app = { S, game, man, cab, camera, CONFIG, skipIntro, world, input, props, dog, fx: getFX, net, level, eggs, news, mural, caso, gulag, cron, audio,
+  window.__app = { S, game, man, cab, camera, CONFIG, skipIntro, world, input, props, dog, fx: getFX, net, level, eggs, news, mural, caso, gulag, cron, audio, combat: CB.api,
     dgame, cabinets: cabinets.map(c => ({ id: c.id, name: c.name, cab: c.cab, game: c.game })),
     activeCabinet: () => (world.mode === 'cabinet' ? cabinets[world.cabIndex || 0] : null) };
   save.attach({ S, world, dog, game, dgame, level, eggs, gulag, net, audio, ui }); ui.attachApp && ui.attachApp({ S, world, level, man, save, opening });

@@ -10,7 +10,28 @@ si avvicina e gioca, il barboncino che lo guarda, e uno **sparatutto pixel-art**
 - **Effetti 3D** (`src/fx3d.js`): coriandoli, cuori, nuvola dell'estintore, scintille, gettone che vola nella fessura, lampi di luce colorata dallo schermo.
 - Comandi tastiera, gamepad e touch.
 
-## Comandi
+### v7: sparatutto, loot, RPG e calcetto nel mondo aperto
+- **Combattimento** (`src/combat/`): prima/terza persona (V), armi comiche (pistola ad acqua, lanciatortellini, nerf,
+  spritz-bazooka, ombrello), zombie, piccioni mutanti e il boss "Vigile Urbano Zombie" in Via Petroni. Niente sangue.
+- **Loot e RPG** (`src/rpg/`): rarità da comune a leggendario, casse nel quartiere, Euro e munizioni, Zaino (I),
+  livelli 1–50 con punti e perk (Teppista, Cuoco, Festaiolo), missioni dagli amici (opzione 6 nel dialogo, app Missioni
+  sul telefono, J), Banco dei pegni.
+- **Calcetto** (`src/sport/`): gabbia a Teletubbylandia, partita 3 contro 3 con gli amici, rigori e tiri liberi.
+- **Prestazioni**: tutto si carica e si prepara prima dell'intro; shader precompilati con numero di luci costante
+  (`src/lightpad.js`: niente ricompilazioni quando si accendono lampioni o si fa notte); F3 contatore FPS, F4 copia il
+  report degli scatti.
+
+| Gioco libero | Tasti |
+|---|---|
+| Arma fuori / dentro | H (0 rinfodera) |
+| Visuale prima/terza persona | V |
+| Spara / mira | Clic sinistro / destro |
+| Cambia arma / ricarica | 1–4 o rotella / R |
+| Zaino / missioni | I / J |
+| Calcetto: tiro (tieni premuto) / pallonetto / passaggio | E o clic / R / Q |
+| FPS / report scatti | F3 / F4 |
+
+## Comandi del cabinato
 | Azione | Tasti |
 |---|---|
 | Muovi | Frecce / WASD |

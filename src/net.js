@@ -163,6 +163,7 @@ export function installNet(ctx) {
   net.chat = text => { text = String(text || '').trim().slice(0, 200); if (!text || !tr) return; tr.send({ t: 'chat', text }); };
   net.inviteLink = () => net.code ? location.origin + location.pathname + '?room=' + net.code : null;
   const ev = e => { if (tr && net.online) tr.send({ t: 'ev', e }); };
+  net.emit = e => ev(e); // broadcast a small event to the room (combat/ shots); received as net.on('ev', {from, e})
 
   // ---------------- players / avatars ----------------
   const list = () => [...net.players.values()].map(p => ({ id: p.id, name: p.name, color: p.color, host: p.id === net.host, you: p.id === net.id }));
@@ -212,6 +213,7 @@ export function installNet(ctx) {
   // events: gestures are in presence; ev carries dog + seats + misc
   function onEvent(from, e) {
     if (!e || typeof e !== 'object') return;
+    fire('ev', { from, e }); // other modules (combat/: cosmetic shots) listen with net.on('ev')
     if (e.k === 'dog' && typeof e.r === 'string' && dog.react) dog.react(e.r);
     if (e.k === 'dogFollow' && net.role === 'host') { const P = net.players.get(from); if (P && P.avatar && dog.setFollow) { dogFollowOf = e.on ? from : null; dog.setFollow(e.on ? P.avatar.root.position : null); } }
     if (e.k === 'seat' && net.role === 'host') { seatClaim(from, !!e.on); }

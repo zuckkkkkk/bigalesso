@@ -26,6 +26,9 @@ export const PET = { x0: 40, x1: 48, z0: 33.6, z1: 78, colW: 42.5, colE: 45.5, p
 export const MEADOW = { x0: -96, z0: 6, x1: -46, z1: 50 };
 export const CHECK = { x0: -46, z0: 20, x1: -36, z1: 33.6 };
 export const PIAZZA = { x0: 40, z0: 20, x1: 50, z1: 33.6 };
+// calcetto cage in Teletubbylandia (src/sport): play area x0..x1 (goal lines) × z0..z1 (side boards), goal mouths
+// protrude goalD outward; gate = opening in the south boards [x from, x to]; flowers/rabbits keep out of rect+0.6
+export const PITCH = { x0: -71, z0: 34, x1: -53, z1: 45, cx: -62, cz: 39.5, goalW: 3, goalH: 2, goalD: 1.2, gate: [-58.1, -56.5], board: 1.0, net: 3.4 };
 
 // face: side of the building that faces the street: 'n' (+z), 's' (-z), 'e' (+x), 'w' (-x)
 // portico: the ground floor is set back (upper floors overhang the sidewalk) — far row and Petroni

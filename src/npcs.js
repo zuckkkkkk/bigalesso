@@ -376,7 +376,7 @@ export function installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, ca
     const arr = [...active.values()]; if (arr.length >= 2) { arr[1].home = arr[0].home.clone().add(V(1.1, 0, 0.3)); arr[1].root.position.copy(nearWalk(arr[1].home) || arr[1].home); }
   }
   function rotate() {
-    const arr = [...active.values()].filter(n => !n.leaving && !(TALK && TALK.n === n) && n.root.position.distanceTo(man.root.position) > 5);
+    const arr = [...active.values()].filter(n => !n.leaving && !(TALK && TALK.n === n) && !(WALKUP && WALKUP.n === n) && n.root.position.distanceTo(man.root.position) > 5);
     if (arr.length && active.size >= maxActive() - 1) leave(rnd(arr));
     const idle = cast.filter(p => !active.has(p.id));
     if (idle.length && active.size < maxActive()) {
@@ -471,7 +471,8 @@ export function installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, ca
   }
   // idle behaviour: wander near home, greet, chat in pairs, dance at night
   function think(n, dt, d, night, list) {
-    if (TALK && TALK.n === n) { n.state = 'talk'; n.target = null; return; }
+    if (WALKUP && WALKUP.n === n && W && W.mode !== 'goto') WALKUP = null; // walk-up cancelled
+    if ((TALK && TALK.n === n) || (WALKUP && WALKUP.n === n)) { n.state = 'talk'; n.target = null; return; } // talking, or the player is walking up to talk
     if (n.state === 'talk') { n.state = 'idle'; n.wait = 2; }
     n.t += dt;
     // first meeting: wave
@@ -520,7 +521,7 @@ export function installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, ca
   }
 
   // ---------------------------------------------------------------- dialogue (E to talk)
-  let TALK = null;
+  let TALK = null, WALKUP = null; // WALKUP: the player is walking up to talk to this friend
   const dlg = buildDialog();
   function context() {
     const mp = man.root.position;
@@ -567,8 +568,20 @@ export function installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, ca
     else if (Math.random() < 0.3) T.n.man.gesture(rnd(['shrug', 'cheer', 'facepalm']));
     dlg.show(T.n.p, line, choices);
   }
+  // missions (rpg/quests.js): option 6 asks the friend for something to do / hands in a delivery
+  async function questTalk(n) {
+    const T = TALK; if (!T || T.busy || !window.__rpg || !window.__rpg.questOffer) return;
+    T.busy = true; dlg.thinking(true);
+    let o = null; try { o = await window.__rpg.questOffer(n.id); } catch (e) { console.warn('questOffer', e); }
+    if (TALK !== T) return;
+    T.busy = false; dlg.thinking(false);
+    if (!o) { dlg.show(n.p, cap(rnd(n.p.catchphrases)) + '. Per ora niente, ripassa.', ['Ci vediamo!']); return; }
+    T.quest = o; T.turn = Math.max(1, T.turn); dlg.show(n.p, o.line, o.choices);
+  }
   function choose(text) {
     const T = TALK; if (!T || T.busy) return;
+    if (T.quest) { const o = T.quest; T.quest = null; let r = null; try { r = o.choose(text); } catch (e) { console.warn('quest choose', e); } if (r && r.line) { dlg.show(T.n.p, r.line, r.choices || ['Ci vediamo!']); return; } }
+    if (/^hai (qualcosa|altro) da fare/i.test(text) && window.__rpg) { questTalk(T.n); return; }
     if (/^(ci vediamo|ciao|a dopo|bella)\b/i.test(text) && T.turn > 0) { closeTalk(true); return; }
     T.used.push(text);
     if (Math.random() < 0.35) man.gesture && man.gesture(rnd(['shrug', 'signal']));
@@ -578,7 +591,8 @@ export function installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, ca
     TALK = { n, msgs: [], turn: 0, used: [], busy: false, t: 0 };
     n.state = 'talk'; n.target = null; n.dance = 0; n.man.stopClip && n.man.stopClip('Dance', 0.3);
     document.body.dataset.overlay = 'npc';
-    dlg.open(n.p, { onChoose: choose, onClose: () => closeTalk(true), onActions: window.__npcActions ? () => { if (TALK && TALK.n === n) window.__npcActions(n, () => closeTalk(false)); } : null });
+    dlg.open(n.p, { onChoose: choose, onClose: () => closeTalk(true), onActions: window.__npcActions ? () => { if (TALK && TALK.n === n) window.__npcActions(n, () => closeTalk(false)); } : null,
+      onQuest: window.__rpg ? () => { if (TALK && TALK.n === n) questTalk(n); } : null });
     aiTurn('');
     if (!talked.has(n.id)) { talked.add(n.id); saveTalked(talked); }
     unlock('npc_first', { title: 'Due chiacchiere', desc: 'Hai parlato con un amico del gruppo', icon: '💬' });
@@ -609,8 +623,8 @@ export function installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, ca
     const dir = V(mp.x - p.x, 0, mp.z - p.z); if (dir.lengthSq() < 1e-4) dir.set(0, 0, 1); dir.normalize();
     const stand = nearWalk(p.clone().addScaledVector(dir, 1.0), 0.8) || mp.clone();
     const yaw = Math.atan2(p.x - stand.x, p.z - stand.z);
-    TALK = null;
-    H.goTo(stand, yaw, () => { if (active.get(n.id) === n) { H.setMode('npcTalk'); openTalk(n); } }, { ignore: ['npc_' + n.id] });
+    TALK = null; WALKUP = { n, t: 0 };
+    H.goTo(stand, yaw, () => { WALKUP = null; const cur = active.get(n.id); if (cur && !cur.leaving) { H.setMode('npcTalk'); openTalk(cur); } }, { ignore: ['npc_' + n.id] });
   }
 
   // ---------------------------------------------------------------- explore plugin
@@ -630,6 +644,7 @@ export function installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, ca
         for (let i = 0; i < 3; i++) if (I.pressed('Digit' + (i + 1)) || I.pressed('Numpad' + (i + 1))) dlg.pick(i);
         if (I.pressed('Digit4') || I.pressed('Tab')) dlg.free();
         if (I.pressed('Digit5') || I.pressed('Numpad5')) dlg.actions();
+        if (I.pressed('Digit6') || I.pressed('Numpad6')) dlg.quest();
         if (keys.actP) dlg.skip();
         if (keys.backP) { closeTalk(true); return {}; }
       }
@@ -692,7 +707,7 @@ function buildDialog() {
 #npcDlg .foot{margin-top:8px;font-size:11px;opacity:.45;display:flex;justify-content:space-between}`;
   const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
   const root = document.createElement('div'); root.id = 'npcDlg';
-  root.innerHTML = `<div class="box"><div class="who"><b></b><small>versione da gioco</small></div><div class="line"></div><ol></ol><input type="text" maxlength="160" hidden><div class="foot"><span class="prov"></span><span>1-3 scegli · 4 scrivi · 5 azioni · Esc saluta</span></div></div>`;
+  root.innerHTML = `<div class="box"><div class="who"><b></b><small>versione da gioco</small></div><div class="line"></div><ol></ol><input type="text" maxlength="160" hidden><div class="foot"><span class="prov"></span><span>1-3 scegli · 4 scrivi · 5 azioni · 6 missione · Esc saluta</span></div></div>`;
   document.body.appendChild(root);
   const $ = s => root.querySelector(s);
   const lineEl = $('.line'), ol = $('ol'), inp = $('input'), whoEl = $('.who b'), provEl = $('.prov');
@@ -708,6 +723,7 @@ function buildDialog() {
     choices.forEach((c, i) => { const li = document.createElement('li'); li.innerHTML = `<kbd>${i + 1}</kbd><span></span>`; li.querySelector('span').textContent = c; li.onclick = () => api.pick(i); ol.appendChild(li); });
     if (choices.length > 1) { const li = document.createElement('li'); li.className = 'alt'; li.innerHTML = '<kbd>4</kbd><span>Scrivi tu…</span>'; li.onclick = () => api.free(); ol.appendChild(li); }
     if (cb && cb.onActions) { const li = document.createElement('li'); li.className = 'alt'; li.innerHTML = '<kbd>5</kbd><span>Fai qualcosa… (birra, cinque, braccio di ferro, selfie, seguimi)</span>'; li.onclick = () => api.actions(); ol.appendChild(li); }
+    if (cb && cb.onQuest) { const li = document.createElement('li'); li.className = 'alt quest'; li.innerHTML = '<kbd>6</kbd><span>📜 Hai qualcosa da fare?</span>'; li.onclick = () => api.quest(); ol.appendChild(li); }
     const li = document.createElement('li'); li.className = 'alt'; li.innerHTML = '<kbd>Esc</kbd><span>Ciao, ci vediamo</span>'; li.onclick = () => cb && cb.onClose(); ol.appendChild(li);
   }
   function step() {
@@ -725,6 +741,7 @@ function buildDialog() {
     skip() { if (shown < full.length) { shown = full.length; lineEl.textContent = full; render(); } },
     pick(i) { if (shown < full.length || !cb || !choices[i]) return; cb.onChoose(choices[i]); },
     actions() { if (cb && cb.onActions) cb.onActions(); },
+    quest() { if (shown < full.length || !cb || !cb.onQuest) return; cb.onQuest(); },
     free() { if (!cb) return; inp.hidden = false; inp.placeholder = `Scrivi a ${name}… (Invio)`; inp.focus(); },
   };
   return api;

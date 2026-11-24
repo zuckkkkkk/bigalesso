@@ -469,7 +469,7 @@ export function createWorld(ctx) {
         const mv = moveInput();
         const fwd = V(-Math.sin(W.camYaw), 0, -Math.cos(W.camYaw)), right = V(Math.cos(W.camYaw), 0, -Math.sin(W.camYaw));
         const want = right.multiplyScalar(mv.x).add(fwd.multiplyScalar(mv.y));
-        let max = (mv.run ? 2.7 : 1.35) * mv.mag; if (W.carry) max = Math.min(max, mv.run ? 1.7 : 1.0);
+        let max = (mv.run ? 2.7 : 1.35) * mv.mag * (W.speedMul || 1); if (W.carry) max = Math.min(max, mv.run ? 1.7 : 1.0); // speedMul: rpg (Velocità, caffè, talenti)
         want.multiplyScalar(max);
         W.vel.lerp(want, 1 - Math.exp(-dt * (want.lengthSq() > W.vel.lengthSq() ? 7 : 9)));
         if (mv.mag > 0.1 && W.dancing) stopDance();

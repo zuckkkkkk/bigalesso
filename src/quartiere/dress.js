@@ -130,7 +130,7 @@ export function createDress(ctx) {
       for (const [x, z, w, d] of TT.jersey) setBox(findBox(x - w / 2, z - d / 2), OFF, OFF);
     }
     if (lin && hooks.treeIms) { const n = hooks.meadowTrees; for (const im of hooks.treeIms) hideInstances(im, 0, n); instancedFrom(lin, TT.trees.map(([x, z], i) => ({ x, z, ry: i * 1.7, s: 0.85 + (i % 3) * 0.1 })), group); }
-    if (hedge) { const spots = [[-56, 40, 0.3], [-86, 30, 1.2], [-66, 12, 2.0], [-80, 21, 0.7], [-50.5, 13.5, 1.6], [-90.5, 40, 0.2]];
+    if (hedge) { const spots = [[-77, 44.5, 0.3] /* was -56,40: now the calcetto cage (src/sport) */, [-86, 30, 1.2], [-66, 12, 2.0], [-80, 21, 0.7], [-50.5, 13.5, 1.6], [-90.5, 40, 0.2]];
       instancedFrom(hedge, spots.map(([x, z, ry]) => ({ x, z, ry })), group); for (const [x, z] of spots) addBox(x - 1.4, z - 1.4, x + 1.4, z + 1.4); }
     ctx.warm(group);
   }

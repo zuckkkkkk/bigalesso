@@ -103,7 +103,7 @@ export function createUI() {
   <div class="bg"></div>
   <div class="mart" aria-hidden="true"><div class="ma"></div><div class="ma"></div><div class="mshade"></div></div>
   <nav class="mtabs" role="tablist" aria-label="Sezioni">
-    <button data-go="map">Mappa</button><button data-go="achievements">Obiettivi</button><button data-go="characters">Personaggi</button><button data-go="gallery">Galleria</button><button data-go="secrets">Segreti</button><button data-go="online">Online</button><button data-go="settings">Impostazioni</button><button data-go="controls">Comandi</button><button data-go="credits">Crediti</button>
+    <button data-go="hero">Personaggio</button><button data-go="map">Mappa</button><button data-go="achievements">Obiettivi</button><button data-go="characters">Personaggi</button><button data-go="gallery">Galleria</button><button data-go="secrets">Segreti</button><button data-go="online">Online</button><button data-go="settings">Impostazioni</button><button data-go="controls">Comandi</button><button data-go="credits">Crediti</button>
   </nav>
   <aside class="mside" aria-hidden="true"></aside>
   <div class="mkeys"><span><kbd>↑</kbd><kbd>↓</kbd> Seleziona</span><span><kbd>Invio</kbd> Conferma</span><span class="kq"><kbd>Q</kbd><kbd>E</kbd> Schede</span><button class="kesc" data-back><kbd>Esc</kbd> Indietro</button></div>
@@ -137,6 +137,8 @@ export function createUI() {
       </div>
       <div class="mlist mid">
         <button class="mbtn" data-act="games" data-desc="Chi l'ha detto?, Processo AI, Corriere AI, compettina, sushi"><span class="ic">${ICON.joy}</span><span><b>Minigiochi</b><small>dal telefono</small></span></button>
+        <button class="mbtn" data-act="inv" data-desc="Armi, accessori, cibo e munizioni: equipaggia, smonta, butta (I)"><span class="ic">🎒</span><span><b>Zaino</b><small>tasto I</small></span></button>
+        <button class="mbtn" data-go="hero" data-desc="Livello, punti abilità e talenti (Teppista, Cuoco, Festaiolo)"><span class="ic">⭐</span><span><b>Personaggio</b><small>livello e talenti</small></span></button>
         <button class="mbtn" data-go="map" data-desc="Dove sei e i posti che hai scoperto"><span class="ic">${ICON.home}</span><span><b>Mappa</b></span></button>
         <button class="mbtn" data-go="achievements" data-desc="Obiettivi, statistiche e record"><span><b>Obiettivi</b><small class="achCount"></small></span></button>
         <button class="mbtn" data-go="characters" data-desc="Il gruppo: soprannomi, frasi tipiche e fissazioni"><span><b>Personaggi</b></span></button>
@@ -184,6 +186,15 @@ export function createUI() {
         <tr><td><kbd>R</kbd></td><td>azione alternativa (gettone, fischio al cane…)</td></tr>
         <tr><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd></td><td>saluta · esulta · balla · facepalm</td></tr>
         <tr><td><kbd>F</kbd> / clic</td><td>spruzza con l'estintore</td></tr></table>
+        <h3>Combattimento</h3><table>
+        <tr><td><kbd>H</kbd> · <kbd>0</kbd></td><td>estrai / riponi l'arma (anche clic sinistro per estrarla)</td></tr>
+        <tr><td><kbd>V</kbd></td><td>prima / terza persona</td></tr>
+        <tr><td>Clic sinistro · destro</td><td>spara · mira (zoom, più preciso)</td></tr>
+        <tr><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> / rotella</td><td>cambia arma (con l'arma in mano)</td></tr>
+        <tr><td><kbd>R</kbd> · <kbd>Q</kbd></td><td>ricarica · ombrellata</td></tr></table>
+        <h3>Al calcetto (Teletubbylandia)</h3><table>
+        <tr><td><kbd>E</kbd> / clic</td><td>tira (tieni premuto per caricare) · <kbd>R</kbd> pallonetto · <kbd>Q</kbd> passa · corri sulla palla per portarla</td></tr>
+        <tr><td>Lavagna</td><td><kbd>E</kbd> sfida gli amici 3 contro 3 · <kbd>R</kbd> rigori · al canestro: tiri liberi</td></tr></table>
         <h3>Al cabinato</h3><table>
         <tr><td>Frecce / <kbd>WASD</kbd></td><td>muovi Bigalesso</td></tr>
         <tr><td><kbd>Z</kbd> <kbd>Spazio</kbd></td><td>spara</td></tr>
@@ -193,17 +204,17 @@ export function createUI() {
         <tr><td><kbd>C</kbd></td><td>camera: dentro lo schermo · spalla · cinema</td></tr>
         <tr><td><kbd>Esc</kbd> / <kbd>Q</kbd></td><td>alzati</td></tr></table>
         <h3>Sempre</h3><table>
-        <tr><td><kbd>Esc</kbd></td><td>menu / pausa</td></tr><tr><td><kbd>C</kbd></td><td>cambia camera</td></tr><tr><td><kbd>M</kbd></td><td>audio</td></tr><tr><td><kbd>H</kbd></td><td>comandi</td></tr><tr><td><kbd>T</kbd></td><td>telefono (online: chat, telefono su <kbd>P</kbd>)</td></tr><tr><td><kbd>B</kbd></td><td>ruota emote (anche tasto centrale)</td></tr><tr><td><kbd>G</kbd></td><td>trucchi del cane</td></tr></table>
+        <tr><td><kbd>Esc</kbd></td><td>menu / pausa</td></tr><tr><td><kbd>C</kbd></td><td>cambia camera</td></tr><tr><td><kbd>M</kbd></td><td>audio</td></tr><tr><td><kbd>H</kbd></td><td>comandi (in giro: arma)</td></tr><tr><td><kbd>T</kbd></td><td>telefono (online: chat, telefono su <kbd>P</kbd>)</td></tr><tr><td><kbd>B</kbd></td><td>ruota emote (anche tasto centrale)</td></tr><tr><td><kbd>G</kbd></td><td>trucchi del cane</td></tr></table>
       </div>
       <div class="ctab" data-ctab="pad"><table>
         <tr><td>Stick sinistro</td><td>cammina / muovi</td></tr><tr><td>Stick destro</td><td>camera</td></tr>
         <tr><td>A / ✕</td><td>interagisci · spara</td></tr><tr><td>Y / △</td><td>azione alternativa</td></tr>
         <tr><td>B / ◯</td><td>indietro · bomba</td></tr><tr><td>Grilletti</td><td>spruzza · spara</td></tr>
-        <tr><td>Start</td><td>start / menu</td></tr><tr><td>Due gamepad</td><td>due giocatori al cabinato</td></tr></table></div>
+        <tr><td>RT · LT</td><td>arma: spara · mira (croce: ↑ ricarica, ←→ cambia, ↓ estrai/riponi, R3 visuale)</td></tr><tr><td>Start</td><td>start / menu</td></tr><tr><td>Due gamepad</td><td>due giocatori al cabinato</td></tr></table></div>
       <div class="ctab" data-ctab="touch"><table>
         <tr><td>Pollice sinistro</td><td>joystick dove appoggi il dito</td></tr><tr><td>Trascina a destra</td><td>gira la camera</td></tr>
         <tr><td>Pulsante verde</td><td>azione mostrata nel fumetto</td></tr><tr><td>Pulsante lilla</td><td>azione alternativa</td></tr>
-        <tr><td>Al cabinato</td><td>SPARA · BOMBA · START</td></tr><tr><td>ESCI</td><td>torna a camminare</td></tr></table></div>
+        <tr><td>Al cabinato</td><td>SPARA · BOMBA · START</td></tr><tr><td>Nel quartiere</td><td>🔫 estrai/cambia arma · SPARA · MIRA · ⟳ ricarica · 👁 visuale</td></tr><tr><td>ESCI</td><td>torna a camminare</td></tr></table></div>
     </section>
     <section class="page" data-page="online">
       <div class="ph"><button class="back" data-back aria-label="Indietro">${ICON.back}</button><h2>ONLINE</h2></div>
@@ -215,6 +226,10 @@ export function createUI() {
         <ul id="oplayers"></ul>
         <div class="orow"><button class="pbtn ghost" id="oleave" hidden>Esci dalla stanza</button></div>
       </div>
+    </section>
+    <section class="page" data-page="hero">
+      <div class="ph"><button class="back" data-back aria-label="Indietro">${ICON.back}</button><h2>PERSONAGGIO</h2></div>
+      <div id="heroBody" style="overflow:auto;max-height:72vh"></div>
     </section>
     <section class="page" data-page="map">
       <div class="ph"><button class="back" data-back aria-label="Indietro">${ICON.back}</button><h2>MAPPA</h2></div>
@@ -834,6 +849,7 @@ export function createUI() {
       if (p === 'main' || p === 'pause') renderSide(p);
       if (p === 'achievements') renderAch();
       if (p === 'characters') renderChars();
+      if (p === 'hero') { try { window.__rpg && window.__rpg.renderHero($('#heroBody')); } catch (e) { console.warn('hero', e); } } // rpg/ui.js
       if (p === 'gallery') renderGallery();
       if (p === 'map') { MV.fit = false; renderPlaces(); if (!MV.raf) MV.raf = requestAnimationFrame(mapDraw); }
     },

@@ -232,6 +232,7 @@ export function installGfx(ctx) {
       prog(0.45 + 0.45 * (ci++) / combos.length);
       if (soft || performance.now() - t0 > maxMs) break;
       const restore = activate(on, scene);
+      if (window.__lightpad) window.__lightpad.update(); // padded light count (lightpad.js): every combo compiles the same programs
       const key = countLights(scene, camera);
       if (seen.has(key) || seen.size >= 8) { restore(); continue; }
       seen.add(key); (W.keys = W.keys || []).push(on.map(u => u.name + ':' + u.lights.length).join('+') + ' -> ' + key);
@@ -252,8 +253,11 @@ export function installGfx(ctx) {
       const rt = composer.readBuffer, prev = renderer.getRenderTarget(), vp = rt.viewport.clone(), sc = rt.scissor.clone(), st = rt.scissorTest;
       rt.viewport.set(0, 0, 8, 8); rt.scissor.set(0, 0, 8, 8); rt.scissorTest = true;
       const t1 = performance.now();
+      renderer.shadowMap.needsUpdate = true; // shadow depth programs too (shadow casters' variants compile now, not when they first cast)
+      const sc0 = []; scene.traverse(L => { if (L.isLight && L.castShadow && L.shadow && L.shadow.camera && L.shadow.camera.isOrthographicCamera) { const c = L.shadow.camera; sc0.push([c, c.left, c.right, c.top, c.bottom, c.near, c.far]); c.left = c.bottom = -400; c.right = c.top = 400; c.near = 0.1; c.far = 800; c.updateProjectionMatrix(); } });
       try { renderer.setRenderTarget(rt); renderer.render(scene, camera); }
-      finally { renderer.setRenderTarget(prev); rt.viewport.copy(vp); rt.scissor.copy(sc); rt.scissorTest = st; for (const o of culled) o.frustumCulled = true; }
+      finally { for (const [c, l, r, t, b, n, f] of sc0) { c.left = l; c.right = r; c.top = t; c.bottom = b; c.near = n; c.far = f; c.updateProjectionMatrix(); } renderer.shadowMap.needsUpdate = true;
+        renderer.setRenderTarget(prev); rt.viewport.copy(vp); rt.scissor.copy(sc); rt.scissorTest = st; for (const o of culled) o.frustumCulled = true; }
       W.renderAll = Math.round(performance.now() - t1); W.geometries = renderer.info.memory.geometries; W.texturesGPU = renderer.info.memory.textures;
       await frame();
     } catch (e) { console.warn('gfx: render-all', e); }

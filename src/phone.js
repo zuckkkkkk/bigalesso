@@ -52,6 +52,7 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
           <button data-go="ai"><i style="--b:#d97757">✳️</i><span>Claude</span></button>
           <button data-go="bot"><i style="--b:#9aa7b8">🤖</i><span>Il Bot</span></button>
           <button data-go="games"><i style="--b:#e0457b">🎮</i><span>Giochi</span></button>
+          <button data-go="quests"><i style="--b:#2fb8c9">📜</i><span>Missioni</span></button>
         </div>
         <div class="ph-dock">T / Esc per chiudere</div>
       </section>
@@ -87,6 +88,10 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
           <button data-mg="processo"><b>⚖️ Processo AI</b><small>difenditi davanti al giudice</small></button>
           <button data-mg="corriere"><b>📰 Corriere AI</b><small>edizione speciale sulla tua partita</small></button>
         </div>
+      </section>
+      <section data-app="quests">
+        <header><button class="ph-back" data-go="home">‹</button><div class="ph-gt"><b>Missioni</b><small>favori per gli amici · J</small></div></header>
+        <div class="ph-list ph-quests"></div>
       </section>
       <section data-app="ai">
         <header><button class="ph-back" data-go="home">‹</button><div class="ph-gt"><b>Claude</b><small>chi scrive le battute</small></div></header>
@@ -157,6 +162,7 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
     if (a === 'photos') { renderPhotos(); unlock('phone_roll', { title: 'Rullino', desc: 'Guarda le foto sul telefono.', icon: '🖼️' }); }
     if (a === 'ai') renderAI();
     if (a === 'map') drawMap();
+    if (a === 'quests') { try { window.__rpg && window.__rpg.renderQuests($('.ph-quests')); } catch (e) { console.warn('quests', e); } } // rpg/ui.js
     updateBadges();
   }
 
