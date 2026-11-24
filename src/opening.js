@@ -69,10 +69,13 @@ const CSS = `
 #opening .splash .logo{position:static;transform:none}
 #opening .splash .logo b{font-size:clamp(60px,10vw,170px)}
 #opening .splash .press{margin-top:7vh;font:600 15px/1 var(--ui,system-ui);letter-spacing:.5em;text-transform:uppercase;color:#fff;animation:opPulse 1.6s ease-in-out infinite}
-#opening .splash .ld{position:absolute;left:50%;bottom:7vh;width:min(320px,50vw);height:2px;margin-left:min(-160px,-25vw);background:rgba(255,255,255,.12)}
+#opening .splash .ld{position:absolute;left:50%;bottom:7vh;width:min(420px,60vw);height:3px;transform:translateX(-50%);background:rgba(255,255,255,.12)}
 #opening .splash .ld i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ff3d7f,#ffd25a);transition:width .3s}
 #opening .splash small{position:absolute;left:0;right:0;bottom:4.2vh;font:500 11px/1 var(--ui,system-ui);letter-spacing:.28em;text-transform:uppercase;color:rgba(255,255,255,.42)}
 @keyframes opPulse{50%{opacity:.35}}
+#opening .splash .press.wait{animation:none;opacity:.55;letter-spacing:.32em}
+#opening .splash .lt{position:absolute;left:0;right:0;bottom:calc(7vh + 12px);font:500 11px/1 var(--ui,system-ui);letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.6)}
+#opening .splash.ok .ld,#opening .splash.ok .lt{opacity:0;transition:opacity .4s}
 @media (prefers-reduced-motion:reduce){#opening .splash .press{animation:none}}`;
 
 // ------------------------------------------------------------------ audio
@@ -354,12 +357,18 @@ export function playOpening(opts = {}) {
 
   let cur = null;
   const log = m => { (window.__openingLog = window.__openingLog || []).push(Math.round(performance.now()) + ' ' + m); };
+  // everything loads first (models, neighbourhood, textures on the GPU, shaders), then the intro plays with nothing
+  // else running behind it: main.js calls setReady() when the graphics warm-up is done (gfxGate)
+  let isReady = false; const readyCbs = [];
+  const whenReady = () => isReady ? Promise.resolve() : new Promise(r => readyCbs.push(r));
   const api = {
     get playing() { return !!cur; },
     skip() { if (cur) cur.stop('skip'); },
     replay() { return run(false); },
+    setReady() { if (isReady) return; isReady = true; log('ready'); for (const f of readyCbs.splice(0)) f(); },
     done: null,
   };
+  setTimeout(() => api.setReady(), 120000); // never stuck on the loading card (main.js crashed, gate never fired)
 
   function run(splash) {
     if (cur) cur.stop('skip');
@@ -390,8 +399,11 @@ export function playOpening(opts = {}) {
     const vol = () => { const s = (ui && ui.settings) || {}; return clamp((s.master ?? 0.85) * (0.4 + 0.6 * (s.music ?? 0.7)), 0, 1); };
     // the game's own audio (replay from the menu): silent while the opening plays
     const G = window.__app && window.__app.audio, gMuted = G ? !!G.muted : true;
+    let wantStart = false;
     function begin(why) {
-      if (started || stopped) return; started = true; log('begin ' + (why || ''));
+      if (started || stopped) return;
+      if (!isReady) { wantStart = true; return; } // a key during loading: start as soon as everything is ready
+      started = true; log('begin ' + (why || ''));
       if (G && !gMuted && G.setMuted) try { G.setMuted(true); } catch (e) { }
       if (splashEl) { splashEl.remove(); splashEl = null; } clearInterval(ldT);
       videoReady().then(ok => { if (stopped) return; if (ok) playVideo(); else { if (vid) { vid.remove(); vid = null; } playDom(); } });
@@ -449,17 +461,26 @@ export function playOpening(opts = {}) {
       if (e.repeat) return;
       if (/^(Shift|Control|Alt|Meta|CapsLock|Tab)/.test(e.key)) return;
       e.preventDefault(); e.stopImmediatePropagation();
-      if (!started) begin('key ' + e.code); else if (performance.now() - tStart > 700) stop('skip');
+      if (!started) { begin('key ' + e.code); if (!started) waitText(); } else if (performance.now() - tStart > 700) stop('skip');
     }
-    function onPtr(e) { e.preventDefault(); if (!started) begin('pointer'); else if (performance.now() - tStart > 700) stop('skip'); }
+    function onPtr(e) { e.preventDefault(); if (!started) { begin('pointer'); if (!started) waitText(); } else if (performance.now() - tStart > 700) stop('skip'); }
     addEventListener('keydown', onKey, true); root.addEventListener('pointerdown', onPtr);
     const ctl = { stop }; cur = ctl;
-    if (splash) {
+    const waitText = () => { const pr = splashEl && splashEl.querySelector('.press'); if (pr && !isReady) pr.textContent = 'Parte appena è tutto pronto'; };
+    if (!isReady || splash) {
+      // loading card: the bar and the step come from the game's loader; "Premi un tasto" only once everything is ready
+      // (browsers need a gesture for the sound; the desktop app starts on its own)
       splashEl = document.createElement('div'); splashEl.className = 'splash';
-      splashEl.innerHTML = '<div><div class="logo"><b>BIGALESSO</b><span>GAMES</span></div><div class="press">Premi un tasto</div></div><div class="ld"><i></i></div><small>Consigliato con l\'audio</small>';
+      splashEl.innerHTML = '<div><div class="logo"><b>BIGALESSO</b><span>GAMES</span></div><div class="press wait">Caricamento</div></div><div class="lt"></div><div class="ld"><i></i></div><small>Consigliato con l\'audio</small>';
       root.appendChild(splashEl);
-      const bar = splashEl.querySelector('.ld i'), lb = document.getElementById('lbar');
-      ldT = setInterval(() => { if (lb && bar) bar.style.width = lb.style.width || '0%'; }, 200);
+      const bar = splashEl.querySelector('.ld i'), lt = splashEl.querySelector('.lt'), lb = document.getElementById('lbar'), tx = document.getElementById('ltext');
+      ldT = setInterval(() => { if (lb && bar) bar.style.width = lb.style.width || '0%'; if (tx && lt && lt.textContent !== tx.textContent) lt.textContent = tx.textContent; }, 200);
+      whenReady().then(() => {
+        if (stopped || started || !splashEl) return;
+        clearInterval(ldT); bar.style.width = '100%'; splashEl.classList.add('ok');
+        if (!splash || wantStart) { begin(wantStart ? 'ready+key' : 'ready'); return; }
+        const pr = splashEl.querySelector('.press'); pr.classList.remove('wait'); pr.textContent = 'Premi un tasto';
+      });
     } else begin('auto');
     return p;
   }

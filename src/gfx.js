@@ -26,7 +26,7 @@ import { getAOPass, currentQuality, QUALITY_LEVELS, QUALITY_LABELS } from './sce
 
 // ---------- the loading gate: the menu appears once the warm-up is done (or after maxMs) ----------
 let gateResolve = null; const gate = new Promise(r => { gateResolve = r; });
-export function gfxGate(cb, maxMs = 45000) { // generous: the preload (all models) + full warm-up happen behind the loading screen / intro
+export function gfxGate(cb, maxMs = 90000) { // generous: the preload (all models) + full warm-up happen behind the loading screen / intro
   let done = false; const go = () => { if (done) return; done = true; try { cb(); } catch (e) { console.error(e); } };
   gate.then(go); setTimeout(go, maxMs);
 }
@@ -191,12 +191,14 @@ export function installGfx(ctx) {
   async function warm({ maxMs = 20000, texMs = 4000, all = false } = {}) {
     if (all) { maxMs = 40000; texMs = 20000; texBudget = Math.max(texBudget, (G.gpu && G.gpu.tier >= 2 ? 420 : G.gpu && G.gpu.tier >= 1 ? 260 : 160) * 1048576); }
     const t0 = performance.now(), p0 = renderer.info.programs ? renderer.info.programs.length : 0;
+    const prog = k => { if (all && G.onProgress) try { G.onProgress(Math.min(1, k)); } catch (e) { } }; // loading card (main.js)
     // 1) textures of the meshes that are shown (frustum-culled ones would upload the first time you look at
     //    them): small/medium images only and a memory budget, big pages stay lazy (VRAM on small GPUs)
     const texs = new Set();
     scene.traverse(o => { if (o.material && (all || effVisible(o, scene))) for (const m of [].concat(o.material)) if (m) texturesOf(m, texs); });
-    let slice = performance.now(), budget = texBudget;
+    let slice = performance.now(), budget = texBudget, ti = 0;
     for (const t of texs) {
+      if ((++ti & 15) === 0) prog(0.45 * ti / texs.size);
       if (uploaded.has(t) || !uploadable(t)) continue;
       const px = (t.image.width || 0) * (t.image.height || 0), bytes = px * 4 * (t.generateMipmaps ? 1.34 : 1);
       if (px > 2.2e6 || bytes > budget) continue;
@@ -225,7 +227,9 @@ export function installGfx(ctx) {
     // each area alone and every pair (lamps at night next to the Gulag…); three at once is rare: compiles lazily
     for (let mask = 0; mask < (1 << n); mask++) { const on = units.filter((u, i) => i < n && (mask >> i) & 1); if (on.length <= 2) combos.push(on); }
     combos.sort((a, b) => a.length - b.length);
+    let ci = 0;
     for (const on of combos) {
+      prog(0.45 + 0.45 * (ci++) / combos.length);
       if (soft || performance.now() - t0 > maxMs) break;
       const restore = activate(on, scene);
       const key = countLights(scene, camera);
@@ -242,6 +246,7 @@ export function installGfx(ctx) {
     // all: ONE tiny off-screen render of the whole world with frustum culling off, so every vertex/index buffer,
     // texture and shadow/depth program is on the GPU before the menu (compileAsync alone doesn't upload geometry:
     // walking into an interior for the first time used to stall on those uploads)
+    prog(0.92);
     if (all) try {
       const culled = []; scene.traverse(o => { if (o.frustumCulled && (o.isMesh || o.isPoints || o.isLine || o.isSprite)) { o.frustumCulled = false; culled.push(o); } });
       const rt = composer.readBuffer, prev = renderer.getRenderTarget(), vp = rt.viewport.clone(), sc = rt.scissor.clone(), st = rt.scissorTest;
@@ -261,6 +266,7 @@ export function installGfx(ctx) {
       composer.render(0);
       if (ao) ao.enabled = aoOn; if (bl) bl.enabled = blOn; if (refl) refl.layers.mask = rl;
     } catch (e) { console.warn('gfx: passes', e); }
+    prog(1);
     W.ms = Math.round(performance.now() - t0); W.programs = (renderer.info.programs ? renderer.info.programs.length : 0) - p0; W.runs++;
     return W;
   }

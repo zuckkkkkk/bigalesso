@@ -292,7 +292,9 @@ async function main() {
   const unlockAudio = () => { if (S.phase !== 'loading' && !audio.running) { try { audio.init(); } catch (e) { } } };
   for (const ev of ['pointerdown', 'keydown', 'touchend']) addEventListener(ev, unlockAudio, { capture: true, passive: true });
   // gfx: the menu appears once the shader warm-up is done (max 12 s); test URLs (?auto/?skip) don't wait
-  if (q.has('auto') || q.has('skip')) ui.loading.ready(); else gfxGate(() => { ui.loading.ready(); if (S.phase !== 'ready') setTimeout(() => ui.menu.hide(), 320); });
+  // the intro waits for this too: assets + warm-up first, then the intro with nothing loading behind it (opening.js)
+  if (q.has('auto') || q.has('skip')) { ui.loading.ready(); opening.setReady && opening.setReady(); }
+  else gfxGate(() => { ui.loading.ready(); opening.setReady && opening.setReady(); if (S.phase !== 'ready') setTimeout(() => ui.menu.hide(), 320); });
   if (q.has('auto')) setTimeout(() => { ui.menu.hide(); ui.markStarted(); begin('explore'); }, 300);
 
   const MODE_NAMES = { paw: 'Dammi la zampa', pickball: 'La palla', throw: 'Lancio della palla', explore: '', goto: '', cabinet: 'Al cabinato', type: 'Macchina da scrivere', pet: 'Coccole al cane', shell: 'La conchiglia', grab: 'Estintore', ungrab: 'Estintore', switch: 'Interruttore', coin: 'Gettone', leaving: '', standup: '' };
@@ -425,6 +427,8 @@ async function main() {
     const t0 = performance.now();
     window.__preloadP = Promise.all([quartiere.preload(step), npcs.preload ? npcs.preload(step) : null].map(p => Promise.resolve(p).catch(e => console.warn('preload', e))))
       .then(() => { window.__preloadMs = Math.round(performance.now() - t0); try { ui.loading.set(0.96, 'Preparo la grafica…'); } catch (e) { } });
+    // gfx.js warm-up progress (textures on the GPU, shaders, one render of everything) on the same bar
+    (window.__gfx = window.__gfx || {}).onProgress = k => { try { ui.loading.set(0.96 + 0.04 * k, 'Preparo la grafica… ' + Math.round(k * 100) + '%'); } catch (e) { } };
   }
 
   // ---------- explore world ----------
@@ -619,8 +623,9 @@ async function main() {
   }
   function tickBody() {
     const dt = Math.min(clock.getDelta(), 0.05); t += dt; frame++;
-    // the opening / pre-game menu cover the whole screen: draw only 1 frame in 8 behind them (uploads and warm-up keep going, the GPU rests)
-    if ((S.phase === 'ready' || S.phase === 'loading') && (document.body.dataset.opening || ui.menuOpen) && frame % 8) { ui.update(dt); input.endFrame(); return; }
+    // the opening / pre-game menu cover the whole screen: draw only 1 frame in 8 behind them (uploads and warm-up keep going,
+    // the GPU rests); once everything is warmed up the intro plays with no 3D rendering at all behind it
+    if ((S.phase === 'ready' || S.phase === 'loading') && (document.body.dataset.opening || ui.menuOpen) && (frame % 8 || (document.body.dataset.opening && window.__gfx && window.__gfx.ready))) { ui.update(dt); input.endFrame(); return; }
     input.readPads();
     // global keys
     if (S.phase === 'intro' && (input.edges.size || (input.pads[0].cur[9] && !input.pads[0].prev[9]))) skipIntro();
