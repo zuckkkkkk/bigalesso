@@ -7,6 +7,7 @@
   "main": "main.cjs",
   "license": "MIT",
   "author": "Bigalesso Games",
+  "repository": "github:zuckkkkkk/bigalesso",
   "scripts": {
     "prepare-app": "node prepare.mjs",
     "start": "node prepare.mjs && electron .",
@@ -87,6 +88,13 @@
       "artifactName": "BIGALESSO-GAMES-Portable.${ext}",
       "unpackDirName": "BIGALESSO-GAMES"
     },
-    "compression": "normal"
+    "compression": "normal",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "zuckkkkkk",
+        "repo": "bigalesso"
+      }
+    ]
   }
 }
