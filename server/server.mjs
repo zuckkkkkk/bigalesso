@@ -205,7 +205,8 @@ server.on('upgrade', (req, socket, head) => {
   if (p !== '/ws') { socket.destroy(); return; }
   // same-origin only (browsers always send Origin); allow missing Origin for tools/tests
   const origin = req.headers.origin, host = req.headers.host;
-  if (origin && host && !process.env.ALLOW_ANY_ORIGIN) { try { if (new URL(origin).host !== host) { socket.destroy(); return; } } catch { socket.destroy(); return; } }
+  // the Windows/Mac desktop app (Electron) loads the game from app://bigalesso and connects here as well
+  if (origin && host && !process.env.ALLOW_ANY_ORIGIN && origin !== 'app://bigalesso') { try { if (new URL(origin).host !== host) { socket.destroy(); return; } } catch { socket.destroy(); return; } }
   wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req));
 });
 wss.on('connection', ws => {

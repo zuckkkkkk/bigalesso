@@ -6,7 +6,7 @@
 // /api/* is forwarded to that server.
 // Performance: dedicated GPU (Windows graphics preference + macOS switch), no blocklist, no background throttling,
 // bigger JS heap; optional uncapped frame rate (no vsync) from the game's settings, applied on restart.
-const { app, BrowserWindow, protocol, net, ipcMain, shell, Menu, screen } = require('electron');
+const { app, BrowserWindow, protocol, net, ipcMain, shell, Menu, screen, session } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { Readable } = require('node:stream');
@@ -75,7 +75,8 @@ function serve(req) {
   const u = new URL(req.url);
   if (u.pathname.startsWith('/api/')) {
     if (!SERVER) return new Response('{"enabled":false}', { status: 404, headers: { 'Content-Type': 'application/json' } });
-    return net.fetch(SERVER + u.pathname + u.search, { method: req.method, headers: req.headers, body: req.body, duplex: 'half' });
+    const h = new Headers(req.headers); h.delete('origin'); h.delete('referer');
+    return net.fetch(SERVER + u.pathname + u.search, { method: req.method, headers: h, body: req.body, duplex: 'half' });
   }
   let p = decodeURIComponent(u.pathname);
   if (p.endsWith('/')) p += 'index.html';
@@ -129,6 +130,15 @@ else {
   app.on('second-instance', () => { const w = BrowserWindow.getAllWindows()[0]; if (w) { if (w.isMinimized()) w.restore(); w.focus(); } });
   app.whenReady().then(() => {
     protocol.handle('app', serve);
+    // the online server only accepts its own origin (older deploys don't know app://bigalesso yet): the websocket and
+    // the /api calls to it go out with the server's own origin
+    if (SERVER) try {
+      const u = new URL(SERVER), wsBase = (u.protocol === 'https:' ? 'wss://' : 'ws://') + u.host;
+      session.defaultSession.webRequest.onBeforeSendHeaders({ urls: [wsBase + '/*', u.origin + '/*'] }, (d, cb) => {
+        const h = d.requestHeaders; for (const k of Object.keys(h)) if (k.toLowerCase() === 'origin') delete h[k];
+        h.Origin = u.origin; cb({ requestHeaders: h });
+      });
+    } catch (e) { }
     ipcMain.on('bigalesso:quit', () => app.quit());
     ipcMain.on('bigalesso:fullscreen', e => { const w = BrowserWindow.fromWebContents(e.sender); if (w) w.setFullScreen(!w.isFullScreen()); });
     ipcMain.handle('bigalesso:settings', () => ({ uncapFps: UNCAPPED, uncapFpsSaved: setting('uncapFps') === true, fullscreen: setting('fullscreen') !== false, server: SERVER, version: app.getVersion() }));

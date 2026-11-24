@@ -28,7 +28,7 @@ setInterval(() => { const now = Date.now(); for (const [k, b] of ips) if (now - 
 const json = (res, code, obj) => res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }).end(JSON.stringify(obj));
 const clientIp = req => (process.env.TRUST_PROXY !== '0' && String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket.remoteAddress || '?';
 function sameOrigin(req) {
-  const o = req.headers.origin; if (!o || process.env.ALLOW_ANY_ORIGIN) return true;
+  const o = req.headers.origin; if (!o || process.env.ALLOW_ANY_ORIGIN || o === 'app://bigalesso') return true; // desktop app
   try { return new URL(o).host === req.headers.host; } catch { return false; }
 }
 function readBody(req) {

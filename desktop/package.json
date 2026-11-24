@@ -1,7 +1,7 @@
 {
   "name": "bigalesso-desktop",
   "productName": "BIGALESSO GAMES",
-  "version": "7.0.1",
+  "version": "7.0.2",
   "private": true,
   "description": "BIGALESSO GAMES – versione desktop (Electron)",
   "main": "main.cjs",
