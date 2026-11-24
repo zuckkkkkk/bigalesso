@@ -141,11 +141,19 @@ direzione, animazione, gesti, mani) inoltrato a 15 Hz come `states`; `ev` eventi
   npm run desktop          # prova in finestra
   npm run desktop:dist     # crea l'installer per il sistema su cui sei (cartella desktop/release)
   ```
-  Su GitHub, pubblicando un tag (`git tag v2.0.0 && git push --tags`) il workflow `.github/workflows/desktop.yml`
-  crea installer Windows (`.exe` installabile + portable), macOS (`.dmg`) e Linux (`.AppImage`) e li allega alla Release.
+  **Windows, già pronto:** a ogni push su `main` il workflow `.github/workflows/desktop.yml` crea l'installer e la
+  versione portable e li mette nella release `desktop-latest` (link fissi, sempre l'ultima build):
+  `releases/download/desktop-latest/BIGALESSO-GAMES-Setup.exe` e `…/BIGALESSO-GAMES-Portable.exe`.
+  Con un tag (`git tag v7.0.0 && git push --tags`) crea anche la release della versione; macOS (`.dmg`) e Linux
+  (`.AppImage`) con i tag o da *Actions → Run workflow* spuntando "anche macOS e Linux".
   Le build non sono firmate: Windows mostra "App non riconosciuta" → *Ulteriori informazioni* → *Esegui comunque*;
-  su macOS clic destro → *Apri*. Per giocare online dall'app desktop scrivi l'indirizzo del server in `desktop/config.json`
-  (`"server": "https://gioco.tuodominio.it"`) o nella variabile `BIGALESSO_SERVER`. F11 o Alt+Invio: schermo intero.
+  su macOS clic destro → *Apri*.
+  **Online e Claude nell'app:** in GitHub *Settings → Secrets and variables → Actions → Variables* crea
+  `BIGALESSO_SERVER` = indirizzo del server Easypanel (es. `https://gioco.tuodominio.it`): le build successive lo
+  hanno dentro. In locale: variabile `BIGALESSO_SERVER` quando lanci `npm run desktop:dist`, oppure `"server"` in `desktop/config.json`.
+  **Prestazioni:** l'app chiede a Windows la scheda video dedicata (portatili Intel + NVIDIA/AMD), non rallenta in
+  secondo piano e ha più memoria per JavaScript. In *Impostazioni*: "Mostra FPS" (anche F3, per tutti), "FPS illimitati"
+  (toglie il vsync, al riavvio), "Schermo intero all'avvio" e la scheda video in uso. F11 o Alt+Invio: schermo intero.
 
 ## Intro, menu e salvataggi
 - **Intro stile GTA** (`src/opening.js`): parte all'avvio sopra il caricamento, con le tavole tratte dal Corriere

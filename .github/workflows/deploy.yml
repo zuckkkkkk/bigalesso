@@ -1,7 +1,7 @@
 name: Deploy su GitHub Pages
+# Solo a mano (Actions → "Deploy su GitHub Pages" → Run workflow): il gioco gira su Easypanel e Pages
+# non è attivo nel repo, quindi a ogni push falliva. Per usarlo: Settings → Pages → Source: GitHub Actions.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read

@@ -32,6 +32,7 @@ import { buildQuartiere } from './quartiere.js';
 import { createSave } from './save.js';
 import { playOpening } from './opening.js';
 import './ai.js'; // window.__ai (Claude provider chain + offline fallback), window.__personas — installed on import
+import './desktop.js'; // FPS counter (F3 / Impostazioni) + desktop-app settings (FPS illimitati, schermo intero, scheda video)
 import { installNPCs } from './npcs.js'; // the friends of the group as NPCs (E to talk)
 import { createInteractions } from './interact/index.js'; // emote wheel (B), friend actions, world props (interact/)
 import { installPhone } from './phone.js'; // in-game phone (T): group chat, contacts, photos, map, Claude settings

@@ -136,7 +136,7 @@ function probeArtifact() {
 // (b) same-origin server: GET /api/ai -> {enabled:true} when the server has ANTHROPIC_API_KEY
 function probeServer() {
   if (st.serverProbe) return st.serverProbe;
-  if (!/^https?:$/.test(location.protocol)) { st.server = false; return (st.serverProbe = Promise.resolve(false)); }
+  if (!/^(https?|app):$/.test(location.protocol)) { st.server = false; return (st.serverProbe = Promise.resolve(false)); } // app: = desktop app (proxied to its server)
   const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 3500);
   st.serverProbe = fetch(apiUrl(), { method: 'GET', cache: 'no-store', signal: ctl.signal })
     .then(r => r.ok && /json/.test(r.headers.get('content-type') || '') ? r.json() : null)

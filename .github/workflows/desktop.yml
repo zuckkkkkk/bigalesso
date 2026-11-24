@@ -1,23 +1,35 @@
-name: Installer desktop (Windows, macOS, Linux)
-# Crea gli installer con Electron quando pubblichi un tag "v*" (es. git tag v2.0.0 && git push --tags)
-# oppure a mano da Actions → "Installer desktop" → Run workflow. I file finiscono nella Release del tag
-# (e comunque negli artifact del run).
+name: Gioco per Windows (exe)
+# A ogni push su main crea l'installer e la versione portable per Windows e li mette nella release
+# "desktop-latest" (link fissi, sempre l'ultima build):
+#   https://github.com/<utente>/<repo>/releases/download/desktop-latest/BIGALESSO-GAMES-Setup.exe
+#   https://github.com/<utente>/<repo>/releases/download/desktop-latest/BIGALESSO-GAMES-Portable.exe
+# Gioco online e Claude nell'app: Settings → Secrets and variables → Actions → Variables → BIGALESSO_SERVER
+# = l'indirizzo del server Easypanel (es. https://gioco.tuodominio.it).
+# Con un tag "v*" (git tag v7.0.0 && git push --tags) fa anche una release col nome della versione.
+# A mano: Actions → "Gioco per Windows (exe)" → Run workflow (spunta "anche macOS e Linux" se servono).
 on:
   push:
+    branches: [main]
     tags: ['v*']
+    paths-ignore: ['**.md', 'test/**', 'news_shots/**']
   workflow_dispatch:
+    inputs:
+      altri:
+        description: 'Anche macOS e Linux'
+        type: boolean
+        default: false
 permissions:
   contents: write
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+  windows:
+    runs-on: windows-latest
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false' # build non firmata (niente certificati)
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      BIGALESSO_SERVER: ${{ vars.BIGALESSO_SERVER }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,22 +40,74 @@ jobs:
       - name: Dipendenze desktop
         working-directory: desktop
         run: npm install --no-audit --no-fund
-      - name: Installer
+      - name: Installer e portable
         working-directory: desktop
+        run: npm run dist:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BIGALESSO-GAMES-windows
+          path: desktop/release/*.exe
+          if-no-files-found: error
+      - name: Sposta il tag desktop-latest su questa build
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          git tag -f desktop-latest "$GITHUB_SHA"
+          git push -f origin refs/tags/desktop-latest
+      - name: Release desktop-latest (link fissi)
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-latest
+          name: BIGALESSO GAMES per Windows – ultima build
+          prerelease: true
+          make_latest: false
+          overwrite_files: true
+          body: |
+            Ultima build da main (${{ github.sha }}).
+            **BIGALESSO-GAMES-Setup.exe**: installer (collegamento sul desktop, usa la scheda video dedicata).
+            **BIGALESSO-GAMES-Portable.exe**: si avvia senza installare.
+            Windows SmartScreen può avvisare che l'app non è firmata: "Ulteriori informazioni" → "Esegui comunque".
+          files: desktop/release/*.exe
+      - name: Release della versione
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: desktop/release/*.exe
+
+  altri:
+    if: startsWith(github.ref, 'refs/tags/') || inputs.altri
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      BIGALESSO_SERVER: ${{ vars.BIGALESSO_SERVER }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - working-directory: desktop
+        run: npm install --no-audit --no-fund
+      - working-directory: desktop
         run: npm run dist
       - uses: actions/upload-artifact@v4
         with:
-          name: bigalesso-${{ matrix.os }}
+          name: BIGALESSO-GAMES-${{ matrix.os }}
           path: |
-            desktop/release/*.exe
             desktop/release/*.dmg
             desktop/release/*.AppImage
           if-no-files-found: warn
-      - name: Release
+      - name: Release della versione
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            desktop/release/*.exe
             desktop/release/*.dmg
             desktop/release/*.AppImage
