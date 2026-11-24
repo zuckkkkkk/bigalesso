@@ -26,7 +26,7 @@ import { getAOPass, currentQuality, QUALITY_LEVELS, QUALITY_LABELS } from './sce
 
 // ---------- the loading gate: the menu appears once the warm-up is done (or after maxMs) ----------
 let gateResolve = null; const gate = new Promise(r => { gateResolve = r; });
-export function gfxGate(cb, maxMs = 12000) {
+export function gfxGate(cb, maxMs = 45000) { // generous: the preload (all models) + full warm-up happen behind the loading screen / intro
   let done = false; const go = () => { if (done) return; done = true; try { cb(); } catch (e) { console.error(e); } };
   gate.then(go); setTimeout(go, maxMs);
 }
@@ -188,12 +188,13 @@ export function installGfx(ctx) {
   const uploaded = new WeakSet();
   let running = null, texBudget = (G.gpu && G.gpu.tier >= 2 ? 160 : 72) * 1048576; // bytes the warm-up may upload in total
   const qs = new URLSearchParams(location.search);
-  async function warm({ maxMs = 20000, texMs = 4000 } = {}) {
+  async function warm({ maxMs = 20000, texMs = 4000, all = false } = {}) {
+    if (all) { maxMs = 40000; texMs = 20000; texBudget = Math.max(texBudget, (G.gpu && G.gpu.tier >= 2 ? 420 : G.gpu && G.gpu.tier >= 1 ? 260 : 160) * 1048576); }
     const t0 = performance.now(), p0 = renderer.info.programs ? renderer.info.programs.length : 0;
     // 1) textures of the meshes that are shown (frustum-culled ones would upload the first time you look at
     //    them): small/medium images only and a memory budget, big pages stay lazy (VRAM on small GPUs)
     const texs = new Set();
-    scene.traverse(o => { if (o.material && effVisible(o, scene)) for (const m of [].concat(o.material)) if (m) texturesOf(m, texs); });
+    scene.traverse(o => { if (o.material && (all || effVisible(o, scene))) for (const m of [].concat(o.material)) if (m) texturesOf(m, texs); });
     let slice = performance.now(), budget = texBudget;
     for (const t of texs) {
       if (uploaded.has(t) || !uploadable(t)) continue;
@@ -208,6 +209,17 @@ export function installGfx(ctx) {
     // there the programs keep compiling lazily as before; real GPUs get the full warm-up
     const soft = G.gpu && G.gpu.software && !qs.has('warmall') && !qs.has('warmdry');
     const units = soft ? [] : lightUnits(scene); W.units = units.length; W.unitNames = units.map(u => u.name + ':' + u.lights.length);
+    // all: hidden content (interiors, other areas, NPC bodies, street life) temporarily shown so compileAsync sees it;
+    // lights that would light up only because their parent got shown stay off (they'd change the light count/key)
+    let unhide = () => { };
+    if (all && !soft) {
+      const litBefore = new Set(); scene.traverse(L => { if (L.isLight && effVisible(L, scene)) litBefore.add(L); });
+      const shown = [], dimmed = [];
+      scene.traverse(o => { if (!o.visible && !o.isLight && !(o.userData && o.userData.noWarm)) { o.visible = true; shown.push(o); } });
+      scene.traverse(L => { if (L.isLight && L.visible && !litBefore.has(L) && effVisible(L, scene)) { L.visible = false; dimmed.push(L); } });
+      W.shown = shown.length;
+      unhide = () => { for (const o of shown) o.visible = false; for (const L of dimmed) L.visible = true; };
+    }
     const combos = [], seen = new Set();
     const n = Math.min(units.length, 4);
     // each area alone and every pair (lamps at night next to the Gulag…); three at once is rare: compiles lazily
@@ -227,6 +239,20 @@ export function installGfx(ctx) {
       if (p) await Promise.race([p, sleep(6000)]);
       await frame();
     }
+    // all: ONE tiny off-screen render of the whole world with frustum culling off, so every vertex/index buffer,
+    // texture and shadow/depth program is on the GPU before the menu (compileAsync alone doesn't upload geometry:
+    // walking into an interior for the first time used to stall on those uploads)
+    if (all) try {
+      const culled = []; scene.traverse(o => { if (o.frustumCulled && (o.isMesh || o.isPoints || o.isLine || o.isSprite)) { o.frustumCulled = false; culled.push(o); } });
+      const rt = composer.readBuffer, prev = renderer.getRenderTarget(), vp = rt.viewport.clone(), sc = rt.scissor.clone(), st = rt.scissorTest;
+      rt.viewport.set(0, 0, 8, 8); rt.scissor.set(0, 0, 8, 8); rt.scissorTest = true;
+      const t1 = performance.now();
+      try { renderer.setRenderTarget(rt); renderer.render(scene, camera); }
+      finally { renderer.setRenderTarget(prev); rt.viewport.copy(vp); rt.scissor.copy(sc); rt.scissorTest = st; for (const o of culled) o.frustumCulled = true; }
+      W.renderAll = Math.round(performance.now() - t1); W.geometries = renderer.info.memory.geometries; W.texturesGPU = renderer.info.memory.textures;
+      await frame();
+    } catch (e) { console.warn('gfx: render-all', e); }
+    unhide();
     // 3) post passes: one render with every optional pass on (their programs compile now, not on a preset switch)
     if (!soft) try {
       const ao = getAOPass(), bl = ctx.bloom; const aoOn = ao && ao.enabled, blOn = bl && bl.enabled;
@@ -238,9 +264,16 @@ export function installGfx(ctx) {
     W.ms = Math.round(performance.now() - t0); W.programs = (renderer.info.programs ? renderer.info.programs.length : 0) - p0; W.runs++;
     return W;
   }
-  G.warmup = opts => { if (running) return running; running = warm(opts).catch(e => { console.warn('gfx: warmup', e); return W; }).finally(() => { running = null; }); return running; };
-  // first warm-up right after load (gates the menu); later runs are on demand
-  const first = QS.has('nowarm') ? Promise.resolve(W) : G.warmup();
-  first.finally(() => gateResolve && gateResolve());
+  let firstP = null, firstDone = false;
+  G.warmup = opts => {
+    const all = !!(opts && opts.all);
+    if (!all && !firstDone && firstP) return firstP; // the full start-up warm-up covers it
+    if (running) return all ? running.then(() => G.warmup(opts)) : running;
+    running = warm(opts).catch(e => { console.warn('gfx: warmup', e); return W; }).finally(() => { running = null; }); return running;
+  };
+  // first warm-up right after load (gates the menu); later runs are on demand.
+  // It waits for main.js's preload (quartiere + models + NPC bodies), then uploads and compiles everything in one go
+  firstP = QS.has('nowarm') ? Promise.resolve(W) : Promise.resolve(window.__preloadP).catch(() => { }).then(() => G.warmup({ all: true }));
+  firstP.finally(() => { firstDone = true; G.ready = true; gateResolve && gateResolve(); });
   return G;
 }

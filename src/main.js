@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import './gltfsetup.js'; // meshopt decoder for every GLTFLoader (optimised Tripo models in assets/models)
+import './gltfsetup.js';
+import { installCull, installHouseCull } from './perfcull.js'; // distance culling of small props (draw calls) // meshopt decoder for every GLTFLoader (optimised Tripo models in assets/models)
 import { installMobile } from './mobile.js'; // touch devices: caps the pixel ratio at import, UI added after createUI
 import { createRenderer, createComposer, setupLights, applyQuality, autoQualityLevel, lowerQuality } from './scene.js';
 import { installGfx, gfxGate } from './gfx.js'; // warm-up, detail materials, blobs (round 6 GRAFICA)
@@ -414,6 +415,16 @@ async function main() {
   plugins.push(...MG.plugins); // minigames: Discord desk, sushi, quiz table, Processo AI, Corriere AI
   const npcs = installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, camera, input, getFX, low, S }); plugins.push(npcs.plugin); // friends of the group chat (npcs.js): clones the man's bind pose, so before his first update
   const IA = createInteractions({ scene, man, ui, audio, getFX, level, input, S, npcs, renderer, news }); plugins.push(IA.plugin); // interact/: emotes, friend actions, props
+  // ---------- preload: the whole neighbourhood + every model during the loading screen / intro ----------
+  // nothing is built, decoded or swapped lazily while playing any more (that was the in-game lag); gfx.js waits for
+  // this before its warm-up (texture upload + shader compile of everything), and the menu opens after that
+  {
+    const PRE = { done: 0, total: 18 };
+    const step = () => { PRE.done++; const k = Math.min(1, PRE.done / PRE.total); try { ui.loading.set(0.75 + 0.2 * k, 'Carico il quartiere… ' + Math.round(k * 100) + '%'); } catch (e) { } };
+    const t0 = performance.now();
+    window.__preloadP = Promise.all([quartiere.preload(step), npcs.preload ? npcs.preload(step) : null].map(p => Promise.resolve(p).catch(e => console.warn('preload', e))))
+      .then(() => { window.__preloadMs = Math.round(performance.now() - t0); try { ui.loading.set(0.96, 'Preparo la grafica…'); } catch (e) { } });
+  }
 
   // ---------- explore world ----------
   // easter eggs: props + colliders must exist before createWorld (explore merges level colliders at init)
@@ -762,6 +773,14 @@ async function main() {
     if (audio.setHum) audio.setHum(S.screenOn);
     level.update(dt, t, S.phase === 'world' ? man.root.position : null, camera);
     quartiere.update(dt, t, S.phase === 'world' ? man.root.position : null, camera);
+    // small props far from the camera stop drawing (after the start-up warm-up has uploaded everything)
+    if (!S.cullOn && window.__gfx && window.__gfx.ready) { S.cullOn = true; try { S.cull = installCull({ camera, roots: [level.root, room && room.room, quartiere.root] }); S.cull.collect(); } catch (e) { console.warn('cull', e); } }
+    if (S.cull && !q.has('nocull')) S.cull.update(dt);
+    if (S.cullOn && !S.houseCull && !q.has('nocull')) try {
+      const HOUSE = ['eggs', 'cronache', 'caso', 'news-prints', 'gulagPassage', 'dogprops', 'mural'];
+      S.houseCull = installHouseCull({ camera, level, groups: () => [room && room.room, cab.group, cab2 && cab2.group, ...scene.children.filter(o => /^cabinet-/.test(o.name) || HOUSE.includes(o.name))] });
+    } catch (e) { console.warn('house cull', e); }
+    if (S.houseCull) S.houseCull.update(dt);
     if (audio.setAmbience) { const fn = getFX(); audio.setAmbience(S.phase === 'world' ? (level.outdoor || 0) : 0, (fn && fn.nightAmount) || 0, gulag && gulag.inside ? 1 : 0); }
     if (fx) fx.update(dt);
     fxFallback.update(dt);

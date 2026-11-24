@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rng, makeNoise, fbm, canvas, tex, normalFromHeight, clamp, batchMeshes } from './util.js';
+import { currentQuality } from './scene.js';
 import { RESERVED, OUTDOOR_ZONES, GATE } from './quartiere/layout.js'; // the neighbourhood beyond the garden (quartiere.js)
 // 0..1: how much a point is inside the quartiere's reserved rects (distant hills/trees step aside there)
 const reservedK = (x, z, m = 10) => { let k = 0; for (const r of RESERVED) { const d = Math.max(r[0] - x, x - r[2], r[1] - z, z - r[3]); k = Math.max(k, clamp(1 - d / m, 0, 1)); } return k; };
@@ -674,6 +675,7 @@ export function buildLevel(scene, opts = {}) {
   }
   function resetLeaf(l) { const s = l.src; l.m.position.set(s.x + (Math.random() - 0.5) * 3, s.y + Math.random() * 1.5, s.z + (Math.random() - 0.5) * 3); l.v = 0.35 + Math.random() * 0.3; }
 
+  const grassTiles = []; // per-tile instanced tufts: density by quality preset, hidden by distance (update)
   // ---------- grass tufts (instanced, swaying) — built last so it can avoid every collider ----------
   const blockedAt = (x, z) => { for (const c of colliders) { if (c.type === 'box') { if (x > c.min[0] - 0.05 && x < c.max[0] + 0.05 && z > c.min[1] - 0.05 && z < c.max[1] + 0.05) return true; } else if ((x - c.c[0]) ** 2 + (z - c.c[1]) ** 2 < (c.r + 0.05) ** 2) return true; } return false; };
   { const blade = (() => { // tuft of 9 thin tapered blades with a dark-root → sunlit-tip gradient
@@ -700,6 +702,7 @@ export function buildLevel(scene, opts = {}) {
       const im = new THREE.InstancedMesh(blade, gm, pts.length);
       pts.forEach(([x, z], i) => { const s = 0.75 + R() * 0.6; m4.compose(V(x, 0, z), q.setFromEuler(new THREE.Euler(0, R() * 6.28, 0)), V(s, s * (0.7 + R() * 0.7), s)); im.setMatrixAt(i, m4); const v = 0.8 + R() * 0.35; im.setColorAt(i, col.setRGB(v * (0.9 + R() * 0.2), v, v * 0.85)); });
       im.receiveShadow = !low; im.computeBoundingSphere(); root.add(im);
+      grassTiles.push({ im, n: pts.length, c: V((x0 + x1) / 2, 0, (z0 + z1) / 2) });
     } }
 
   // ---------- zones / walkability ----------
@@ -755,6 +758,13 @@ export function buildLevel(scene, opts = {}) {
     if (fx && fx.setOutdoor) fx.setOutdoor(st8.out);
     // reflector only when the camera is in the arcade room (saves a full scene render elsewhere)
     if (opts.room && opts.room.reflector) opts.room.reflector.visible = camZone === 'Sala giochi';
+    // grass: by far the most triangles of the level (≈50k per 5 m tile): thinned by preset, off beyond a range
+    if ((st8.grassT = (st8.grassT || 0) - dt) <= 0) {
+      st8.grassT = 0.25;
+      const q = currentQuality(), dens = q === 'low' ? 0.35 : q === 'medium' ? 0.6 : q === 'high' ? 0.85 : 1, range = q === 'low' ? 16 : q === 'medium' ? 24 : q === 'high' ? 32 : 44;
+      const cp = cam ? cam.position : fp;
+      for (const g of grassTiles) { const d = Math.hypot(cp.x - g.c.x, cp.z - g.c.z); g.im.visible = d < range; const c = Math.max(1, Math.floor(g.n * dens)); if (g.im.count !== c) g.im.count = c; }
+    }
     // night: lamps, sky, fog
     const n = st8.night;
     skyMat.uniforms.uNight.value = n;

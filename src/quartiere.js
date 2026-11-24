@@ -126,14 +126,14 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
     const t = performance.now();
     try { places[id] = PLACE_BUILDERS[id](root, { low }); } catch (e) { console.warn('quartiere: place ' + id, e); places[id] = { group: new THREE.Group(), lights: [], update() { } }; }
     places[id].built = performance.now() - t;
-    placeModels(id);
-    try { window.__gfx && window.__gfx.warmup && window.__gfx.warmup(places[id].group); } catch (e) { }
+    places[id].modelsP = placeModels(id);
+    if (!S.preloading) try { window.__gfx && window.__gfx.warmup && window.__gfx.warmup(places[id].group); } catch (e) { }
     return places[id];
   }
   function buildArea(k) {
     const a = areas[k]; if (a.group) return a;
     try { const r = a.build(); a.group = r.group; a.hooks = r.hooks; } catch (e) { console.warn('quartiere: area ' + k, e); a.group = new THREE.Group(); a.hooks = { anim: [], night: [], tripo: [] }; }
-    try { window.__gfx && window.__gfx.warmup && window.__gfx.warmup(a.group); } catch (e) { }
+    if (!S.preloading) try { window.__gfx && window.__gfx.warmup && window.__gfx.warmup(a.group); } catch (e) { }
     if (k === 'tele') { S.barrier = a.hooks.barrier; dress.tele(a.hooks, a.group); }
     return a;
   }
@@ -162,9 +162,9 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
     warm(streetG);
     for (const id of Object.keys(places)) placeModels(id);
   }
-  function placeModels(id) { dress.interior(id, places[id]); }
+  function placeModels(id) { return dress.interior(id, places[id]); }
   const dress = createDress({ SH, streetG, root, places, areas, C, S, anchors, warm, anim: SH.anim, quality: () => quality() });
-  applyModels();
+  const modelsP = applyModels().catch(e => console.warn('quartiere models', e));
   const life = createLife(root, { getQuality: () => quality() });
   // real point lights: a FIXED pool (count only changes with the quality preset / when leaving the neighbourhood, so
   // three.js never recompiles every material while walking around). Inside a place: its light descriptors;
@@ -302,7 +302,28 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
     return { items };
   }
 
+  // ================= preload: everything built and every model in place during the loading screen =================
+  // (no lazy build/swap while walking around: those were the in-game hitches). Areas and interiors are built hidden;
+  // update() keeps showing/hiding them by distance as before, and the gfx warm-up uploads/compiles them before the menu.
+  async function preload(onStep) {
+    const step = n => { try { onStep && onStep(n); } catch (e) { } };
+    const tick = () => new Promise(r => setTimeout(r, 0));
+    S.preloading = true;
+    try {
+      for (const k of Object.keys(areas)) { buildArea(k); if (areas[k].group) areas[k].group.visible = false; step('area:' + k); await tick(); }
+      applyNight(S.night);
+      for (const d of placeDefs) { const pl = buildPlace(d.id); if (pl && pl.group) pl.group.visible = false; step('place:' + d.id); await tick(); }
+      await modelsP; step('street');
+      await Promise.all(Object.values(places).map(p => p && p.modelsP).filter(Boolean)); step('interiors');
+      try { await life.load(); } catch (e) { console.warn('quartiere life', e); } step('life');
+      for (let i = 0; i < 60 && !(window.__app && window.__app.gulag && window.__app.gulag.root); i++) await new Promise(r => setTimeout(r, 150));
+      try { await dress.gulag(); } catch (e) { console.warn('quartiere gulag', e); } step('gulag');
+    } finally { S.preloading = false; }
+    return true;
+  }
+
   const API = {
+    preload,
     root, anchors, zones: ZONES, houses: HOUSES, places, update, plugin, loadOptional,
     build: id => (areas[id] ? buildArea(id) : buildPlace(id)),
     onPlace: cb => S.cbs.push(cb), isNight: () => S.night > 0.5, zoneOf: (x, z) => level.zoneAt(x, z),

@@ -220,7 +220,7 @@ function createModelStore() {
         const g = await new GLTFLoader().parseAsync(buf, 'models/');
         recs[slot] = prepareExternal(g.scene, g.animations || [], slot);
       } catch (e) { console.warn('npc model', slot, e); recs[slot] = null; }
-      await new Promise(r => setTimeout(r, 250));
+      await new Promise(r => setTimeout(r, 30));
       return recs[slot];
     })));
     return pending[slot];
@@ -651,7 +651,15 @@ export function installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, ca
     return { items, owns: m => m === 'npcTalk', update, camera };
   };
 
-  const api = { plugin, update, call, spawn, despawn, active: () => [...active.keys()], get: id => active.get(id), talking: () => !!TALK, closeTalk: () => closeTalk(false) };
+  // everything at start-up (loading screen / intro): every body decoded before the world opens, so nobody is
+  // re-skinned mid-game (that rebuild + texture upload was a visible hitch); the gfx warm-up then uploads them
+  async function preload(onStep) {
+    const sl = await store.list();
+    modelsStarted = true;
+    await Promise.all(sl.map(s => { useSlot(s); return store.get(s).then(r => { onStep && onStep(s); return r; }); }));
+    return sl.length;
+  }
+  const api = { plugin, update, call, spawn, despawn, preload, active: () => [...active.keys()], get: id => active.get(id), talking: () => !!TALK, closeTalk: () => closeTalk(false) };
   window.__npcs = api;
   return api;
 }
