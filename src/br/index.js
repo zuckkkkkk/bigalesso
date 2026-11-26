@@ -179,6 +179,7 @@ export function installBR({ scene, camera, man, ui, audio, level, S, gltf, Man, 
   addEventListener('keydown', e => {
     if (!st.on) return;
     if (e.code === 'Escape' && (ovMode === 'map')) { e.preventDefault(); e.stopPropagation(); hideOv(); return; }
+    if (e.code === 'Escape' && (ovMode === 'lobby' || ovMode === 'results') && st.phase !== 'play') { e.preventDefault(); e.stopPropagation(); leave(true); return; } // Esc leaves the lobby / results like the Esci button
     if (e.code === 'Tab' && !e.repeat && st.phase === 'play' && !(document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName))) { e.preventDefault(); if (ovMode === 'map') hideOv(); else if (!ovMode) showOv('map'); }
     if ((e.code === 'KeyE' || e.code === 'Space') && st.phase === 'spec') { e.preventDefault(); st.specI++; }
   }, true);

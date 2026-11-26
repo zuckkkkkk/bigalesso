@@ -13,6 +13,10 @@ export function createInput(el) {
   const I = {
     keys, edges, capture: null, drag: { dx: 0, dy: 0, wheel: 0, last: 0 }, touch: { x: 0, y: 0, active: false, btn: {}, edge: new Set() },
     k: c => keys.has(c), pressed: c => edges.has(c),
+    // FIX-2: the one "who owns the keyboard" check. '' = the world (explore keys may fire); otherwise the full-screen
+    // overlay / menu that has the keys (cards, RTS, BR/Gulag lobby, race menu, inventory, phone, NPC talk, minigames,
+    // pause menu, reader). Explore E/R, dog keys, 1-4 gestures, weapon keys and sport kicks all check it.
+    owned: () => document.body.dataset.overlay || (document.querySelector('#menu.show') ? 'menu' : '') || (document.querySelector('#rdr.on') ? 'reader' : '') || (window.__rts && window.__rts.active ? 'rts' : '') || '',
     tPressed: b => I.touch.edge.has(b), tHeld: b => !!I.touch.btn[b],
     endFrame() { edges.clear(); I.touch.edge.clear(); I.drag.dx = 0; I.drag.dy = 0; I.drag.wheel = 0; for (const p of I.pads) p.prev = p.cur.slice(); if (I.edgeTurn) I.edgeTurn(); },
     pads: [{ cur: [], prev: [], axes: [0, 0, 0, 0] }, { cur: [], prev: [], axes: [0, 0, 0, 0] }],
@@ -500,9 +504,10 @@ export function createWorld(ctx) {
       // interactions
       if (W.mode === 'explore') {
         W.focus = pickFocus();
-        const dpUsed = DP.handleExplore(I, W.focus, actP, altP);
-        if (dpUsed) { /* dog play consumed the input */ } else if (W.focus && actP) W.focus.act(); else if (W.focus && altP && W.focus.altAct && W.focus.alt && W.focus.alt()) W.focus.altAct();
-        if (!dpUsed && !DP.menuOpen()) { if (I.pressed('Digit1')) gesture('wave'); if (I.pressed('Digit2')) gesture('cheer'); if (I.pressed('Digit3')) gesture('dance'); if (I.pressed('Digit4')) gesture('facepalm'); }
+        const kbOwned = !!(I.owned && I.owned()); // an overlay/menu has the keys: no E/R, dog keys or gestures behind it
+        const dpUsed = !kbOwned && DP.handleExplore(I, W.focus, actP, altP);
+        if (kbOwned || dpUsed) { /* overlay owns the keys / dog play consumed the input */ } else if (W.focus && actP) W.focus.act(); else if (W.focus && altP && W.focus.altAct && W.focus.alt && W.focus.alt()) W.focus.altAct();
+        if (!kbOwned && !dpUsed && !DP.menuOpen()) { if (I.pressed('Digit1')) gesture('wave'); if (I.pressed('Digit2')) gesture('cheer'); if (I.pressed('Digit3')) gesture('dance'); if (I.pressed('Digit4')) gesture('facepalm'); }
       } else W.focus = null;
       // carrying: spray
       if (W.carry && W.mode === 'explore') {

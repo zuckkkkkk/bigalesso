@@ -377,7 +377,9 @@ async function main() {
 
   // ---------- director cabinet events ----------
   function onDirEvent(ev, data) {
-    save.gameEvent('direttore', ev, data);
+    // FIX-2: the attract-mode demo fight (bot vs boss, nobody playing) emits kiss/counter/round too: no achievements
+    // from it ("Bacio volante" popped while you were playing cards next to the cabinet)
+    if (!(dgame && dgame.demo)) save.gameEvent('direttore', ev, data);
     const C = cabinets[1]; if (!C) return;
     switch (ev) {
       case 'start': audio.sfx('coin'); setTimeout(() => audio.sfx('start'), 120); S.startPress = 0.45; break;
@@ -878,6 +880,14 @@ async function main() {
   const perf = installPerf({ renderer, scene, camera, composer, lights, resize, getQuality: () => ui.settings.quality, protect: [man.root, dog.root], screens: [{ tex: screenTex }, { tex: dTex }, ...MG.screens] });
   try { installGfx({ renderer, scene, camera, composer, bloom, lights, room, level, man, dog, fx }); } catch (e) { console.warn('gfx', e); }
   try { hookProf({ renderer, scene, composer }); } catch (e) { console.warn('prof', e); }
+  // empty pools cost a draw call each (state + program setup) even with nothing to draw: InstancedMeshes with
+  // count 0 (projectile/effect/loot pools) and BatchedMeshes whose instances are all hidden or culled are skipped
+  // (wrapped after the profiler so its draw counts match what really reaches the GPU)
+  { const rbd = renderer.renderBufferDirect.bind(renderer);
+    renderer.renderBufferDirect = (cam, sc, geo, mat, obj, grp) => {
+      if (obj && ((obj.isInstancedMesh && obj.count === 0) || (obj.isBatchedMesh && obj._multiDrawCount === 0))) return;
+      return rbd(cam, sc, geo, mat, obj, grp);
+    }; }
   // ---------- batching (batch.js): after the preload, before the gfx warm-up (gfx.js calls window.__batchWorld) ----------
   // every static mesh of the house, the arcade room and each neighbourhood group is drawn through BatchedMeshes;
   // new districts (src/quartiere/*) are picked up automatically as children of quartiere.root, or by calling
@@ -900,7 +910,13 @@ async function main() {
       if (!skip(c) && !skinned(c)) roots.push(c);
     }
     for (const r of [level.root, room && room.room, gulag && gulag.root]) if (r && !roots.includes(r)) roots.push(r);
-    for (const r of roots) if (r) try { BATCH.batch(r, { name: r.name || 'group' }); } catch (e) { console.warn('batch', r && r.name, e); }
+    // every root attached to the scene goes into ONE merged set of batches (material x 96 m ground cell, batch.js
+    // batchRoots: one draw per material per cell instead of per material per root); roots not in the scene yet keep
+    // their own batches. ?rootbatch: the older one-set-per-root batching (A/B)
+    const attached = r => { for (let p = r; p; p = p.parent) if (p === scene) return true; return false; };
+    const merged = q.has('rootbatch') ? [] : roots.filter(r => r && attached(r));
+    if (merged.length) try { BATCH.batchRoots(merged, { name: 'world', merge: true }); } catch (e) { console.warn('batch world', e); }
+    for (const r of roots) if (r && !merged.includes(r)) try { BATCH.batch(r, { name: r.name || 'group' }); } catch (e) { console.warn('batch', r && r.name, e); }
     BATCH.ms = Math.round(performance.now() - t0);
     return BATCH.stats();
   };

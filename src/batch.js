@@ -25,6 +25,7 @@
 //   - moved, re-materialled, removed, or its material changed    -> the mesh is UN-batched (drawn on its own again).
 // Opt out a subtree with obj.userData.noBatch = true (anything that animates: doors, clock hands, crowds).
 import * as THREE from 'three';
+import { currentQuality } from './scene.js';
 
 const DEAD = 0; // layer mask for batched originals: no camera / shadow camera renders them
 const HIDDEN = 1 << 30; // perfcull.js hides through this layer: the batch instance follows it
@@ -45,10 +46,29 @@ function shaderKey(m) {
   if (U) return m.customProgramCacheKey() + ':' + texId(U.triMap.value) + ':' + texId(U.triRH.value) + ':' + U.triScale.value + ':' + U.triBump.value + ':' + U.triMix.value.toArray().join(',');
   return 'own:' + m.uuid;
 }
-// noColor: the diffuse colour is left out of the key (it becomes a per-instance colour of the batch)
+// plain MeshStandardMaterials (no custom shader) also leave roughness/metalness out of the key: the batch reads them
+// per instance from a small float texture (pbrMaterial below), so props that differ only by those two merge too
+// a MeshPhysicalMaterial with every physical extra at its neutral value shades exactly like a MeshStandardMaterial
+// (F0 = ((ior-1)/(ior+1))^2 * specularColor * specularIntensity = 0.04, F90 = 1): batched as one
+const physNeutral = m => m && m.type === 'MeshPhysicalMaterial' && !customShader(m) && !m.clearcoat && !m.transmission && !m.sheen && !m.iridescence && !m.anisotropy
+  && !m.dispersion && m.specularIntensity === 1 && m.specularColor && m.specularColor.getHex() === 0xffffff && !m.specularIntensityMap && !m.specularColorMap && Math.abs(m.ior - 1.5) < 1e-3;
+const stdCache = new WeakMap();
+function toStandard(m) {
+  let s = stdCache.get(m); if (s) return s;
+  s = new THREE.MeshStandardMaterial(); const ud = m.userData; m.userData = {};
+  try { THREE.MeshStandardMaterial.prototype.copy.call(s, m); } finally { m.userData = ud; }
+  s.userData = {}; s.name = m.name; stdCache.set(m, s); return s;
+}
+const asStd = m => (physNeutral(m) ? toStandard(m) : m);
+// (standard and physical materials, plain or with the triplanar shader of materials.js, which keeps the chunks used here)
+const pbrOK = m => !!(m && m.isMeshStandardMaterial && (!customShader(m) || (m.userData && m.userData.tri)));
+// noColor: the diffuse colour is left out of the key (it becomes a per-instance colour of the batch); for plain
+// standard materials roughness, metalness and emissive too (per-instance texture, pbrMaterial below)
 function matKey(m, noColor) {
+  m = asStd(m);
   const c = x => (x && x.isColor ? x.getHexString() : '-');
-  return [m.type, noColor ? '*' : c(m.color), c(m.emissive), m.emissiveIntensity, m.roughness, m.metalness, m.opacity, m.transparent, m.alphaTest, m.side,
+  const pbr = noColor && pbrOK(m);
+  return [m.type, noColor ? '*' : c(m.color), pbr ? '*' : c(m.emissive), pbr ? '*' : m.emissiveIntensity, pbr ? '*' : m.roughness, pbr ? '*' : m.metalness, m.opacity, m.transparent, m.alphaTest, m.side,
     m.vertexColors, m.flatShading, m.fog, m.toneMapped, m.depthWrite, m.depthTest, m.blending, m.polygonOffset, m.polygonOffsetFactor, m.envMapIntensity,
     texId(m.map), texId(m.normalMap), texId(m.roughnessMap), texId(m.metalnessMap), texId(m.emissiveMap), texId(m.aoMap), texId(m.alphaMap), texId(m.envMap),
     texId(m.lightMap), m.normalScale ? m.normalScale.x + ',' + m.normalScale.y : '-', m.clearcoat, m.transmission, m.sheen, m.specularIntensity, m.ior, m.wireframe,
@@ -59,15 +79,21 @@ function matKey(m, noColor) {
 function matSnap(m) { return [m.color && m.color.getHex(), m.emissive && m.emissive.getHex(), m.emissiveIntensity, m.opacity, m.visible, texId(m.map), texId(m.emissiveMap), m.transparent, m.roughness, m.metalness, shaderKey(m)].join('|'); }
 
 // ---- geometry: plain Float32 attributes, indexed, only the batchable attributes ----
-const geoCache = new WeakMap(); // source geometry -> { sig, geo, hash }
-function canonGeometry(src) {
-  const c0 = geoCache.get(src); if (c0 !== undefined && (c0 === null || c0.geo)) return c0; // (geo released after a batch: rebuilt on demand)
+// attributes the material actually reads: uv only with a texture (or a custom shader), colour only with vertexColors.
+// Unused ones are dropped so that props with and without them still share a batch (BatchedMesh needs one layout)
+const TEX = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'alphaMap', 'lightMap', 'bumpMap', 'displacementMap', 'specularMap'];
+const needOf = m => (!m || customShader(m) ? 3 : (TEX.some(k => m[k]) ? 1 : 0) | (m.vertexColors ? 2 : 0));
+const geoCache = new WeakMap(); // source geometry -> [need] -> { sig, geo, hash }
+function canonGeometry(src, need = 3) {
+  let per = geoCache.get(src); if (!per) { per = {}; geoCache.set(src, per); }
+  const c0 = per[need]; if (c0 !== undefined && (c0 === null || c0.geo)) return c0; // (geo released after a batch: rebuilt on demand)
   let out = null;
   try {
     if (!src.attributes.position || src.morphAttributes && Object.keys(src.morphAttributes).length) throw 0;
     const g = new THREE.BufferGeometry(); const names = [];
     for (const k of ATTRS) {
       const a = src.attributes[k]; if (!a) continue;
+      if ((k === 'uv' && !(need & 1)) || (k === 'color' && !(need & 2))) continue;
       const n = a.count, s = a.itemSize, arr = new Float32Array(n * s);
       if (!a.isInterleavedBufferAttribute && !a.normalized && a.array instanceof Float32Array && a.array.length === n * s) arr.set(a.array);
       else for (let i = 0; i < n; i++) for (let j = 0; j < s; j++) arr[i * s + j] = a.getComponent(i, j);
@@ -86,8 +112,69 @@ function canonGeometry(src) {
     for (let i = 0; i < ix.length; i += Math.max(1, (ix.length / 1024) | 0)) { h ^= ix[i]; h = Math.imul(h, 16777619) >>> 0; }
     out = { sig: names.join(','), geo: g, hash: names.join(',') + ':' + p.length + ':' + ix.length + ':' + h, verts: p.length / 3, idx: ix.length };
   } catch (e) { out = null; }
-  geoCache.set(src, out); return out;
+  per[need] = out; return out;
 }
+
+// per-instance roughness/metalness for a batch: the shared material is set to roughness = metalness = 1 and the
+// fragment shader multiplies by the instance's values (texel at the instance id, like three's batchingColorTexture).
+// One program for every such batch (customProgramCacheKey), each batch has its own texture uniform.
+// Emissive too (colour x intensity, second texel of the instance): neon/screen props of different glow share a batch.
+function pbrMaterial(base, maxInstances) {
+  base = asStd(base);
+  const ud = base.userData; base.userData = {};
+  let mat; try { mat = base.clone(); } finally { base.userData = ud; }
+  const own = customShader(base), prevOBC = base.onBeforeCompile, prevKey = base.customProgramCacheKey; // triplanar: its hook runs first
+  mat.userData = { batchPBR: true }; if (ud && ud.tri) mat.userData.tri = ud.tri;
+  mat.color.set(0xffffff); mat.roughness = 1; mat.metalness = 1; mat.emissive.set(0xffffff); mat.emissiveIntensity = 1; mat.name = (base.name || base.type) + '+pbr';
+  const size = Math.max(1, Math.ceil(Math.sqrt(maxInstances * 2)));
+  const tex = new THREE.DataTexture(new Float32Array(size * size * 4), size, size, THREE.RGBAFormat, THREE.FloatType);
+  tex.needsUpdate = true;
+  mat.onBeforeCompile = (sh, r) => {
+    if (own) prevOBC.call(base, sh, r);
+    sh.uniforms.batchPBR = { value: tex };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <batching_pars_vertex>', '#include <batching_pars_vertex>\nuniform highp sampler2D batchPBR;\nvarying vec4 vBatchPBR;\nvarying vec3 vBatchEm;')
+      .replace('#include <batching_vertex>', '#include <batching_vertex>\n#ifdef USE_BATCHING\n{ int j = int( getIndirectIndex( gl_DrawID ) ) * 2; int bs = textureSize( batchPBR, 0 ).x;'
+        + ' vBatchPBR = texelFetch( batchPBR, ivec2( j % bs, j / bs ), 0 ); vBatchEm = texelFetch( batchPBR, ivec2( ( j + 1 ) % bs, ( j + 1 ) / bs ), 0 ).rgb; }\n#else\nvBatchPBR = vec4( 1.0 ); vBatchEm = vec3( 0.0 );\n#endif');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec4 vBatchPBR;\nvarying vec3 vBatchEm;')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= clamp( vBatchEm, 0.0, 64.0 );')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor *= clamp( vBatchPBR.x, 0.0, 1.0 );')
+      .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor *= clamp( vBatchPBR.y, 0.0, 1.0 );');
+  };
+  mat.customProgramCacheKey = () => 'batchPBR2' + (own ? ':' + prevKey.call(base) : '');
+  return { mat, tex, set(id, m) {
+    const a = tex.image.data, i = id * 8, e = m.emissive, k = m.emissiveIntensity === undefined ? 1 : m.emissiveIntensity;
+    a[i] = m.roughness; a[i + 1] = m.metalness; a[i + 4] = e ? e.r * k : 0; a[i + 5] = e ? e.g * k : 0; a[i + 6] = e ? e.b * k : 0; tex.needsUpdate = true;
+  } };
+}
+
+// per-frame instance list of a batch (replaces BatchedMesh.onBeforeRender/onBeforeShadow, unsorted path): the
+// instances are static, so their bounding spheres are precomputed in batch space (userData.sph) and tested against
+// the 6 frustum planes inline — a fraction of three's per-instance getMatrixAt + sphere transform.
+// The shadow pass also skips the non-casters (userData.noSh): casters and non-casters share one batch.
+const _cf = new THREE.Frustum(), _cm = new THREE.Matrix4();
+function cullList(bm, renderer, cam, geometry, noSh) {
+  const sph = bm.userData.sph, index = geometry.getIndex(), bpe = index === null ? 1 : index.array.BYTES_PER_ELEMENT;
+  const info = bm._instanceInfo, starts = bm._multiDrawStarts, counts = bm._multiDrawCounts, geos = bm._geometryInfo, ind = bm._indirectTexture.image.data;
+  _cm.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse).multiply(bm.matrixWorld);
+  _cf.setFromProjectionMatrix(_cm, renderer.coordinateSystem);
+  const P = _cf.planes;
+  const ax = P[0].normal.x, ay = P[0].normal.y, az = P[0].normal.z, ac = P[0].constant, bx = P[1].normal.x, by = P[1].normal.y, bz = P[1].normal.z, bc = P[1].constant;
+  const cx = P[2].normal.x, cy = P[2].normal.y, cz = P[2].normal.z, cc = P[2].constant, dx = P[3].normal.x, dy = P[3].normal.y, dz = P[3].normal.z, dc = P[3].constant;
+  const ex = P[4].normal.x, ey = P[4].normal.y, ez = P[4].normal.z, ec = P[4].constant, fx = P[5].normal.x, fy = P[5].normal.y, fz = P[5].normal.z, fc = P[5].constant;
+  let n = 0;
+  for (let i = 0, l = info.length; i < l; i++) {
+    const it = info[i]; if (!it.visible || !it.active || (noSh !== null && noSh[i])) continue;
+    const j = i * 4, x = sph[j], y = sph[j + 1], z = sph[j + 2], r = -sph[j + 3];
+    if (ax * x + ay * y + az * z + ac < r || bx * x + by * y + bz * z + bc < r || cx * x + cy * y + cz * z + cc < r
+      || dx * x + dy * y + dz * z + dc < r || ex * x + ey * y + ez * z + ec < r || fx * x + fy * y + fz * z + fc < r) continue;
+    const g = geos[it.geometryIndex]; starts[n] = g.start * bpe; counts[n] = g.count; ind[n] = i; n++;
+  }
+  bm._indirectTexture.needsUpdate = true; bm._multiDrawCount = n; bm._visibilityChanged = false;
+}
+function batchRender(renderer, scene, camera, geometry) { cullList(this, renderer, camera, geometry, null); }
+function batchShadow(renderer, object, camera, shadowCamera, geometry) { cullList(this, renderer, shadowCamera, geometry, this.userData.noSh || null); }
 
 const _m = new THREE.Matrix4(), _inv = new THREE.Matrix4(), _mi = new THREE.Matrix4(), _c = new THREE.Color();
 export function createBatcher({ scene } = {}) {
@@ -137,7 +224,8 @@ export function createBatcher({ scene } = {}) {
     if (o.onBeforeRender !== defaultOBR || o.morphTexture) return 'onBeforeRender';
     if (o.instanceMatrix.usage === THREE.DynamicDrawUsage) return 'dynamic';
     if (!(o.count > 0) || o.count > 2048) return 'count';
-    if (!o.frustumCulled) return 'unculled'; // pools that place instances anywhere (and draw with frustumCulled off)
+    // (frustumCulled = false alone is no reason: static decorations often switch it off; the batch culls per instance.
+    // Pools that move instances later are caught by the watcher: instanceMatrix version/count change -> un-batched)
     if (!(o.layers.mask & 1) && o.layers.mask !== HIDDEN) return 'layer-hidden';
     if (noBatch(o, root)) return 'noBatch';
     return '';
@@ -184,8 +272,8 @@ export function createBatcher({ scene } = {}) {
     root.traverse(o => {
       if (!o.isMesh) return; meshes++;
       const r = reason(o, root); if (r) { why[r] = (why[r] || 0) + 1; return; }
-      const cg = canonGeometry(o.geometry); if (!cg) { why.geometry = (why.geometry || 0) + 1; return; }
-      const key = matKey(o.material, instColor) + '#' + cg.sig + '#' + (o.castShadow ? 1 : 0) + (o.receiveShadow ? 1 : 0);
+      const cg = canonGeometry(o.geometry, needOf(o.material)); if (!cg) { why.geometry = (why.geometry || 0) + 1; return; }
+      const key = matKey(o.material, instColor) + '#' + cg.sig + '#' + (o.receiveShadow ? 1 : 0);
       groups.set(key, (groups.get(key) || 0) + 1);
     });
     let inGroups = 0, nGroups = 0, singles = 0;
@@ -193,41 +281,80 @@ export function createBatcher({ scene } = {}) {
     return { meshes, why, batches: nGroups, batched: inGroups, singles };
   }
 
-  function batch(root, { name = root.name || 'batch', minGroup = 2, maxInstances = 4096, instColor = true } = {}) {
-    if (!root) return null;
-    try { splitMulti(root); } catch (e) { console.warn('batch split', e); }
-    root.updateMatrixWorld(true);
-    _inv.copy(root.matrixWorld).invert();
-    const groups = new Map(); // key -> { mat, list: [{o, cg, inst?}], verts, idx, geos: Map(hash -> cg) }
-    const addTo = (o, cg, inst) => {
-      const key = matKey(o.material, instColor) + '#' + cg.sig + '#' + (o.castShadow ? 1 : 0) + (o.receiveShadow ? 1 : 0);
-      let G = groups.get(key); if (!G) { G = { mat: o.material, list: [], geos: new Map(), verts: 0, idx: 0, tint: false }; groups.set(key, G); }
+  // small props don't cast sun shadows (a cup, a book, a knob): decided HERE, before grouping, because once batched
+  // the BatchedMesh's castShadow is what counts (perfcull.js used to flip it on the originals after batching: no effect)
+  const shadowMinFor = q => (q === 'low' || q === 'medium' ? 0.55 : q === 'high' ? 0.4 : 0.3);
+  const _sph = new THREE.Sphere();
+  // batch(root): one set of BatchedMeshes inside root (they follow the root's transform and visibility).
+  // batchRoots(roots, { merge: true }): the static meshes of ALL the roots grouped together by material and by a
+  // ground cell (96 m by default, so a batch stays spatially compact and is still culled whole when off screen); the
+  // BatchedMeshes live in one scene-level holder and each root's visibility is mirrored per instance every frame
+  // (rootStates), so hiding a district/mode root still hides its props at once. One draw per material per cell
+  // instead of one per material per root.
+  const rootStates = new Map(); // root -> { root, on, entries: [] }
+  const chainOn = r => { for (let p = r; p; p = p.parent) { if (!p.visible) return false; if (p === scene) return true; } return !scene; };
+  const _v = new THREE.Vector3(), _mw = new THREE.Matrix4();
+  function batch(root, opts = {}) { return root ? batchRoots([root], { name: root.name || 'batch', ...opts, merge: false }) : null; }
+  function batchRoots(roots, { name = 'batch', minGroup = 2, maxInstances = 4096, instColor = true, shadowMin = shadowMinFor(currentQuality()), merge = false, cell = 96, origin = [6, 9] } = {}) {
+    roots = roots.filter(Boolean); if (!roots.length) return [];
+    let holder = roots[0];
+    if (merge) {
+      holder = new THREE.Group(); holder.name = 'batches:' + name; holder.userData.noBatch = true; holder.userData.noCull = true;
+      holder.matrixAutoUpdate = false; holder.updateMatrixWorld(true); scene.add(holder);
+    }
+    const groups = new Map(); // key -> { mat, list: [{o, cg, inst?, root, rs}], verts, idx, geos: Map(hash -> cg) }
+    const cellOf = v => (merge ? '#c' + Math.floor((v.x - origin[0]) / cell + 0.5) + ',' + Math.floor((v.z - origin[1]) / cell + 0.5) : '');
+    // (castShadow is not part of the key: non-casters are skipped per instance in the shadow pass, see cullList)
+    const addTo = (o, cg, inst, root, rs, ck) => {
+      const key = matKey(o.material, instColor) + '#' + cg.sig + '#' + (o.receiveShadow ? 1 : 0) + ck;
+      let G = groups.get(key); if (!G) { G = { key, mat: asStd(o.material), list: [], geos: new Map(), verts: 0, idx: 0, tint: false }; groups.set(key, G); }
       if (instColor && G.mat.color && o.material.color && !G.mat.color.equals(o.material.color)) G.tint = true;
+      const m = o.material;
+      if (instColor && pbrOK(G.mat) && (G.mat.roughness !== m.roughness || G.mat.metalness !== m.metalness || G.mat.emissiveIntensity !== m.emissiveIntensity || !G.mat.emissive.equals(m.emissive))) G.pbr = true;
       if (inst !== undefined && o.instanceColor) G.tint = true;
       if (!G.geos.has(cg.hash)) { G.geos.set(cg.hash, cg); G.verts += cg.verts; G.idx += cg.idx; }
-      G.list.push({ o, cg: G.geos.get(cg.hash), inst });
+      G.list.push({ o, cg: G.geos.get(cg.hash), inst, root, rs });
     };
-    root.traverse(o => {
-      if (o.isInstancedMesh) {
-        if (imReason(o, root)) return;
-        const cg = canonGeometry(o.geometry); if (!cg) { stats.skipped++; return; }
-        for (let i = 0; i < o.count; i++) addTo(o, cg, i);
-        return;
-      }
-      if (!eligible(o, root)) return;
-      const cg = canonGeometry(o.geometry); if (!cg) { stats.skipped++; return; }
-      addTo(o, cg);
-    });
+    for (const root of roots) {
+      try { splitMulti(root); } catch (e) { console.warn('batch split', e); }
+      root.updateMatrixWorld(true);
+      // small props don't cast sun shadows (a cup, a book, a knob): decided HERE, before grouping, because once batched
+      // the BatchedMesh's castShadow is what counts (perfcull.js used to flip it on the originals after batching: no effect)
+      if (shadowMin > 0) root.traverse(o => {
+        if (!o.isMesh || !o.castShadow || o.isSkinnedMesh || o.isInstancedMesh || o.isBatchedMesh || !o.geometry) return;
+        const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); if (!g.boundingSphere) return;
+        _sph.copy(g.boundingSphere).applyMatrix4(o.matrixWorld); if (_sph.radius < shadowMin) { o.castShadow = false; stats.noShadow = (stats.noShadow || 0) + 1; }
+      });
+      let rs = null;
+      if (merge) { rs = rootStates.get(root); if (!rs) { rs = { root, on: chainOn(root), entries: [] }; rootStates.set(root, rs); } }
+      root.traverse(o => {
+        if (o.isInstancedMesh) {
+          if (imReason(o, root)) return;
+          const cg = canonGeometry(o.geometry, needOf(o.material)); if (!cg) { stats.skipped++; return; }
+          for (let i = 0; i < o.count; i++) {
+            let ck = ''; if (merge) { o.getMatrixAt(i, _mi); _mw.multiplyMatrices(o.matrixWorld, _mi); ck = cellOf(_v.copy(cg.geo.boundingSphere.center).applyMatrix4(_mw)); }
+            addTo(o, cg, i, root, rs, ck);
+          }
+          return;
+        }
+        if (!eligible(o, root)) return;
+        const cg = canonGeometry(o.geometry, needOf(o.material)); if (!cg) { stats.skipped++; return; }
+        addTo(o, cg, undefined, root, rs, merge ? cellOf(_v.copy(cg.geo.boundingSphere.center).applyMatrix4(o.matrixWorld)) : '');
+      });
+    }
+    holder.updateMatrixWorld(true);
+    _inv.copy(holder.matrixWorld).invert();
     const made = [];
     for (const G of groups.values()) {
-      if (G.list.length < minGroup) continue; // a lone mesh: nothing to gain
+      if (G.list.length < minGroup) { for (const it of G.list) { it.o.userData.batchSingle = 1; if (window.__batchLog) it.o.userData.batchKey = G.key; } continue; } // a lone mesh: nothing to gain
       for (let k = 0; k < G.list.length; k += maxInstances) {
         const part = G.list.slice(k, k + maxInstances);
         const geos = new Map(); let verts = 0, idxN = 0;
         for (const it of part) if (!geos.has(it.cg)) { geos.set(it.cg, -1); verts += it.cg.verts; idxN += it.cg.idx; }
         // different diffuse colours in one batch: a white copy of the material + a per-instance colour
-        let mat = G.mat;
-        if (G.tint) {
+        let mat = G.mat, pbr = null;
+        if (G.pbr) { pbr = pbrMaterial(G.mat, part.length); mat = pbr.mat; G.tint = true; }
+        else if (G.tint) {
           const ud = G.mat.userData; G.mat.userData = {};
           try { mat = G.mat.clone(); } finally { G.mat.userData = ud; }
           mat.userData = ud; mat.onBeforeCompile = G.mat.onBeforeCompile; mat.customProgramCacheKey = G.mat.customProgramCacheKey;
@@ -236,44 +363,56 @@ export function createBatcher({ scene } = {}) {
         const bm = new THREE.BatchedMesh(part.length, Math.max(3, verts), Math.max(3, idxN), mat);
         bm.name = 'batch:' + name + ':' + (G.mat.name || G.mat.type);
         bm.sortObjects = false; bm.perObjectFrustumCulled = true;
-        bm.castShadow = part[0].o.castShadow; bm.receiveShadow = part[0].o.receiveShadow;
-        bm.userData.noBatch = true; bm.userData.noCull = true;
+        const casts = part.filter(it => it.o.castShadow).length;
+        bm.castShadow = casts > 0; bm.receiveShadow = part[0].o.receiveShadow;
+        const noSh = casts > 0 && casts < part.length ? new Uint8Array(part.length) : null;
+        const sph = new Float32Array(part.length * 4); // per-instance bounding sphere in batch space (static: moved props leave the batch)
+        bm.userData.noSh = noSh; bm.userData.sph = sph; bm.onBeforeRender = batchRender; bm.onBeforeShadow = batchShadow;
+        bm.userData.noBatch = true; bm.userData.noCull = true; if (window.__batchLog) bm.userData.key = G.key;
         for (const [cg] of geos) geos.set(cg, bm.addGeometry(cg.geo));
+        const putSphere = (id, cg) => { const bs = cg.geo.boundingSphere; _v.copy(bs.center).applyMatrix4(_m); const j = id * 4; sph[j] = _v.x; sph[j + 1] = _v.y; sph[j + 2] = _v.z; sph[j + 3] = bs.radius * _m.getMaxScaleOnAxis(); };
         for (const it of part) {
+          const rs = it.rs, ron = rs ? rs.on : true;
           if (it.inst !== undefined) { // an instance of a static InstancedMesh
             const im = it.o, id = bm.addInstance(geos.get(it.cg));
-            im.getMatrixAt(it.inst, _mi); _m.multiplyMatrices(_inv, im.matrixWorld).multiply(_mi); bm.setMatrixAt(id, _m);
+            if (noSh && !im.castShadow) noSh[id] = 1;
+            im.getMatrixAt(it.inst, _mi); _m.multiplyMatrices(_inv, im.matrixWorld).multiply(_mi); bm.setMatrixAt(id, _m); putSphere(id, it.cg);
             if (G.tint) { if (im.instanceColor) { im.getColorAt(it.inst, _c); if (im.material.color) _c.multiply(im.material.color); bm.setColorAt(id, _c); } else bm.setColorAt(id, im.material.color || _c.set(0xffffff)); }
+            if (pbr) pbr.set(id, im.material);
             let e = imEntries.get(im);
             if (!e) {
               im.updateWorldMatrix(true, false);
-              e = { im: true, o: im, ids: [], bms: [], root, mat: im.material, mask: im.layers.mask, vis: true, parent: im.parent, dead: false, mw: im.matrixWorld.elements.slice(),
-                ver: im.instanceMatrix.version, cver: im.instanceColor ? im.instanceColor.version : -1, count: im.count, mau: im.matrixAutoUpdate };
-              imEntries.set(im, e); entries.push(e);
+              e = { im: true, o: im, ids: [], bms: [], root: it.root, rs, mat: im.material, mask: im.layers.mask, vis: true, parent: im.parent, dead: false, mw: im.matrixWorld.elements.slice(),
+                ver: im.instanceMatrix.version, cver: im.instanceColor ? im.instanceColor.version : -1, count: im.count, mau: im.matrixAutoUpdate, insts: [], ls: sphArr(it.cg) };
+              e.vis = !(im.layers.mask === HIDDEN || im.userData.__cullN > 0) && visIn(im, it.root);
+              imEntries.set(im, e); entries.push(e); if (rs) rs.entries.push(e);
               im.userData.batched = e; im.userData.noCull = true; adopt(im, e); im.matrixAutoUpdate = false;
               if (!matSnaps.has(im.material)) matSnaps.set(im.material, matSnap(im.material));
             }
-            e.ids.push(id); e.bms.push(bm); stats.meshes++;
+            e.ids.push(id); e.bms.push(bm); e.insts.push(it.inst); stats.meshes++;
+            if (!(e.vis && ron)) bm.setVisibleAt(id, false);
             continue;
           }
           const o = it.o, id = bm.addInstance(geos.get(it.cg));
-          _m.multiplyMatrices(_inv, o.matrixWorld); bm.setMatrixAt(id, _m);
+          if (noSh && !o.castShadow) noSh[id] = 1;
+          _m.multiplyMatrices(_inv, o.matrixWorld); bm.setMatrixAt(id, _m); putSphere(id, it.cg);
           if (G.tint) bm.setColorAt(id, o.material.color);
+          if (pbr) pbr.set(id, o.material);
           o.updateWorldMatrix(false, false);
           const cg = it.cg, ws = cg.geo.boundingSphere, sc = o.matrixWorld.getMaxScaleOnAxis();
           const c = ws.center.clone().applyMatrix4(o.matrixWorld);
-          const e = { o, bm, id, root, mat: o.material, mask: o.layers.mask, vis: true, on: true, mw: o.matrixWorld.elements.slice(), parent: o.parent, dead: false,
+          const e = { o, bm, id, root: it.root, rs, mat: o.material, mask: o.layers.mask, vis: true, on: true, mw: o.matrixWorld.elements.slice(), parent: o.parent, dead: false,
             loc: [o.position.x, o.position.y, o.position.z, o.quaternion.x, o.quaternion.y, o.quaternion.z, o.quaternion.w, o.scale.x, o.scale.y, o.scale.z],
-            cx: c.x, cy: c.y, cz: c.z, r: ws.radius * sc, mau: o.matrixAutoUpdate };
+            cx: c.x, cy: c.y, cz: c.z, r: ws.radius * sc, mau: o.matrixAutoUpdate, ls: sphArr(cg) };
           // originals: never drawn, and no per-frame matrix recompose (their world matrix still follows the parents)
           o.userData.batched = e; o.userData.noCull = true; adopt(o, e); o.matrixAutoUpdate = false;
-          if (!visIn(o, root) || o.layers.mask === HIDDEN) { e.vis = false; bm.setVisibleAt(id, false); }
+          if (!visIn(o, it.root) || o.layers.mask === HIDDEN) e.vis = false;
+          if (!(e.vis && ron)) bm.setVisibleAt(id, false);
           if (!matSnaps.has(o.material)) matSnaps.set(o.material, matSnap(o.material));
-          entries.push(e); stats.meshes++;
+          entries.push(e); if (rs) rs.entries.push(e); stats.meshes++;
         }
         bm.computeBoundingBox(); bm.computeBoundingSphere();
-        root.add(bm); made.push(bm); batches.push({ root, mesh: bm }); stats.batches++; stats.geometries += geos.size;
-        for (const e of imEntries.values()) if (!e.vis0) { e.vis0 = true; if (!visIn(e.o, e.root) || e.o.layers.mask === HIDDEN) { e.vis = false; for (let j = 0; j < e.ids.length; j++) e.bms[j].setVisibleAt(e.ids[j], false); } }
+        holder.add(bm); made.push(bm); batches.push({ root: holder, roots: merge ? roots : null, mesh: bm }); stats.batches++; stats.geometries += geos.size;
       }
     }
     // the canonical copies were copied into the batches: free them (the originals keep their own geometry)
@@ -282,7 +421,7 @@ export function createBatcher({ scene } = {}) {
   }
 
   function unbatch(e, why) {
-    if (e.dead) return; e.dead = true; stats.unbatched++;
+    if (e.dead) return; e.dead = true; stats.unbatched++; e.o.userData.unbatchedWhy = why;
     if (e.im) {
       for (let j = 0; j < e.ids.length; j++) try { e.bms[j].setVisibleAt(e.ids[j], false); } catch (x) { }
       const o = e.o; if (o.layers.mask === DEAD) o.layers.mask = e.mask; else if (o.userData.__cullN > 0 && o.userData.__cullMask === DEAD) o.userData.__cullMask = e.mask;
@@ -295,6 +434,32 @@ export function createBatcher({ scene } = {}) {
     o.userData.batched = null; o.matrixAutoUpdate = e.mau;
     if (window.__batchLog) console.log('unbatch', why, o.name || o.type);
   }
+  // a batched prop that moves (or whose root moves) a few times — placed by code after the batching, a district
+  // shifted once — is re-synced in its batch instead of leaving it; past 3 moves it is animated: back to plain drawing
+  const sphArr = cg => { const b = cg.geo.boundingSphere; return [b.center.x, b.center.y, b.center.z, b.radius]; };
+  const dirtyB = new Set(), _rs = new THREE.Vector3(), _ri = new THREE.Matrix4();
+  function putInst(bm, id, m, ls) {
+    bm.setMatrixAt(id, m); const sph = bm.userData.sph; if (!sph) return;
+    _rs.set(ls[0], ls[1], ls[2]).applyMatrix4(m); const j = id * 4; sph[j] = _rs.x; sph[j + 1] = _rs.y; sph[j + 2] = _rs.z; sph[j + 3] = ls[3] * m.getMaxScaleOnAxis();
+    dirtyB.add(bm);
+  }
+  function resync(e) {
+    if ((e.moves = (e.moves || 0) + 1) > 3 || !e.ls) return false;
+    const o = e.o;
+    try {
+      if (e.im) {
+        o.updateMatrix(); o.updateWorldMatrix(true, false);
+        for (let j = 0; j < e.ids.length; j++) { const bm = e.bms[j]; _ri.copy(bm.parent.matrixWorld).invert(); o.getMatrixAt(e.insts[j], _mi); _m.multiplyMatrices(_ri, o.matrixWorld).multiply(_mi); putInst(bm, e.ids[j], _m, e.ls); }
+      } else {
+        o.updateMatrix(); o.updateWorldMatrix(true, false);
+        _ri.copy(e.bm.parent.matrixWorld).invert(); _m.multiplyMatrices(_ri, o.matrixWorld); putInst(e.bm, e.id, _m, e.ls);
+        e.loc = [o.position.x, o.position.y, o.position.z, o.quaternion.x, o.quaternion.y, o.quaternion.z, o.quaternion.w, o.scale.x, o.scale.y, o.scale.z];
+        _rs.set(e.ls[0], e.ls[1], e.ls[2]).applyMatrix4(o.matrixWorld); e.cx = _rs.x; e.cy = _rs.y; e.cz = _rs.z; e.r = e.ls[3] * o.matrixWorld.getMaxScaleOnAxis();
+      }
+    } catch (x) { return false; }
+    e.mw = o.matrixWorld.elements.slice(); stats.resynced = (stats.resynced || 0) + 1;
+    return true;
+  }
   // world matrix unchanged? (translation + diagonal: catches any move/turn/scale of an ancestor at a third of the cost)
   const same = (a, b) => Math.abs(a[12] - b[12]) + Math.abs(a[13] - b[13]) + Math.abs(a[14] - b[14]) + Math.abs(a[0] - b[0]) + Math.abs(a[5] - b[5]) + Math.abs(a[10] - b[10]) + Math.abs(a[1] - b[1]) + Math.abs(a[8] - b[8]) < 1e-5;
   const movedLocal = (o, L) => { const p = o.position, q = o.quaternion, s = o.scale; return Math.abs(p.x - L[0]) + Math.abs(p.y - L[1]) + Math.abs(p.z - L[2]) + Math.abs(q.x - L[3]) + Math.abs(q.y - L[4]) + Math.abs(q.z - L[5]) + Math.abs(q.w - L[6]) + Math.abs(s.x - L[7]) + Math.abs(s.y - L[8]) + Math.abs(s.z - L[9]) > 1e-5; };
@@ -303,6 +468,12 @@ export function createBatcher({ scene } = {}) {
   let far = 28, tick = 0;
   function update(n = 400, cam = null, farDist) {
     if (farDist) far = farDist;
+    // merged batches: a root hidden/shown (district, mode props) -> all its instances at once
+    for (const rs of rootStates.values()) {
+      const on = chainOn(rs.root); if (on === rs.on) continue; rs.on = on;
+      for (const e of rs.entries) if (!e.dead) { const v = e.vis && on; if (e.im) { for (let j = 0; j < e.ids.length; j++) e.bms[j].setVisibleAt(e.ids[j], v); } else e.bm.setVisibleAt(e.id, v); }
+    }
+    if (dirtyB.size) { for (const bm of dirtyB) bm.computeBoundingSphere(); dirtyB.clear(); }
     const N = entries.length; if (!N) return;
     const k = Math.min(N, n);
     for (let c = 0; c < k; c++) {
@@ -311,22 +482,22 @@ export function createBatcher({ scene } = {}) {
       if (e.im) {
         if (o.parent !== e.parent || o.material !== e.mat || !e.root.parent || o.count !== e.count || o.instanceMatrix.version !== e.ver || (o.instanceColor ? o.instanceColor.version : -1) !== e.cver) { unbatch(e, 'instanced changed'); continue; }
         if (o.layers.mask !== DEAD && o.layers.mask !== HIDDEN) { unbatch(e, 'layers'); continue; }
-        if (!same(o.matrixWorld.elements, e.mw)) { unbatch(e, 'moved'); continue; }
+        if (!same(o.matrixWorld.elements, e.mw)) { if (!resync(e)) unbatch(e, 'moved'); continue; }
         const v = o.layers.mask !== HIDDEN && visIn(o, e.root);
-        if (v !== e.vis) { e.vis = v; for (let j = 0; j < e.ids.length; j++) e.bms[j].setVisibleAt(e.ids[j], v); }
+        if (v !== e.vis) { e.vis = v; const w = v && (!e.rs || e.rs.on); for (let j = 0; j < e.ids.length; j++) e.bms[j].setVisibleAt(e.ids[j], w); }
         continue;
       }
       if (o.parent !== e.parent || o.material !== e.mat || !e.root.parent) { unbatch(e, 'parent/material'); continue; }
       if (o.layers.mask !== DEAD && o.layers.mask !== HIDDEN) { unbatch(e, 'layers'); continue; }
-      if (movedLocal(o, e.loc) || !same(o.matrixWorld.elements, e.mw)) { unbatch(e, 'moved'); continue; }
+      if (movedLocal(o, e.loc) || !same(o.matrixWorld.elements, e.mw)) { if (!resync(e)) unbatch(e, 'moved'); continue; }
       let v = o.layers.mask !== HIDDEN && visIn(o, e.root); // (perfcull.js distance / house cull hide through layer 30)
       if (v && cam && e.r < 0.7) { const dx = e.cx - cam.x, dy = e.cy - cam.y, dz = e.cz - cam.z; if (Math.sqrt(dx * dx + dy * dy + dz * dz) - e.r * 6 > far) v = false; }
-      if (v !== e.vis) { e.vis = v; e.bm.setVisibleAt(e.id, v); }
+      if (v !== e.vis) { e.vis = v; e.bm.setVisibleAt(e.id, v && (!e.rs || e.rs.on)); }
     }
     // materials animated by code (emissive pulses, colour swaps): their meshes go back to plain rendering
     if (++tick % 30 === 0) for (const [m, s] of matSnaps) if (matSnap(m) !== s) { matSnaps.delete(m); for (const e of entries) if (!e.dead && e.mat === m) unbatch(e, 'material changed'); }
     if (entries.length > 2 * stats.meshes) { const live = entries.filter(e => !e.dead); entries.length = 0; entries.push(...live); idx = 0; }
   }
-  const api = { batch, diag, reason, update, unbatch, stats: () => ({ ...stats, live: entries.filter(e => !e.dead).length }), batches, entries };
+  const api = { batch, batchRoots, diag, reason, imReason, update, unbatch, stats: () => ({ ...stats, live: entries.filter(e => !e.dead).length }), batches, entries };
   return api;
 }

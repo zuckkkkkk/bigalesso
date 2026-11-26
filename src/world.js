@@ -164,18 +164,24 @@ function addSway(mat, uniforms, amp, mode) {
     sh.uniforms.uTime = uniforms.uTime; sh.uniforms.uWind = uniforms.uWind;
     sh.vertexShader = 'uniform float uTime; uniform float uWind;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
       {
-      #ifdef USE_INSTANCING
+      #if defined( USE_BATCHING )
+        vec3 ip = (modelMatrix * vec4(batchingMatrix[3].xyz, 1.0)).xyz;
+        mat4 swM = modelMatrix * batchingMatrix;
+      #elif defined( USE_INSTANCING )
         vec3 ip = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
+        mat4 swM = modelMatrix;
       #else
         vec3 ip = (modelMatrix * vec4(0.0,0.0,0.0,1.0)).xyz;
+        mat4 swM = modelMatrix;
       #endif
-        ${mode === 'world' ? 'vec3 wp = (modelMatrix * vec4(position,1.0)).xyz; float hh = max(wp.y - 0.6, 0.0); hh *= 0.35;' : 'float hh = max(position.y, 0.0);'}
+        ${mode === 'world' ? 'vec3 wp = (swM * vec4(position,1.0)).xyz; float hh = max(wp.y - 0.6, 0.0); hh *= 0.35;' : 'float hh = max(position.y, 0.0);'}
         float w = sin(uTime*1.6 + ip.x*0.55 + ip.z*0.4) * 0.6 + sin(uTime*2.7 + ip.x*1.3 - ip.z*0.9 + position.x*2.0) * 0.3;
         transformed.x += w * ${amp.toFixed(3)} * uWind * hh * hh;
         transformed.z += w * ${(amp * 0.55).toFixed(3)} * uWind * hh * hh;
       }`);
   };
   mat.customProgramCacheKey = () => 'sway' + mode + amp;
+  mat.userData.batchSafe = true; // (handles USE_BATCHING above: batch.js may draw these plants/hedges/grass as BatchedMeshes)
 }
 
 // ---------------------------------------------------------------- level

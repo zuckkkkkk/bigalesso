@@ -39,7 +39,7 @@ class Pool {
   }
   alloc() { for (let i = 0; i < this.cap; i++) if (!this.used[i]) { this.used[i] = 1; if (i + 1 > this.top) this.top = i + 1; this.sync(); return i; } return -1; }
   free(i) { if (i < 0 || !this.used[i]) return; this.used[i] = 0; this.mesh.setMatrixAt(i, this.zero); this.mesh.instanceMatrix.needsUpdate = true; while (this.top > 0 && !this.used[this.top - 1]) this.top--; this.sync(); }
-  sync() { this.mesh.count = this.warm ? Math.max(1, this.top) : this.top; }
+  sync() { this.mesh.count = this.warm ? Math.max(1, this.top) : this.top; this.mesh.visible = this.mesh.count > 0; } // empty pools: no draw call (an InstancedMesh with count 0 still costs one)
   color(i, c) { this.mesh.setColorAt(i, c); this.mesh.instanceColor.needsUpdate = true; }
   set(i, m) { this.mesh.setMatrixAt(i, m); this.mesh.instanceMatrix.needsUpdate = true; }
 }
@@ -257,6 +257,14 @@ export function createWorldLoot({ scene, level, hooks }) {
   api.update = (dt, t, player, canAuto) => {
     beamMat.uniforms.uTime.value = t;
     if (shop && player) shop.group.visible = Math.abs(player.x - shop.top.x) + Math.abs(player.z - shop.top.z) < 80; // ~9 draw calls only nearby
+    // crate meshes (6 unculled instanced draws, + 6 in the shadow pass) only with a crate of that kind within ~50 m,
+    // shadows only within ~10 m (the sun shadow map covers a few metres around the player)
+    if (player && (api._cv = (api._cv || 0) + 1) % 8 === 1) {
+      for (const [t, a, b] of [['cassetta', IM.cassetta, IM.fruit], ['frigo', IM.frigo, IM.door], ['bauletto', IM.bauletto, IM.lid]]) {
+        let d = 1e9; for (const c of crates) if (c.type === t) d = Math.min(d, Math.abs(player.x - c.pos.x) + Math.abs(player.z - c.pos.z));
+        a.visible = b.visible = d < 70; a.castShadow = b.castShadow = d < 14;
+      }
+    }
     // crates: lid animation + respawn
     for (const c of crates) {
       const want = c.open ? 1 : 0;

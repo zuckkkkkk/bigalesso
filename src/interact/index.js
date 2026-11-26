@@ -419,7 +419,7 @@ export function createInteractions(ctx) {
         if ((m.ht = (m.ht || 0) - dt) <= 0) { m.ht = 0.8; fx().hearts && fx().hearts(cp.clone().add(V(0, 0.4, 0)), 3); }
         if (t > 0.6 && !m.meow) { m.meow = 1; sfx('meow'); sfx('pet'); }
         out.lookW = 1; out.lookAt = cp;
-        if (t > 3.6) { unlock('cat'); endAct(); }
+        if (t > 3.6) { unlock('cat'); endAct(); } else if (t > 0.8 && keys.backP) endAct(); // Esc gets you up early (FIX-2)
         break;
       }
       case 'kick': {
@@ -515,7 +515,9 @@ export function createInteractions(ctx) {
     const c = st.can; if (!c) return; const m = c.mesh;
     if (c.vel.lengthSq() < 1e-5 && m.position.y <= 0.034) return;
     m.position.addScaledVector(c.vel, dt); c.vel.y -= 9.8 * dt;
-    if (m.position.y < 0.033) { m.position.y = 0.033; if (c.vel.y < -0.8) { sfx('clank', Math.min(0.6, -c.vel.y * 0.15)); c.vel.y *= -0.35; } else c.vel.y = 0; c.vel.x *= 0.96; c.vel.z *= 0.96; }
+    // bounce threshold scales with dt: at <=20 fps (dt clamp 0.05) one frame of gravity already beat the fixed 0.8,
+    // so a resting can bounced + clanked forever (FIX-2); slow + grounded = settle for good
+    if (m.position.y < 0.033) { m.position.y = 0.033; if (c.vel.y < -Math.max(0.8, 25 * dt)) { sfx('clank', Math.min(0.6, -c.vel.y * 0.15)); c.vel.y *= -0.35; } else { c.vel.y = 0; if (c.vel.x * c.vel.x + c.vel.z * c.vel.z < 0.01) c.vel.set(0, 0, 0); } c.vel.x *= 0.96; c.vel.z *= 0.96; }
     if (level && level.isWalkable && !level.isWalkable(m.position.x, m.position.z)) { m.position.addScaledVector(c.vel, -dt); c.vel.x *= -0.5; c.vel.z *= -0.5; }
     c.vel.x *= Math.exp(-dt * 0.8); c.vel.z *= Math.exp(-dt * 0.8);
     c.spin *= Math.exp(-dt * 1.5); m.rotation.y += c.spin * dt * 0.3; m.rotation.x += c.spin * dt;

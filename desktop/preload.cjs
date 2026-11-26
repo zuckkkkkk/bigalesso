@@ -8,5 +8,7 @@ contextBridge.exposeInMainWorld('bigalessoDesktop', {
   setSetting: (k, v) => ipcRenderer.invoke('bigalesso:set', k, v),
   gpuInfo: () => ipcRenderer.invoke('bigalesso:gpu'),
   relaunch: () => ipcRenderer.send('bigalesso:relaunch'),
+  skipUpdate: () => ipcRenderer.send('bigalesso:skipUpdate'),
+  versions: () => ipcRenderer.invoke('bigalesso:versions'),
   platform: process.platform,
 });

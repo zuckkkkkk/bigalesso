@@ -228,7 +228,7 @@ export function installCombat(ctx) {
     ST.drawn = ok && ST.want;
     if (!ok && ST.wasAllowed) { ST.touchFire = false; }
     ST.wasAllowed = ok;
-    const keysOk = inPlay() && !ui.menuOpen && !document.body.dataset.overlay && !typing() && !player.dead && ST.enabled;
+    const keysOk = inPlay() && !ui.menuOpen && !document.body.dataset.overlay && !(I.owned && I.owned()) && !typing() && !player.dead && ST.enabled; // I.owned: FIX-2 central keyboard-owner check (explore.js)
     // aim + mouse sensitivity (before explore consumes the drag)
     ST.aiming = ST.drawn && (ST.aimHeld || ST.aimToggle || I.padHeld(0, 6)) && ST.meleeT <= 0;
     ST.aimK += ((ST.aiming ? 1 : 0) - ST.aimK) * (1 - Math.exp(-dt * 14));

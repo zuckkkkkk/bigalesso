@@ -1,7 +1,7 @@
 // BIGALESSO · /api/profile, /api/board/:id, /api/daily — persistence over HTTP (same origin; the desktop app
 // proxies /api/* to this server). Token = the player's recovery code, sent as X-Token; only its hash is stored.
-//   GET  /api/profile                 -> 200 { version, updated, data:{key:value} } | 404 { version: 0 }
-//   PUT  /api/profile {data, base}    -> 200 { version, updated } | 409 { version, updated } (someone wrote after `base`)
+//   GET  /api/profile                 -> 200 { version, updated, data:{key:value} } | 200 { version: 0, data: null, empty: true }
+//   PUT  /api/profile {data, base}    -> 200 { version, updated } | 200 { conflict:true, version, updated } (someone wrote after `base`)
 //   GET  /api/board/:id?n=20          -> { board, lower, top:[{ name, score, verified, at, meta }] }
 //   POST /api/board/:id {score, name, meta, lower} -> { best, rank, improved }   (client submissions: verified=false)
 //   GET  /api/daily?mode=gulag        -> { mode, date, seed }   same seed for everyone that (UTC) day
@@ -66,7 +66,7 @@ export function handleApi(req, res, store, log = () => { }) {
     const th = hashToken(token);
     if (req.method === 'GET' || req.method === 'HEAD') {
       const r = store.getProfile(th);
-      if (!r) { json(res, 404, { version: 0 }); return true; }
+      if (!r) { json(res, 200, { version: 0, data: null, empty: true }); return true; } // new player: 200, not 404 (no console error in the browser)
       let data = {}; try { data = JSON.parse(r.data); } catch { }
       json(res, 200, { version: r.version, updated: r.updated, data }); return true;
     }
@@ -80,7 +80,7 @@ export function handleApi(req, res, store, log = () => { }) {
       if (data.length > MAX_PROFILE) { json(res, 413, { error: 'too_big', max: MAX_PROFILE }); return; }
       const cur = store.getProfile(th), now = Date.now();
       const base = b.base | 0;
-      if (cur && base !== cur.version && !b.force) { json(res, 409, { version: cur.version, updated: cur.updated }); return; }
+      if (cur && base !== cur.version && !b.force) { json(res, 200, { conflict: true, version: cur.version, updated: cur.updated }); return; } // 200+conflict, not 409: no red console error in the game
       const version = (cur ? cur.version : 0) + 1;
       try { store.putProfile(th, data, version, now); } catch (e) { log('store error', e && e.message); json(res, 500, { error: 'store' }); return; }
       json(res, 200, { version, updated: now });

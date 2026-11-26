@@ -68,7 +68,10 @@ jobs:
             **BIGALESSO-GAMES-Setup.exe**: installer (collegamento sul desktop, usa la scheda video dedicata).
             **BIGALESSO-GAMES-Portable.exe**: si avvia senza installare.
             Windows SmartScreen può avvisare che l'app non è firmata: "Ulteriori informazioni" → "Esegui comunque".
-          files: desktop/release/*.exe
+          files: |
+            desktop/release/*.exe
+            desktop/release/*.blockmap
+            desktop/release/latest.yml
       - name: Release della versione
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2

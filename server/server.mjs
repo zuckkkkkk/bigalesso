@@ -62,6 +62,7 @@ function serveStatic(req, res) {
 function cacheFor(file, u) {
   const base = path.basename(file), ext = path.extname(file).toLowerCase();
   if (ext === '.html' || base === 'sw.js' || ext === '.webmanifest') return 'no-cache';
+  if (/(^|\/)(update\.json|index\.html)$/.test(file)) return 'no-cache'; // the desktop app checks update.json at every start
   if (u && u.searchParams.has('v')) return 'public, max-age=31536000, immutable'; // versioned URL (app.js?v=<hash>)
   return 'public, max-age=86400, stale-while-revalidate=604800';
 }

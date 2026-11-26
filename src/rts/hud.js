@@ -200,7 +200,8 @@ export function createHUD(cb) {
   function markButtons(placing, amove) { for (const bt of root.querySelectorAll('[data-bld]')) bt.classList.toggle('on', bt.dataset.bld === placing); root.querySelector('[data-cmd="amove"]').classList.toggle('on', !!amove); }
   async function openLobby(listP, online) {
     root.classList.add('lob'); el.lobby.classList.add('on'); el.games.innerHTML = ''; el.note.textContent = online ? 'Cerco partite aperte…' : 'Per giocare con gli amici entra prima in una stanza dal menu Online (o crea la partita: se il server c\'è, gli altri la vedono qui).';
-    try { const list = await listP; el.games.innerHTML = (list || []).filter(g => !g.started || g.dropIn !== false).map(g => `<button data-join="${g.id}"><span>Assedio di ${g.host || g.players && g.players[0] || '?'}</span><span>${(g.players && g.players.length) || g.n || 1}/${g.max || 4} · unisciti</span></button>`).join(''); if (online) el.note.textContent = (list && list.length) ? 'Partite aperte:' : 'Nessuna partita aperta: creane una.'; } catch (e) { }
+    const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); // names come from other players
+    try { const list = await listP; el.games.innerHTML = (list || []).filter(g => !g.mine && (!g.started || g.dropIn !== false)).map(g => `<button data-join="${esc(g.id)}"><span>Assedio di ${esc(g.host || g.players && g.players[0] || '?')}</span><span>${(g.players && g.players.length) || g.n || 1}/${g.max || 4} · unisciti</span></button>`).join(''); if (online) el.note.textContent = (list && list.length) ? 'Partite aperte:' : 'Nessuna partita aperta: creane una.'; } catch (e) { }
   }
   const closeLobby = () => { el.lobby.classList.remove('on'); root.classList.remove('lob'); };
   const lobbyOpen = () => el.lobby.classList.contains('on');

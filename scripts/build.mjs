@@ -79,6 +79,22 @@ fs.writeFileSync(path.join(OUT, 'index.html'), html.replace(/src="(\.\/)?app\.js
   const sw = fs.readFileSync(path.join(ROOT, 'src/sw.js'), 'utf8').replace('__VERSION__', VERSION).replace('[/*PRECACHE*/]', JSON.stringify(pre));
   fs.writeFileSync(path.join(OUT, 'sw.js'), sw);
 }
+// update.json: what the desktop app compares with its copy to download only the changed files from the server
+// (desktop/main.cjs). build = time of the build (newer wins), files = sha256 + size of every served file.
+if (mode === 'web' && !single) {
+  const files = {};
+  const walk = d => { for (const n of fs.readdirSync(path.join(OUT, d), { withFileTypes: true })) {
+    const rel = d ? d + '/' + n.name : n.name;
+    if (n.isDirectory()) walk(rel);
+    else if (!/\.(br|gz)$/.test(n.name) && rel !== 'update.json') { const buf = fs.readFileSync(path.join(OUT, rel)); files[rel] = { s: buf.length, h: crypto.createHash('sha256').update(buf).digest('hex') }; }
+  } };
+  walk('');
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const build = Number(process.env.BIGALESSO_BUILD) || Date.now();
+  // shell: version of the desktop wrapper API this content needs (bump when the game starts using a new preload function)
+  fs.writeFileSync(path.join(OUT, 'update.json'), JSON.stringify({ version: pkg.version, build, shell: 1, files }));
+}
+
 if (compress) {
   const walk = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
   let saved = 0;

@@ -27,6 +27,9 @@ try { user = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) || {}; } catch (
 const setting = k => (k in user ? user[k] : cfg[k]);
 const SERVER = String(process.env.BIGALESSO_SERVER || setting('server') || '').trim().replace(/\/+$/, '');
 const UNCAPPED = process.env.BIGALESSO_UNCAPPED === '1' || setting('uncapFps') === true;
+// game updates from the server (updater.cjs): only changed files, checked at every start; SHELL = wrapper API version
+const SHELL = 1;
+const updater = require('./updater.cjs')({ app, net, ROOT, SERVER, SHELL });
 
 // ---- GPU / CPU: these must be set before the app is ready ----
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
@@ -80,12 +83,22 @@ function serve(req) {
   }
   let p = decodeURIComponent(u.pathname);
   if (p.endsWith('/')) p += 'index.html';
-  const file = path.normalize(path.join(ROOT, p));
-  if (!file.startsWith(ROOT + path.sep)) return new Response('forbidden', { status: 403 });
+  const rel = path.posix.normalize(p).replace(/^\/+/, '');
+  if (!rel || rel.startsWith('..') || rel.includes('/../')) return new Response('forbidden', { status: 403 });
+  const file = updater.resolve(rel); // newest copy: downloaded update or the installer's
   const vt = VIDEO[path.extname(file).toLowerCase()];
   if (vt) return serveVideo(file, req, vt);
   return net.fetch(pathToFileURL(file).toString()).catch(() => new Response('404', { status: 404 }));
 }
+
+const LAUNCHER = `<!doctype html><meta charset="utf-8"><style>html,body{margin:0;height:100%;background:#07030d;color:#fff;font:600 13px/1.4 system-ui,Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center}
+.c{width:min(460px,80vw);text-align:center}.l{font:900 54px/1 Impact,Anton,system-ui;letter-spacing:.02em}.l span{display:block;font-size:15px;letter-spacing:.6em;opacity:.75;margin-top:6px}
+.b{height:3px;background:rgba(255,255,255,.12);margin:34px 0 12px;overflow:hidden}.b i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ff3d7f,#ffd166);transition:width .2s}
+.t{opacity:.7;letter-spacing:.14em;text-transform:uppercase;font-size:11px}.s{margin-top:18px;background:none;border:1px solid rgba(255,255,255,.25);color:#fff;padding:6px 14px;border-radius:4px;cursor:pointer;opacity:.6;font:inherit}</style>
+<div class="c"><div class="l">BIGALESSO<span>GAMES</span></div><div class="b"><i id="b"></i></div><div class="t" id="t">Avvio…</div><button class="s" id="s" hidden>Gioca senza aggiornare</button></div>
+<script>let t0=Date.now();function setP(k,v,m){const b=document.getElementById('b'),t=document.getElementById('t');if(k<0){b.style.width='8%'}else{b.style.width=Math.round(k*100)+'%'}
+t.textContent=m||('Aggiorno alla versione '+v+'… '+Math.round(k*100)+'%');if(k>=0&&k<1&&Date.now()-t0>6000)document.getElementById('s').hidden=false}
+document.getElementById('s').onclick=()=>window.bigalessoDesktop&&window.bigalessoDesktop.skipUpdate()</script>`;
 
 function createWindow() {
   // never bigger than the screen (laptops at 125-150% scaling are ~1280-1536 px wide): a window wider than the work
@@ -115,13 +128,40 @@ function createWindow() {
   let crashes = 0; // the page died (driver reset, out of memory): reload it a couple of times instead of leaving a white window
   win.webContents.on('render-process-gone', (e, d) => { if (d.reason !== 'clean-exit' && ++crashes <= 2) win.webContents.reload(); });
   const q = SERVER ? '?server=' + encodeURIComponent(SERVER.replace(/^http/, 'ws') + '/ws') : '';
-  win.loadURL(`app://${HOST}/index.html${q}`);
+  const play = () => { if (!win.isDestroyed()) win.loadURL(`app://${HOST}/index.html${q}`); };
+  if (!SERVER) { play(); return win; }
+  // launcher: check the server for a newer game, download only what changed, then start (offline → start at once)
+  win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(LAUNCHER));
+  win.webContents.once('did-finish-load', () => {
+    const say = (k, ver, msg) => { if (!win.isDestroyed()) win.webContents.executeJavaScript(`window.setP && setP(${JSON.stringify(k)}, ${JSON.stringify(ver || '')}, ${JSON.stringify(msg || '')})`).catch(() => { }); };
+    say(-1, '', 'Cerco aggiornamenti…');
+    updater.check((k, ver) => say(k, ver)).then(r => {
+      if (r.updated) say(1, r.version, 'Aggiornato alla versione ' + r.version);
+      else if (r.reason === 'shell') say(1, r.version, "Versione " + r.version + " disponibile: serve la nuova app (scaricala dal link del gruppo)");
+      else if (r.reason === 'error') say(1, '', 'Aggiornamento non riuscito, gioco con la versione che ho');
+      setTimeout(play, r.updated || r.reason === 'current' ? 250 : 1600);
+    }).catch(() => play());
+  });
   return win;
 }
 
 function saveUser(k, v) {
   user[k] = v;
   try { fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true }); fs.writeFileSync(SETTINGS_FILE, JSON.stringify(user, null, 2)); } catch (e) { }
+}
+
+// the app itself (Electron shell) — rare: only when the installer version goes up. Installer builds only; the
+// portable exe and dev runs skip it. The new installer is downloaded in the background and installed at quit.
+function shellUpdate() {
+  if (!app.isPackaged || process.platform !== 'win32' || process.env.PORTABLE_EXECUTABLE_DIR) return;
+  let au = null; try { au = require('electron-updater').autoUpdater; } catch (e) { return; }
+  try {
+    au.setFeedURL({ provider: 'generic', url: 'https://github.com/zuckkkkkk/bigalesso/releases/download/desktop-latest' });
+    au.autoDownload = true; au.autoInstallOnAppQuit = true;
+    au.on('update-downloaded', i => { const w = BrowserWindow.getAllWindows()[0]; if (w) w.webContents.executeJavaScript(`window.__app && window.__app.world && window.__app.world.toast && window.__app.world.toast(${JSON.stringify('Nuova app ' + (i && i.version || '') + ' scaricata: si installa quando chiudi il gioco')})`).catch(() => { }); });
+    au.on('error', () => { });
+    setTimeout(() => au.checkForUpdates().catch(() => { }), 15000);
+  } catch (e) { }
 }
 
 const single = app.requestSingleInstanceLock();
@@ -145,8 +185,11 @@ else {
     ipcMain.handle('bigalesso:set', (e, k, v) => { if (k === 'uncapFps' || k === 'fullscreen') saveUser(k, !!v); return true; });
     ipcMain.handle('bigalesso:gpu', () => app.getGPUInfo('basic').catch(() => null));
     ipcMain.on('bigalesso:relaunch', () => { app.relaunch(); app.exit(0); });
+    ipcMain.on('bigalesso:skipUpdate', () => updater.skip());
+    ipcMain.handle('bigalesso:versions', () => ({ app: app.getVersion(), ...updater.info() }));
     createWindow();
     preferDiscreteGPU();
+    shellUpdate();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });
   app.on('window-all-closed', () => app.quit());

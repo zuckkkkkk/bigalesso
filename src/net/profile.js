@@ -60,7 +60,7 @@ async function push(opts = {}) {
   busy = (async () => {
     const data = snapshot();
     let r = await call('PUT', 'api/profile', { body: { data, base: meta.v }, keepalive: !!opts.keepalive && JSON.stringify(data).length < 60000 });
-    if (r && r.status === 409) r = await call('PUT', 'api/profile', { body: { data, base: meta.v, force: true } }); // last write wins
+    if (r && (r.status === 409 || (r.body && r.body.conflict))) r = await call('PUT', 'api/profile', { body: { data, base: meta.v, force: true } }); // last write wins
     if (r && r.status === 200 && r.body) { meta.v = r.body.version; meta.dirty = false; saveMeta(); P.status = 'synced'; }
     else P.status = 'error';
   })().finally(() => { busy = null; });
@@ -96,7 +96,7 @@ async function boot() {
       try { sessionStorage.setItem('bgl_applied', String(r.body.version)); sessionStorage.setItem('bgl_toast', '1'); } catch { }
       location.reload(); return;
     }
-  } else if (r.status === 404 || meta.dirty) push();
+  } else if (r.status === 404 || (r.body && r.body.empty) || meta.dirty) push();
   addEventListener('pagehide', () => { if (meta.dirty) push({ keepalive: true }); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && meta.dirty) push({ keepalive: true }); });
   injectSettings();
@@ -108,7 +108,7 @@ async function adopt(code) {
   if (t === token) return { ok: false, error: 'È già il codice di questo dispositivo' };
   const r = await call('GET', 'api/profile', { tok: t });
   if (!r || !r.server) return { ok: false, error: 'Server non raggiungibile' };
-  if (r.status === 404) return { ok: false, error: 'Nessun salvataggio con questo codice' };
+  if (r.status === 404 || (r.body && r.body.empty)) return { ok: false, error: 'Nessun salvataggio con questo codice' };
   if (r.status !== 200 || !r.body) return { ok: false, error: 'Errore del server' };
   rawSet.call(LS, TOKEN_KEY, t); token = t;
   apply(r.body.data || {}); meta = { v: r.body.version, dirty: false }; saveMeta(); frozen = true;

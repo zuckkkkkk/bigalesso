@@ -195,26 +195,30 @@ export function installCards({ scene, level, man, input, ui, audio, camera, S: A
     leaveGame();
     C.type = type; C.result = null; C.sel = -1; C.opt = -1; C.dsel = -1; C.said = {};
     const diff = C.diff;
-    const players = (type === 'figurine' ? C.opp.slice(0, 1) : C.opp.slice(0, C.n - 1)).map(id => ({ id, name: persona(id).name, bot: true, diff }));
+    const netOn = !!(window.__match.transport && window.__net && window.__net.online);
+    // figurine online "aspetta un umano": lobby sul server (wait), chi è nella stanza entra, l'host avvia (o parte col bot)
+    const waitHuman = type === 'figurine' && C.waitHuman && netOn && C.online !== false && !extra.matchId;
+    const players = waitHuman ? [] : (type === 'figurine' ? C.opp.slice(0, 1) : C.opp.slice(0, C.n - 1)).map(id => ({ id, name: persona(id).name, bot: true, diff }));
     // in coppia a 4: il primo amico scelto è il compagno (siede di fronte, indice 2)
     if (type !== 'figurine' && C.n === 4 && players.length === 3) players.splice(0, 3, players[1], players[0], players[2]);
     const opts = type === 'scopa' ? { diff, target: C.target } : type === 'briscola' ? { diff } : { diff };
     try {
       const net = window.__net, mayOnline = !!extra.matchId || (C.online !== false && !!(window.__match.transport && net && net.online));
       // tempo per turno solo online (offline nessuno ti mette fretta)
-      const s = await window.__match.start(type, { online: extra.matchId ? true : C.online, matchId: extra.matchId, players, opts: mayOnline ? { ...opts, turnTime: 40 } : opts });
+      const s = await window.__match.start(type, { online: extra.matchId || waitHuman ? true : C.online, matchId: extra.matchId, players, wait: waitHuman, opts: mayOnline ? { ...opts, turnTime: 40 } : opts });
       C.sess = s; C.screen = 'game'; C.html = '';
-      let seatedFor = null;
+      let seatedFor = null, deckSent = false;
       s.on('view', v => {
         if (C.sess !== s) return; C.view = v;
+        // il mazzo dell'album va mandato quando la partita è davvero partita (online in lobby le mosse sono rifiutate)
+        if (type === 'figurine' && !deckSent) { deckSent = true; try { s.act({ k: 'deck', ids: col.deck() }); } catch (e) { } }
         if (C.mode3d && (v.players || v.opp)) { T3.setView(v); if (seatedFor !== s) { seatedFor = s; seatFriends(v); } }
         render();
       });
       s.on('event', e => { if (C.sess === s) onEvent(e); });
       s.on('over', r => { if (C.sess === s) onOver(r); });
       s.on('error', e => { if (C.sess === s && e && e.error) flash(e.fatal ? 'Collegamento perso: la partita continua senza di te' : e.error); });
-      s.on('players', list => { if (C.sess === s && s.online && C.view) { const humans = (list || []).filter(p => !p.bot).length; if (humans > (C._humans || 1)) flash('È arrivato un giocatore al tavolo'); C._humans = humans; } });
-      if (type === 'figurine') try { s.act({ k: 'deck', ids: col.deck() }); } catch (e) { }
+      s.on('players', list => { if (C.sess === s && s.lobby) render(); if (C.sess === s && s.online && C.view) { const humans = (list || []).filter(p => !p.bot).length; if (humans > (C._humans || 1)) flash('È arrivato un giocatore al tavolo'); C._humans = humans; } });
       ACH('carte_prima');
       logEvent('carte', `si siede a giocare a ${GAME_NAME[type]}`);
     } catch (e) { console.warn('cards start', e); toast('Non riesco ad aprire la partita: ' + (e && e.message || e), 'warn'); }
@@ -316,6 +320,7 @@ export function installCards({ scene, level, man, input, ui, audio, camera, S: A
       else if (num) { const t = ['briscola', 'scopa', 'figurine'][+num[2] - 1]; if (t) { C.type = t; fixOpp(); refreshLobby(); render(); } }
       return;
     }
+    if (C.screen === 'game' && !C.view && C.sess && C.sess.lobby) { if (k === 'Enter' && C.sess.host) { e.preventDefault(); C.sess.begin(); } return; }
     if (C.screen === 'game' && C.result) { if (k === 'Enter') { e.preventDefault(); start(C.type); } else if (k === 'Backspace') { leaveGame(); open('menu'); } return; }
     if (C.screen === 'game' && C.view) {
       const v = C.view;
@@ -365,11 +370,14 @@ export function installCards({ scene, level, man, input, ui, audio, camera, S: A
       else if (a === 'target') { C.target = +b.dataset.v; render(); }
       else if (a === 'diff') { C.diff = b.dataset.v; render(); }
       else if (a === 'online') { C.online = b.dataset.v === 'off' ? false : 'auto'; render(); }
+      else if (a === 'wait') { C.waitHuman = !C.waitHuman; render(); }
+      else if (a === 'begin') { if (C.sess && C.sess.begin) C.sess.begin(); }
       else if (a === 'opp') { const id = b.dataset.v, k = needOpp(); if (C.opp.includes(id)) C.opp = C.opp.filter(x => x !== id); else { C.opp.push(id); if (C.opp.length > k) C.opp.shift(); } render(); }
       else if (a === 'play') start(C.type);
       else if (a === 'join') start(b.dataset.t || C.type, { matchId: b.dataset.v });
       else if (a === 'again') start(C.type);
       else if (a === 'menu') { leaveGame(); open('menu'); }
+      else if (a === 'leave') { leaveGame(); open('menu'); }
       else if (a === 'album') open('album');
       else if (a === 'packs') openPacks();
       else if (a === 'trade') openTrade();
@@ -416,7 +424,7 @@ export function installCards({ scene, level, man, input, ui, audio, camera, S: A
       ${t === 'scopa' ? `<div class="row"><span class="l">Si va a</span>${chip('target', 11, '11', C.target === 11)}${chip('target', 21, '21', C.target === 21)}</div>` : ''}
       <div class="row"><span class="l">Difficoltà</span>${chip('diff', 'facile', 'Facile', C.diff === 'facile')}${chip('diff', 'media', 'Media', C.diff === 'media')}${chip('diff', 'tosta', 'Tosta', C.diff === 'tosta')}</div>
       <div class="row"><span class="l">${t === 'figurine' ? 'Contro' : C.n === 4 ? 'Al tavolo (' + k + ')' : 'Contro'}</span>${fr}</div>
-      <div class="row"><span class="l">Online</span>${chip('online', 'auto', online ? 'Sì: il server fa da arbitro, chi è nella stanza può sedersi' : 'Quando sei collegato (Esc → Online)', C.online !== false)}${chip('online', 'off', 'Solo bot, offline', C.online === false)}</div>
+      <div class="row"><span class="l">Online</span>${chip('online', 'auto', online ? 'Sì: il server fa da arbitro, chi è nella stanza può sedersi' : 'Quando sei collegato (Esc → Online)', C.online !== false)}${chip('online', 'off', 'Solo bot, offline', C.online === false)}${t === 'figurine' && online && C.online !== false ? chip('wait', 1, '👥 Aspetta un avversario umano', !!C.waitHuman) : ''}</div>
       ${lob}
       <div class="acts"><button class="mg-b go" data-a="play">Gioca <kbd>Invio</kbd></button><button class="mg-b" data-a="album">📒 Album figurine</button>${col.packs() ? `<button class="mg-b" data-a="packs">🎁 Apri ${col.packs()} bustin${col.packs() > 1 ? 'e' : 'a'}</button>` : ''}<button class="mg-b" data-a="trade">🤝 Scambia doppioni</button></div>`;
   }
@@ -475,7 +483,13 @@ export function installCards({ scene, level, man, input, ui, audio, camera, S: A
     return `<div class="fig ${cls} ${shiny ? 'shinyfx' : ''}" style="background-image:url(${figurinaURL(id, { personas: personas(), shiny })})" title="${esc(d ? d.name + ' — ' + d.title + ': ' + d.text : id)}" ${attrs}>${power != null ? `<span class="pw ${pc}">${power}</span>` : ''}</div>`;
   };
   function duelHTML() {
-    const v = C.view;
+    const v = C.view, s = C.sess;
+    if (!v && s && s.online && s.lobby) {
+      const ps = (s.players ? s.players() : []) || [];
+      return `<h1>Figurine duel online<small>${s.host ? 'Aspetti un avversario: chi è nella tua stanza la vede tra le partite aperte' : 'Aspetti che l\'host faccia partire il duello'}</small></h1>
+        <div class="msg">Al tavolo: ${ps.length ? ps.map(p => esc(p.name || p.id)).join(', ') : 'solo tu'} (${ps.length}/2)</div>
+        <div class="acts">${s.host ? `<button class="mg-b go" data-a="begin">${ps.length >= 2 ? 'Inizia il duello' : 'Inizia contro un bot'} <kbd>Invio</kbd></button>` : ''}<button class="mg-b" data-a="leave">Lascia <kbd>Esc</kbd></button></div>`;
+    }
     if (!v) return `<div class="msg">Mescolo le figurine…</div>`;
     const plan = v.phase === 'plan' && !v.ended;
     const selCard = C.dsel >= 0 ? v.hand[C.dsel] : null;

@@ -249,7 +249,7 @@ export function installSport({ scene, level, man, input, ui, audio, camera, getF
     if (ST.cheerNext) { ST.cheerNext = false; if (w.mode === 'explore') I.edges.add('Digit2'); }
     const locked = I.look && (I.look.locked || (I.lookFree && I.lookFree()));
     const mouseEdge = I.mouseHeld && !ST.prevMouse; ST.prevMouse = !!I.mouseHeld;
-    if (w.mode !== 'explore') { ST.charge = null; return; }
+    if (w.mode !== 'explore' || (I.owned && I.owned())) { ST.charge = null; return; } // I.owned: an overlay/menu has the keys (FIX-2)
     if (ST.charge) return;
     if (mouseEdge && locked && ballNear() && canKick()) { startCharge('shot', 'mouse'); I.drag.click = false; }
     if (touch.edge.has('shot')) startCharge('shot', 'touch');

@@ -1,7 +1,7 @@
 {
   "name": "bigalesso-desktop",
   "productName": "BIGALESSO GAMES",
-  "version": "8.0.0",
+  "version": "8.1.0",
   "private": true,
   "description": "BIGALESSO GAMES – versione desktop (Electron)",
   "main": "main.cjs",
@@ -31,6 +31,7 @@
     "files": [
       "main.cjs",
       "preload.cjs",
+      "updater.cjs",
       "config.json",
       "config.build.json",
       "app/**/*",
@@ -96,5 +97,8 @@
         "repo": "bigalesso"
       }
     ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2"
   }
 }
