@@ -315,7 +315,7 @@ export function createVespa({ scene, man, audio, input, level, say, ev, unlock, 
   }
   const info = () => { const R = st.riding; return R ? { x: rig.position.x, z: rig.position.z, yaw: R.yaw, speed: R.speed, nitro: st.nitro, nitroOn: st.nitroOn, phase: R.phase } : null; };
   const leave = () => { if (st.riding && st.W) dismount(st.W, st.H); };
-  const api = { items, update, camera, pre, get riding() { return !!st.riding; }, state: st, dismount, rig, place, mountAt, info, leave, freeze: v => { st.frozen = !!v; } };
+  const api = { items, update, camera, pre, get riding() { return !!st.riding; }, state: st, dismount, rig, place, mountAt, info, leave, freeze: v => { st.frozen = !!v; }, writeInstance, spots, GEOM, ensureBody }; // writeInstance/spots/GEOM: motor/ shows the others' vespe online
   window.__vespa = api; // debug / tests
   return api;
 }

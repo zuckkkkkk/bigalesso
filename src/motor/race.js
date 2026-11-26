@@ -260,7 +260,7 @@ export function createRace(ctx) {
     const mine = first && first.players.find(p => p.id === s.me);
     const gx = mine ? mine.x : T.grid[0][0], gz = mine ? mine.z : T.grid[0][1];
     await motor.raceVehicle(veh, gx, gz, T.dir);
-    motor.freeze(true);
+    motor.freeze(true); st.frozen = true;
     s.on('event', onEvent);
     s.on('over', r => finish(r));
     if (s.act) s.act({ k: 'ready' });
@@ -274,7 +274,7 @@ export function createRace(ctx) {
     st.session = null; st.view = null; st.lobby = false; freeRigs();
     for (const a of Object.values(arches)) a.mesh.visible = false; curtain.visible = false;
     hud.classList.remove('on'); H('.cd').classList.remove('on'); tagsHide(0); hcache.clear();
-    motor.freeze(false);
+    motor.freeze(false); st.frozen = false;
     try { window.__combat && window.__combat.setSpawning && window.__combat.setSpawning(true); } catch (e) { }
   }
 
@@ -343,7 +343,10 @@ export function createRace(ctx) {
     // send my state (10 Hz) while racing; on the grid the rules keep me frozen
     st.sendT -= dt;
     if (car && st.sendT <= 0 && s.act) { st.sendT = 0.1; s.act({ k: 'state', x: +car.x.toFixed(2), z: +car.z.toFixed(2), yaw: +car.yaw.toFixed(3), v: +Math.abs(car.speed).toFixed(2) }); if (st.ghostRec && v.phase === 'race' && !(me && me.done)) st.ghostRec.push(Math.round(car.x * 10), Math.round(car.z * 10), Math.round(car.yaw * 1000)); }
-    if (v.phase === 'grid' || v.phase === 'countdown') motor.freeze(true);
+    // frozen while the view says grid/countdown, released on the change only: the 'go' event can arrive before the
+    // first 'race' view, and freezing again on every stale countdown view left the car stuck after VIA!
+    const fz = v.phase === 'grid' || v.phase === 'countdown';
+    if (fz !== st.frozen) { st.frozen = fz; motor.freeze(fz); }
     // HUD
     if (me) {
       setHTML('.pos b', `${me.rank}<i>/${v.n}</i>`);

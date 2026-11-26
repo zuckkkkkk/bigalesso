@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { JOBS, RANKS, rankOf, payMul, CAST, PICKUPS, DROPS, RIDER_LINES, BEERS, SIZES, BAR_LINES, RULES, VIP, OUTFITS, SHOES, DRUNK, DOOR_NOTES, DOOR_LINES, BAD_SPOTS, INFRACTIONS, PLATES, FINE_LINES } from './data.js';
 import { persona } from '../ai.js';
 import { esc } from './ui.js';
+import { MIL_DZ } from '../quartiere/layout.js'; // the Millennium's distance from the end of Via Petroni
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const PI = Math.PI, FAR = V(1e5, 0, 1e5);
@@ -22,7 +23,9 @@ const kb = (k, label) => `<kbd>${k}</kbd>${label}`;
 
 // spots
 const BAR = { stand: V(3, 0, 42.95), yaw: PI, stools: [V(1.7, 0, 41.25), V(3.0, 0, 41.25), V(4.3, 0, 41.25)], door: V(3, 0, 33.2), cam: { pos: V(5.4, 1.95, 43.05), look: V(2.6, 1.05, 41.9) }, item: V(3, 0, 41.45), glass: V(3, 1.12, 42.3) };
-const DOOR = { stand: V(44, 0, 76.35), yaw: PI, slots: [V(44.55, 0, 75.0), V(44.55, 0, 74.05), V(44.55, 0, 73.1), V(44.55, 0, 72.15)], from: V(44.6, 0, 64), inside: V(44, 0, 84.2), away: V(44, 0, 56), cam: { pos: V(43.0, 2.15, 77.6), look: V(44.5, 1.25, 74.2) }, item: V(44, 0, 75.9) };
+// the Millennium is MIL_DZ m north of the end of Via Petroni (quartiere/layout.js): door, queue and camera move with it
+const MZ = MIL_DZ;
+const DOOR = { stand: V(44, 0, 76.35 + MZ), yaw: PI, slots: [V(44.55, 0, 75.0 + MZ), V(44.55, 0, 74.05 + MZ), V(44.55, 0, 73.1 + MZ), V(44.55, 0, 72.15 + MZ)], from: V(44.6, 0, 64), inside: V(44, 0, 84.2 + MZ), away: V(44, 0, 56), cam: { pos: V(43.0, 2.15, 77.6 + MZ), look: V(44.5, 1.25, 74.2 + MZ) }, item: V(44, 0, 75.9 + MZ) };
 
 export function createJobs(X) {
   const { scene, camera, man, R, st } = X;
@@ -493,7 +496,7 @@ export function createJobs(X) {
       act: () => barEnter() },
     { id: 'rp_door', range: 1.8,
       label: () => 'Prendi posto alla porta (turno da buttafuori)',
-      anchor: () => (J && J.id === 'buttafuori' && J.phase === 'goto') ? DOOR.item : FAR, top: () => V(44, 1.6, 76.6),
+      anchor: () => (J && J.id === 'buttafuori' && J.phase === 'goto') ? DOOR.item : FAR, top: () => V(44, 1.6, 76.6 + MZ),
       act: () => doorEnter() },
     { id: 'rp_car', range: 2.8,
       label: () => 'Fai la multa',

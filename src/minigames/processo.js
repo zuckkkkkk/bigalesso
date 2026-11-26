@@ -1,36 +1,16 @@
 // "Processo AI": a mock trial in the Gulag courtroom (prosecutor's table; anchor 'tribunale' overrides).
 // Pick a (silly) accusation from the group's lore and a side, argue for 3 rounds (choices or your own words),
 // the AI judge gives the verdict and a goliardic sentence. Offline: scripted opponent + score-based verdict.
+// Party game (O → Gioca insieme → ⚖️, rules shared/processo.mjs, 2–6 players): roles PM / Avvocato / Imputato / Giurati
+// among the friends, case vote, timed turns, jury vote, then the AI judge (asked by the server referee) rules.
 import * as THREE from 'three';
 import { V, rnd, pick, shuffle, clamp, persona, personas, catchphrase, ask, SAFE, clean, esc, createOverlay, unlock, phone, logEvent, anchor, banterPool } from './shared.js';
+import { CHARGES as SHARED_CHARGES, CHOICES as SHARED_CHOICES, ROLE_NAME } from '../../shared/processo.mjs';
+import { registerPartyGame } from '../net/party.js';
 
-// light, harmless accusations (running jokes of the group; nothing criminal about real people)
-const CHARGES = {
-  cesco: ['Latitanza in chat: da una settimana è "Ma chi è?"', 'Organizzazione abusiva di Bellazzi del lunedì'],
-  asche: ['Aver fatto laggare WhatsApp con 400 messaggi in un\'ora', 'Uso reiterato di "discors" invece di "discord"'],
-  seghino: ['Rinomina del gruppo senza autorizzazione', 'Zombata convocata alle 2 di notte'],
-  lombu: ['"10 min" durati un\'ora e mezza', 'Aver chiuso per primo in tutti i game'],
-  zuck: ['Compettina proposta alle 23:59 di un martedì', 'Approvazione di tutto senza leggere'],
-  parme: ['Abuso della parola "greve"', 'Pigrizia aggravata nel rispondere ai piani'],
-  ashish: ['"Giuro che arrivo": mai arrivato', 'Urla in maiuscolo durante la compe'],
-  forla: ['"No puedo" seriale', 'Aver comprato il terzo monitor dell\'anno'],
-  ciccio: ['Precisazioni non richieste sul Corriere', 'Commento live a orari improbabili'],
-  ricky: ['Messaggi troppo lunghi e troppo ordinati', 'Domande sui piani prima che esistano i piani'],
-  jacopo: ['Sempre in viaggio, mai al Celtic', 'Saluto ✌🏼 come unica risposta'],
-  mirco: ['Troppe domande su Tortellino Man', 'Aver chiesto l\'edizione 312 che non esiste'],
-};
-const CHOICES = {
-  accusa: [
-    { t: 'Mostro lo screenshot della chat come prova', s: 3 }, { t: 'Chiamo un testimone a sorpresa: il bot del gruppo', s: 2 },
-    { t: 'Faccio leva sui precedenti dell\'imputato', s: 2 }, { t: 'Grido "OBIEZIONE!" senza motivo', s: 1 },
-    { t: 'Cito il Corriere delle Due Torri come fonte', s: 2 }, { t: 'Chiedo alla giuria: "ma vi pare normale?"', s: 1 },
-  ],
-  difesa: [
-    { t: 'Lo screenshot è decontestualizzato', s: 3 }, { t: 'Il mio assistito era su Discord, ho i log', s: 2 },
-    { t: 'Invoco il diritto alla compettina', s: 2 }, { t: 'Piango davanti alla giuria', s: 1 },
-    { t: 'Tutti nel gruppo l\'hanno fatto almeno una volta', s: 2 }, { t: 'Propongo un patteggiamento in birrette', s: 1 },
-  ],
-};
+// light, harmless accusations (running jokes of the group; nothing criminal about real people): shared/processo.mjs
+const CHARGES = SHARED_CHARGES;
+const CHOICES = { accusa: SHARED_CHOICES.accusa, difesa: SHARED_CHOICES.difesa };
 const PENE_BASE = ['offrire le birrette al prossimo Celtic', 'una settimana senza compettine', 'scrivere "discord" correttamente cento volte', 'pagare il sushi a tutti', 'fare da autista il sabato al Millennium', 'leggere ad alta voce tutto il Corriere', 'tre anni di… zombate obbligatorie', 'cambiare foto profilo del gruppo per un mese'];
 const PENE = [...PENE_BASE, ...banterPool('processo_pene')];
 const VERDETTI = banterPool('processo_verdetti');
@@ -50,7 +30,9 @@ const CSS = `
 #mg-proc .ch button,#mg-proc .ft button{font:600 14px system-ui}
 #mg-proc .row{display:flex;gap:8px}#mg-proc input{flex:1;font:15px system-ui;padding:10px 12px;border-radius:8px;border:1px solid #5a4020;background:#1a120c;color:#fff;outline:none}
 #mg-proc .verdict{font:900 46px/1 Impact,"Arial Black",system-ui;letter-spacing:.04em;text-align:center;margin:4px 0}
-#mg-proc .pick{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}`;
+#mg-proc .pick{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+#mg-proc .roles{display:flex;flex-wrap:wrap;gap:6px;font:600 12px system-ui}#mg-proc .roles span{padding:3px 8px;border-radius:999px;background:rgba(255,240,210,.08)}#mg-proc .roles span.me{outline:1px solid #4aa3ff}
+#mg-proc .wait{color:#c9b38a;font:600 14px system-ui}#mg-proc .ln.sys .tx{border-left-color:#888;font-style:italic;color:#d8cdb6}`;
 
 export function processoPlugin(M) {
   return (ctx, W, H) => {
@@ -66,7 +48,7 @@ export function processoPlugin(M) {
     const sfx = n => { try { audio.ctx && audio.sfx(n); } catch (e) { } };
     function ensure() {
       if (ov) return ov;
-      ov = createOverlay('mg-proc', `<div class="pr"><div class="hd"><span class="live">IN ONDA</span><b>Il Processo del Secolo</b><span class="c"></span></div><div class="tr"></div><div class="ft"></div></div>`, { input, onClose: () => { P = null; if (W.mode === 'mg_processo') setMode('standup'); } });
+      ov = createOverlay('mg-proc', `<div class="pr"><div class="hd"><span class="live">IN ONDA</span><b>Il Processo del Secolo</b><span class="c"></span></div><div class="tr"></div><div class="ft"></div></div>`, { input, onKey: e => { if (!PS) return; const k = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Numpad3: 2 }[e.code]; if (k !== undefined) { e.preventDefault(); partyKey(k); } }, onClose: () => { P = null; if (PS) partyClosed(); if (W.mode === 'mg_processo') setMode('standup'); } });
       const s = document.createElement('style'); s.textContent = CSS; document.head.appendChild(s);
       return ov;
     }
@@ -74,7 +56,7 @@ export function processoPlugin(M) {
     function line(who, text, cls = '') {
       const el = document.createElement('div'); el.className = 'ln ' + cls;
       const color = who === 'me' ? '#4aa3ff' : who === 'judge' ? '#ff6050' : (persona(who).color || '#e2c271');
-      el.innerHTML = `<div class="who" style="color:${esc(color)}">${esc(nm(who))}</div><div class="tx">${esc(text)}</div>`;
+      el.innerHTML = `<div class="who" style="color:${esc(color)}">${esc(who === 'sys' ? '📢 Cancelleria' : nm(who))}</div><div class="tx">${esc(text)}</div>`;
       const tr = ov.$('.tr'); tr.appendChild(el); tr.scrollTop = tr.scrollHeight; return el;
     }
     function thinking(who) { const el = line(who, '…'); el.querySelector('.tx').innerHTML = '<span class="mg-dots"><span>●</span><span>●</span><span>●</span></span>'; return el; }
@@ -154,7 +136,80 @@ export function processoPlugin(M) {
       setFoot(`<div class="row"><button class="mg-b again">Nuovo processo</button><button class="mg-b bye">Esci dall'aula (Esc)</button></div>`);
       ov.$('.again').onclick = () => menu(); ov.$('.bye').onclick = () => ov.close();
     }
-    function open() { ensure(); ov.open(); menu(); return true; }
+    function open() { ensure(); if (PS) partyClosed(); ov.open(); menu(); return true; }
+    // ---------------------------------------------------------------- party (shared/processo.mjs via window.__match)
+    let PS = null;
+    const RICON = { pm: '🧑‍⚖️', difesa: '🛡️', imputato: '🙋', giurato: '🗳️' };
+    const rname = (v, id) => { const r = v.roles.find(x => x.id === id); return r ? r.name : '?'; };
+    const rlabel = (v, id, role) => `${RICON[role] || ''} ${ROLE_NAME[role] || role} · ${rname(v, id)}${id === v.me ? ' (tu)' : ''}`;
+    function partyOpen(s) {
+      ensure(); P = null;
+      if (PS && PS.s !== s) { try { PS.s.leave(); } catch (e) { } }
+      PS = { s, v: null, logN: 0, fkey: '', intro: false, verdictShown: false, rewarded: false };
+      s.on('view', v => { if (!PS || PS.s !== s) return; if (!ov.isOpen) { ov.open(); } if (!PS.v) { ov.$('.tr').innerHTML = ''; } PS.v = v; renderParty(); });
+      s.on('event', e => { if (!PS || PS.s !== s || !e) return; if (e.k === 'case' || e.k === 'verdict') sfx('dBell'); else if (e.k === 'say') sfx('paper'); });
+      s.on('over', r => { if (PS && PS.s === s) partyOver(r); });
+      s.on('error', e => { if (!PS || PS.s !== s || !e) return; if (e.fatal) { line('judge', 'Collegamento perso con l\'aula: processo sospeso.', 'judge'); setFoot('<div class="row"><button class="mg-b bye">Esci dall\'aula (Esc)</button></div>'); ov.$('.bye').onclick = () => ov.close(); } else if (e.error) { const w = ov.$('.ft .wait'); if (w) w.textContent = e.error; } });
+      return true;
+    }
+    function partyKey(k) {
+      const v = PS && PS.v; if (!v) return;
+      if (v.ph === 'case' && v.cases && v.cases[k]) PS.s.act({ case: k });
+      else if (v.ph === 'arg' && v.choices && v.choices[k] !== undefined) PS.s.act({ choice: k });
+      else if (v.ph === 'jury' && v.role === 'giurato' && !v.jury.mine && k < 2) PS.s.act({ vote: k === 0 ? 'colpevole' : 'innocente' });
+    }
+    function renderParty() {
+      const v = PS.v;
+      // header: phase + timer
+      const sp = v.turn ? rlabel(v, v.turn.id, v.turn.role) : '';
+      ov.$('.c').textContent = v.ph === 'case' ? `Scegli il caso · ${v.left} s` : v.ph === 'arg' ? `Round ${v.round} di ${v.rounds} · parla ${sp}${v.left ? ' · ' + v.left + ' s' : ''}` : v.ph === 'jury' ? `La giuria vota · ${v.left} s` : v.ph === 'verdict' ? 'Camera di consiglio' : 'Sentenza';
+      // transcript (incremental)
+      if (!PS.intro && v.case) {
+        PS.intro = true;
+        line('judge', `Silenzio in aula! Si apre il processo contro ${v.case.name}. Capo d'accusa: «${v.case.charge}».`, 'judge');
+        line('sys', v.roles.map(r => `${RICON[r.role]} ${ROLE_NAME[r.role]}: ${r.name}${r.bot ? ' 🤖' : ''}${r.role === 'imputato' ? ' (nei panni di ' + v.case.name + ')' : ''}`).join(' · '), 'sys');
+        const mine = v.roles.find(r => r.id === v.me); if (mine) line('sys', `Tu sei ${ROLE_NAME[mine.role]}${mine.role === 'imputato' ? ': difendi ' + v.case.name : mine.role === 'giurato' ? ': alla fine voti colpevole o innocente' : mine.role === 'pm' ? ': fallo condannare' : ': fallo assolvere'}.`, 'sys');
+      }
+      for (; PS.logN < v.log.length; PS.logN++) { const l = v.log[PS.logN]; const el = line(l.id, l.text, l.id === v.me ? 'me' : ''); el.querySelector('.who').textContent = rlabel(v, l.id, l.role); }
+      if (v.ph === 'jury' && !PS.juryShown) { PS.juryShown = true; line('judge', 'Le arringhe sono finite. La giuria si esprima!', 'judge'); }
+      if (v.ph === 'verdict' && !PS.thinking) { PS.thinking = thinking('judge'); PS.thinking.classList.add('judge'); const c = v.jury && v.jury.count; if (c) line('sys', `Voto della giuria${c.bots ? ' popolare' : ''}: ${c.colpevole} colpevole, ${c.innocente} innocente.`, 'sys'); }
+      if (v.verdict && !PS.verdictShown) {
+        PS.verdictShown = true; const vd = v.verdict, t = PS.thinking || (() => { const x = thinking('judge'); x.classList.add('judge'); return x; })();
+        t.querySelector('.tx').innerHTML = `<div class="verdict" style="color:${vd.guilty ? '#ff4030' : '#40d080'}">${vd.guilty ? 'COLPEVOLE' : 'INNOCENTE'}</div>${esc(vd.mot)}${vd.guilty && vd.pena ? `<div style="margin-top:6px;color:#e2c271">Pena: ${esc(vd.pena)}</div>` : ''}<div style="margin-top:6px;font:12px system-ui;color:#998">${vd.ai ? 'Sentenza del giudice AI' : 'Il giudice AI non risponde: decide la giuria'}</div>`;
+        sfx(vd.guilty ? 'dKO' : 'clear');
+      }
+      // footer (rebuilt only when it changes: keeps what you are typing)
+      const myTurn = v.ph === 'arg' && v.turn && v.turn.id === v.me;
+      const fkey = [v.ph, v.turn && v.turn.id, v.round, myTurn, v.mycase, v.cases && v.cases.map(c => c.votes).join(','), v.jury && v.jury.mine, v.jury && v.jury.voted, !!v.verdict].join('|');
+      if (fkey === PS.fkey) { const w = ov.$('.ft .left'); if (w) w.textContent = v.left ? v.left + ' s' : '…'; return; }
+      PS.fkey = fkey;
+      if (v.ph === 'case') setFoot(`<div class="pick">${v.cases.map((c, i) => `<button class="mg-b ${v.mycase === i ? 'sel' : ''}" data-i="${i}"><kbd>${i + 1}</kbd> ${esc((persona(c.who).emoji || '') + ' ' + c.name)} — ${esc(c.charge)} <small>(${c.votes} ${c.votes === 1 ? 'voto' : 'voti'})</small></button>`).join('')}</div><div class="wait">Votate il caso: vince il più votato (pari: sorteggio).</div>`);
+      else if (myTurn) {
+        setFoot(`<div class="ch">${v.choices.map((t, i) => `<button class="mg-b" data-i="${i}"><kbd>${i + 1}</kbd> ${esc(t)}</button>`).join('')}</div><div class="row"><input maxlength="220" placeholder="…oppure scrivi la tua arringa e premi Invio"><button class="mg-b send">Invia</button></div><div class="wait">Tocca a te · <span class="left">${v.left} s</span></div>`);
+        const inp = ov.$('input'); setTimeout(() => inp && inp.focus(), 50);
+        const send = () => { const t = inp.value.trim(); if (t.length < 3) return; PS.s.act({ say: t }); inp.value = ''; };
+        inp.addEventListener('keydown', e => { if (e.code === 'Enter') { e.preventDefault(); send(); } else if (/^Digit[123]$/.test(e.code) && !inp.value) { e.preventDefault(); partyKey(+e.code.slice(5) - 1); } });
+        ov.$('.send').onclick = send;
+      } else if (v.ph === 'arg') setFoot(`<div class="wait">Ascolta: parla ${esc(rlabel(v, v.turn.id, v.turn.role))} · <span class="left">${v.left ? v.left + ' s' : '…'}</span></div>`);
+      else if (v.ph === 'jury') setFoot(v.role === 'giurato' && !v.jury.mine ? `<div class="pick"><button class="mg-b" data-i="0"><kbd>1</kbd> ⚖️ Colpevole</button><button class="mg-b" data-i="1"><kbd>2</kbd> 🕊️ Innocente</button></div><div class="wait">Sei in giuria: vota · <span class="left">${v.left} s</span></div>` : `<div class="wait">${v.jury.mine ? 'Hai votato ' + esc(v.jury.mine) + '. ' : ''}La giuria vota… (${v.jury.voted}/${v.jury.n || 0})</div>`);
+      else if (v.ph === 'verdict') setFoot('<div class="wait">La corte si ritira…</div>');
+      else setFoot(`<div class="wait">${esc(PS.reward || '')}</div><div class="row"><button class="mg-b bye">Esci dall'aula (Esc)</button></div>`);
+      ov.$$('.ft [data-i]').forEach(b => b.onclick = () => partyKey(+b.dataset.i));
+      const bye = ov.$('.bye'); if (bye) bye.onclick = () => ov.close();
+    }
+    function partyOver(r) {
+      if (!PS || PS.rewarded) return; PS.rewarded = true;
+      const v = PS.v, me = PS.s.me, won = !!(r && r.winners && r.winners.includes(me)), humans = v ? v.roles.filter(x => !x.bot).length : 1;
+      const xp = won ? 60 : 25, euro = won && humans > 1 ? 10 : 0;
+      try { const R = window.__rpg; if (R) { R.addXP && R.addXP(xp, 'Processo del Secolo'); euro && R.money && R.money.add && R.money.add(euro); } } catch (e) { }
+      PS.reward = `${won ? 'Hai vinto la causa' : 'Causa persa'} · +${xp} XP${euro ? ' · +€ ' + euro : ''}`; PS.fkey = '';
+      unlock('processo_play', { title: 'Il Processo del Secolo', desc: 'Hai partecipato a un processo AI', icon: '⚖️' });
+      if (won && humans > 1) unlock('processo_party_win', { title: 'Foro di Teletubbylandia', desc: 'Hai vinto un processo contro gli amici', icon: '🏛️' });
+      logEvent('processo', `nel Processo del Secolo con gli amici: ${r && r.summary ? r.summary : ''}`);
+      renderParty();
+    }
+    function partyClosed() { const X = PS; PS = null; if (!X) return; try { X.s.leave(); } catch (e) { } }
+    registerPartyGame('processo', { name: 'Processo del Secolo', icon: '⚖️', desc: 'PM, avvocato, imputato e giuria tra voi: decide il giudice AI', min: 2, max: 6, attach: s => partyOpen(s) });
     W.mgOpen = W.mgOpen || {}; W.mgOpen.processo = () => open();
     return {
       items: [{ id: 'mg-processo', label: () => 'Processo AI: porta un amico alla sbarra', anchor: () => stand, top: () => topP, range: 1.0,

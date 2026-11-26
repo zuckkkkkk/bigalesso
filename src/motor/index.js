@@ -10,6 +10,9 @@
 // window.__vehicles = { enter(kind '500'|'vespa') -> Promise<bool>, exit(), current() -> {kind,x,z,yaw,speed,own}|null,
 //   on(evt, fn) evt: 'enter'|'exit'|'crash'|'race', setLook(look) (your 500, live), look(), place(x,z,yaw), freeze(bool),
 //   openGarage(), openRace(track), tracks }
+// Online (net extras + the room's world state, src/worldsync.js): a player driving shows up as a moving 500 (extra 'veh'
+//   {kind, id, look}) or riding a Vespa (scooter under his seated avatar); a friend's 500 or a vespa someone else is
+//   using is hidden here, and where it was left ('car:<id>', 'vs:<i>') is the same for everybody, late joiners too.
 import * as THREE from 'three';
 import { createCarFactory, CAR, DEFAULT_LOOK } from './rig.js';
 import { step, newState, stats, carBlocked } from './physics.js';
@@ -20,6 +23,7 @@ import { createRace } from './race.js';
 import { TRACKS, trackGeom, pointAt } from '../../shared/race.mjs';
 import { INTERIORS } from '../quartiere/layout.js';
 import { currentQuality } from '../scene.js';
+import { getParticles } from '../particles.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const PI = Math.PI;
@@ -136,7 +140,7 @@ export function installMotor({ scene, level, man, input, ui, audio, camera, S, I
   const doorOf = c => V(c.x + Math.cos(c.yaw) * (CAR.halfW + 0.55) + Math.sin(c.yaw) * 0.15, 0, c.z - Math.sin(c.yaw) * (CAR.halfW + 0.55) + Math.cos(c.yaw) * 0.15);
 
   function setNetLook(on) {
-    try { const N = window.__net; if (!N || !N.setExtra) return; if (on && D.car) N.setExtra('veh', { on: 1, kind: '500', look: compact(D.car.rig.look) }); else N.setExtra('veh', null); } catch (e) { }
+    try { const N = window.__net; if (!N || !N.setExtra) return; if (on && D.car) N.setExtra('veh', { on: 1, kind: '500', id: D.car.own ? 'mine' : D.car.id, look: compact(D.car.rig.look) }); else N.setExtra('veh', null); } catch (e) { }
   }
   const compact = L => ({ paint: L.paint, livery: L.livery | 0, livery2: L.livery2, rims: L.rims | 0, spoiler: L.spoiler | 0, exhaust: L.exhaust | 0, neon: L.neon, plate: String(L.plate || '').slice(0, 8) });
 
@@ -163,6 +167,7 @@ export function installMotor({ scene, level, man, input, ui, audio, camera, S, I
     man.root.position.set(px, 0, pz); man.root.visible = true;
     sound.stop(); skids.lift();
     if (c.own) { G.park = { x: +c.x.toFixed(2), z: +c.z.toFixed(2), yaw: +c.yaw.toFixed(3) }; saveGarage(G); }
+    else try { const N = window.__net; c._nwT = performance.now(); N && N.online && N.wset && N.wset('car:' + c.id, { x: +c.x.toFixed(2), z: +c.z.toFixed(2), yaw: +c.yaw.toFixed(3) }); } catch (e) { } // online: left here for everybody
     D.car = null; D.S = null; D.phase = null;
     updateCircles(c); c.rig.pose(c.x, c.z, c.yaw, 0, 0, 0, 0.016);
     setNetLook(false); emit('exit', { kind: '500', id: c.id });
@@ -235,6 +240,7 @@ export function installMotor({ scene, level, man, input, ui, audio, camera, S, I
     const sliding = S0.slip > 2.4 || (inp.hand && v > 4) || (brk && S0.fwd > 9);
     if (sliding && skidQ) for (let w = 0; w < 2; w++) { const sx = w ? 1 : -1; skids.mark(w, c.x + Math.cos(c.yaw) * sx * CAR.wheelX - Math.sin(c.yaw) * CAR.wheelZ, c.z - Math.sin(c.yaw) * sx * CAR.wheelX - Math.cos(c.yaw) * CAR.wheelZ); }
     else skids.lift();
+    { const PX = getParticles(); if (PX) carFx(PX, c, S0, thr, sliding, dt); } // particles.js: exhaust, nitro flames, tyre smoke, dust, crash sparks
     sound.set(S0.rpm, thr, S0.slip, S0.nitroOn);
     hudShow(true); hudSet(kmh, S0.nitro, S0.nitroOn, S0.gear, S0.rpm, D.st.nitroTank > 0);
     // ---- achievements / comments
@@ -264,6 +270,28 @@ export function installMotor({ scene, level, man, input, ui, audio, camera, S, I
       else exitCar();
     }
     return { lookW: 0 };
+  }
+  // ---- particles (particles.js): per-car rate accumulators, no allocations per frame
+  const PFX = new Map();
+  const pfx = id => { let st = PFX.get(id); if (!st) PFX.set(id, st = { ex: {}, ex2: {}, ni: {}, ni2: {}, t0: {}, t1: {}, d0: {}, d1: {} }); return st; };
+  function carFx(PX, c, S0, thr, sliding, dt) {
+    const st = pfx(c.id), fx = Math.sin(c.yaw), fz = Math.cos(c.yaw), rx = Math.cos(c.yaw), rz = -Math.sin(c.yaw);
+    const v = Math.hypot(S0.vx, S0.vz), ex = (c.rig.look && c.rig.look.exhaust) | 0, px = ex === 2 ? 0.5 : 0.42, bk = CAR.halfL + 0.05;
+    const X = c.x + rx * px - fx * bk, Z = c.z + rz * px - fz * bk, X2 = c.x - rx * px - fx * bk, Z2 = c.z - rz * px - fz * bk;
+    PX.exhaust(st.ex, X, 0.22, Z, fx, fz, S0.vx, S0.vz, D.phase === 'drive' ? thr : 0, dt);
+    if (ex === 2) PX.exhaust(st.ex2, X2, 0.22, Z2, fx, fz, S0.vx, S0.vz, thr, dt);
+    if (S0.nitroOn) { PX.nitro(st.ni, X, 0.22, Z, fx, fz, S0.vx, S0.vz, dt); if (ex === 2) PX.nitro(st.ni2, X2, 0.22, Z2, fx, fz, S0.vx, S0.vz, dt); }
+    const wx = CAR.wheelX, wz = CAR.wheelZ, lx = c.x - rx * wx - fx * wz, lz = c.z - rz * wx - fz * wz, qx = c.x + rx * wx - fx * wz, qz = c.z + rz * wx - fz * wz;
+    if (sliding && v > 2) { const k = Math.min(1.5, 0.35 + S0.slip / 5 + S0.drift * 0.4); PX.tyreSmoke(st.t0, lx, lz, S0.vx, S0.vz, k, dt); PX.tyreSmoke(st.t1, qx, qz, S0.vx, S0.vz, k, dt); }
+    if (v > 3 && level && level.zoneAt && level.zoneAt(c.x, c.z) === 'Teletubbylandia') { const k = Math.min(1.5, v / 12); PX.dirt(st.d0, lx, lz, S0.vx, S0.vz, k, dt); PX.dirt(st.d1, qx, qz, S0.vx, S0.vz, k, dt); }
+    if (S0.hit > 6) { const sg = S0.fwd < 0 ? -1 : 1; PX.crash(V(c.x + fx * sg * (CAR.halfL + 0.1), 0.5, c.z + fz * sg * (CAR.halfL + 0.1)), fx * sg, fz * sg, S0.hit); }
+  }
+  function vespaFx(i, dt) {
+    const PX = getParticles(); if (!PX || !i) return;
+    const st = pfx('vespa'), fx = Math.sin(i.yaw), fz = Math.cos(i.yaw), rx = Math.cos(i.yaw), rz = -Math.sin(i.yaw), vx = fx * i.speed, vz = fz * i.speed;
+    const X = i.x + rx * 0.16 - fx * 0.85, Z = i.z + rz * 0.16 - fz * 0.85;
+    PX.exhaust(st.ex, X, 0.3, Z, fx, fz, vx, vz, Math.min(1, Math.abs(i.speed) / 8), dt);
+    if (i.nitroOn) PX.nitro(st.ni, X, 0.3, Z, fx, fz, vx, vz, dt);
   }
   function straighten() { const c = D.car; if (!c) return; // nudge to the closest drivable spot nearby and face along the street
     for (let r = 0; r < 4; r += 0.5) for (let a = 0; a < 8; a++) { const x = c.x + Math.cos(a * 0.785) * r, z = c.z + Math.sin(a * 0.785) * r; if (!carBlocked(x, z, c.yaw, env)) { placeCar(c, x, z, c.yaw); return; } }
@@ -362,7 +390,7 @@ export function installMotor({ scene, level, man, input, ui, audio, camera, S, I
     for (const c of cars) {
       items.push({
         id: 'mt_car_' + c.id, label: () => (c.own ? 'Guida la tua 500' : 'Prendi ' + c.name), range: 1.4,
-        anchor: () => (D.car === c ? FAR : doorOf(c)), top: () => (D.car === c ? FAR : V(c.x, 1.6, c.z)),
+        anchor: () => (D.car === c || c.netHidden ? FAR : doorOf(c)), top: () => (D.car === c || c.netHidden ? FAR : V(c.x, 1.6, c.z)),
         act: () => {
           if (W.carry) { toast('Posa prima l\'estintore'); return; }
           H.goTo(doorOf(c), wrapA(c.yaw + PI / 2), () => enterCar(c, W, H), { ignore: c.circles.map(x => x.id) });
@@ -391,10 +419,20 @@ export function installMotor({ scene, level, man, input, ui, audio, camera, S, I
     for (let i = 0; i < ec.length; i++) if (!ec[i].motor) ec[j++] = ec[i];
     ec.length = j;
     for (const c of cars) { if (D.car === c) updateCircles(c); for (let i = 0; i < c.circles.length; i++) ec.push(c.circles[i]); }
+    for (const rig of remoteOn.values()) if (rig._circ) ec.push(rig._circ[0], rig._circ[1]); // the others' moving 500s are obstacles too
+    // online: my vespa as a presence extra, where I leave it in the room's world state
+    const vs = VS && VS.riding && VS.state.riding ? VS.state.riding.s : null;
+    if (vs !== myVespa) {
+      const N = window.__net;
+      try { if (N && N.setExtra) N.setExtra('veh', vs ? { on: 1, kind: 'vespa', s: vs.i, c: vs.color } : (D.car ? N.extras.veh : null)); } catch (e) { }
+      if (myVespa && !vs && N && N.online && N.wset) myVespa._nwT = performance.now(), N.wset('vs:' + myVespa.i, { x: +myVespa.x.toFixed(2), z: +myVespa.z.toFixed(2), ry: +myVespa.ry.toFixed(3) });
+      myVespa = vs;
+    }
     // the vespa: nitro / freeze / race reset
     if (VS && VS.riding && W.mode === 'vespa') {
       const info = VS.info(); hudShow(true);
       if (info) hudSet(Math.abs(info.speed) * 3.6, info.nitro, info.nitroOn, info.speed < -0.2 ? -1 : 1, Math.abs(info.speed) / 11, true);
+      if (info) vespaFx(info, dt); // particles.js: exhaust + nitro flame
       const ns = !race.active && nearStart(); setHint(ns ? 'G · gara: ' + TRACKS[ns].name : race.active ? 'R · rimettiti in pista' : '');
       if (input.pressed('KeyG') && ns) race.openMenu(ns);
       if (input.pressed('KeyR') && race.active) race.respawn();
@@ -403,6 +441,7 @@ export function installMotor({ scene, level, man, input, ui, audio, camera, S, I
   }
 
   const remoteOn = new Map(), remoteSeen = new Set(); // net id -> rig
+  let myVespa = null;
   // quality caps (checked every 2 s): low = no skid marks and only your own 500 casts a shadow
   let qT = 0, qLast = null, skidQ = true;
   function applyQuality() {
@@ -423,9 +462,70 @@ export function installMotor({ scene, level, man, input, ui, audio, camera, S, I
         if (e.look !== rig._lo) { rig._lo = e.look; const ls = JSON.stringify(e.look || {}); if (ls !== rig._l) { rig._l = ls; rig.setLook(e.look || {}); } }
         const r = P.avatar.root; const o = rig._r || (rig._r = { x: r.position.x, z: r.position.z }); const sp = Math.hypot(r.position.x - o.x, r.position.z - o.z) / Math.max(dt, 1e-3); o.x = r.position.x; o.z = r.position.z;
         rig.pose(r.position.x, r.position.z, r.rotation.y, Math.min(40, sp), 0, 0, dt); r.visible = false; seen.add(id);
+        const cc = rig._circ || (rig._circ = [{ c: V(), r: 0.78, motor: true, id: 'motor_net' + id + '_a' }, { c: V(), r: 0.78, motor: true, id: 'motor_net' + id + '_b' }]), fy = Math.sin(r.rotation.y) * 0.72, fz = Math.cos(r.rotation.y) * 0.72;
+        cc[0].c.set(r.position.x + fy, 0, r.position.z + fz); cc[1].c.set(r.position.x - fy, 0, r.position.z - fz);
       }
-      for (const [id, rig] of remoteOn) if (!seen.has(id)) { rig.show(false); remoteOn.delete(id); const P = N.players.get(id); if (P && P.avatar && !P.far) P.avatar.root.visible = true; }
-    } else if (remoteOn.size) { for (const rig of remoteOn.values()) rig.show(false); remoteOn.clear(); }
+      for (const [id, rig] of remoteOn) if (!seen.has(id)) { rig.show(false); rig._circ = null; remoteOn.delete(id); const P = N.players.get(id); if (P && P.avatar && !P.far) P.avatar.root.visible = true; }
+    } else if (remoteOn.size) { for (const rig of remoteOn.values()) { rig.show(false); rig._circ = null; } remoteOn.clear(); }
+    netShared(N);
+  }
+
+  // ---------------------------------------------------------------- online: the others' vespe, the shared parked vehicles
+  // A remote rider: a copy of the scooter under his avatar, placed one frame behind the avatar root like his seated pose
+  // (written now, applied by the avatar at its next update), so body and scooter stay together at any speed.
+  const VG = (VS && VS.GEOM) || { tripo: { seatY: 0.95, seatZ: -0.26, floorY: 0.31, floorZ: 0.17 }, proc: { seatY: 1.0, seatZ: -0.3, floorY: 0.37, floorZ: 0.2 } };
+  const rvPool = [], rvOn = new Map(), rvSeen = new Set();
+  function rvBody(o, color) {
+    const Qr = window.__quartiere, SH = Qr && Qr.street, h = SH && SH.tripo && SH.tripo.find(x => x.name === 'vespa');
+    const kind = h && Array.isArray(h.swapped) && h.swapped.length && Qr.loadOptional ? 'tripo' : 'proc';
+    if (o.kind === kind && (o.body || kind === 'tripo')) { if (o.body && kind === 'proc') o.body.material.color.set(color); return; }
+    if (o.body) { o.g.remove(o.body); o.body = null; }
+    o.kind = kind;
+    if (kind === 'tripo') Qr.loadOptional('vespa').then(sc => { if (!sc || o.kind !== 'tripo' || o.body) return; o.body = sc.clone(true); o.body.traverse(m => { if (m.isMesh) m.castShadow = true; }); o.g.add(o.body); }).catch(() => { });
+    else { o.body = new THREE.Mesh((SH && SH.vespaGeo) || new THREE.BoxGeometry(0.6, 1.0, 1.6).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.25 })); o.body.castShadow = true; o.g.add(o.body); }
+  }
+  const _hp = V();
+  function toW(o, x, y, z, out) { const c = Math.cos(o.yaw), s_ = Math.sin(o.yaw); return out.set(o.x + x * c + z * s_, y, o.z - x * s_ + z * c); }
+  function netShared(N) {
+    const on = N && N.online && N.players && N.players.size > 1;
+    rvSeen.clear();
+    const drove = new Set();
+    if (on) for (const [id, P] of N.players) {
+      if (id === N.id) continue;
+      const e = P.extra && P.extra.veh; if (!e || !e.on) continue;
+      if (e.kind === '500' && e.id && e.id !== 'mine') drove.add(e.id);
+      if (e.kind !== 'vespa' || !P.avatar || P.far) continue;
+      const L = VS && VS.spots && VS.spots(), sp = L && L[e.s | 0];
+      if (sp && !sp.netHidden && !(VS.state.riding && VS.state.riding.s === sp)) { sp.netHidden = true; sp.hidden = true; VS.writeInstance(sp, false); const ci = VS.state.circles[sp.i]; if (ci) ci.c.set(1e5, 0, 1e5); }
+      let o = rvOn.get(id);
+      if (!o) { o = rvPool.find(x => !x.busy); if (!o && rvPool.length < 3) { o = { g: new THREE.Group(), busy: false, body: null, kind: null, sit: { src: 'vespa', hip: V(), feet: { Left: V(), Right: V() }, w: 1, tilt: 0.12 } }; o.g.name = 'vespaRemote'; scene.add(o.g); rvPool.push(o); } if (!o) continue; o.busy = true; o.prev = null; rvBody(o, e.c || '#8fd3c0'); rvOn.set(id, o); }
+      rvSeen.add(id);
+      const r = P.avatar.root, g = VG[o.kind] || VG.proc, yaw = r.rotation.y;
+      const cur = { x: r.position.x - Math.sin(yaw) * g.seatZ, z: r.position.z - Math.cos(yaw) * g.seatZ, yaw };
+      const at = o.prev || cur; o.g.position.set(at.x, 0, at.z); o.g.rotation.set(0, at.yaw, 0); o.g.visible = true; o.prev = cur;
+      const S1 = o.sit; toW(cur, 0, g.seatY + 0.08, g.seatZ + 0.04, S1.hip); toW(cur, 0.12, g.floorY + 0.09, g.floorZ, S1.feet.Left); toW(cur, -0.12, g.floorY + 0.09, g.floorZ, S1.feet.Right);
+      P.avatar.man.sit = S1;
+    }
+    for (const [id, o] of rvOn) if (!rvSeen.has(id)) { o.busy = false; o.g.visible = false; rvOn.delete(id); const P = N && N.players && N.players.get(id); if (P && P.avatar && P.avatar.man.sit === o.sit) P.avatar.man.sit = null; }
+    // a friend's 500 driven by someone else: hidden here (he shows up as a moving car); then where he left it
+    for (const c of cars) {
+      if (c.own || D.car === c || performance.now() - (c._nwT || -1e9) < 3000) continue; // just parked by me: my 'car:' update is on its way
+      const hid = drove.has(c.id);
+      if (hid !== !!c.netHidden) { c.netHidden = hid; c.rig.show(!hid); if (hid) for (const k of c.circles) k.c.set(1e5, 0, 1e5); else updateCircles(c); }
+      const v = on || (N && N.online) ? N.ws && N.ws['car:' + c.id] : null;
+      if (!hid && v && (Math.abs(v.x - c.x) > 0.05 || Math.abs(v.z - c.z) > 0.05 || Math.abs(wrapA(v.yaw - c.yaw)) > 0.02)) placeCar(c, +v.x || 0, +v.z || 0, +v.yaw || 0);
+    }
+    // vespe: back where their rider left them
+    const L = VS && VS.spots && N && N.online && VS.spots();
+    if (L) for (const sp of L) {
+      if ((VS.state.riding && VS.state.riding.s === sp) || performance.now() - (sp._nwT || -1e9) < 3000) continue;
+      const ridden = [...rvOn.keys()].some(id => { const P = N.players.get(id), e = P && P.extra && P.extra.veh; return e && (e.s | 0) === sp.i; });
+      const v = N.ws && N.ws['vs:' + sp.i];
+      if (sp.netHidden && !ridden) { sp.netHidden = false; sp.hidden = false; VS.writeInstance(sp, true); const ci = VS.state.circles[sp.i]; if (ci) ci.c.set(sp.x, 0, sp.z); } // back (moved below if he parked it elsewhere)
+      if (!ridden && v && (Math.abs(v.x - sp.x) > 0.05 || Math.abs(v.z - sp.z) > 0.05 || Math.abs(wrapA(v.ry - sp.ry)) > 0.02 || sp._nw !== v)) {
+        sp._nw = v; sp.x = +v.x || 0; sp.z = +v.z || 0; sp.ry = +v.ry || 0; VS.writeInstance(sp, true); const ci = VS.state.circles[sp.i]; if (ci) ci.c.set(sp.x, 0, sp.z);
+      }
+    }
   }
 
   // ---------------------------------------------------------------- API

@@ -5,7 +5,7 @@
 // the checkpoint booth, the sushi conveyor, a living room and a kitchen for the friends, a cell in the Gulag.
 import * as THREE from 'three';
 import { loadManifest, loadOptional, instancedFrom, swapInstanced, swapObject, modelBox } from './models.js';
-import { ST, PET, INTERIORS } from './layout.js';
+import { ST, PET, INTERIORS, MIL_DZ } from './layout.js';
 import { TT } from './teletubby.js';
 import { plaqueTex, signMesh } from './kit.js';
 
@@ -66,13 +66,14 @@ export function createDress(ctx) {
       const s2 = 6.4 / w; place(hc, streetG, 30.75, 0, 20 - bb.max.z * s2, 0, s2); hideBuilding('e3'); }
     // ---- portico bays (instanced), scaled to each run's bay
     if (por && SH.porticoes) {
-      const bb = modelBox(por), w = 5.1;
+      // the model was fitted to the old 4.4 / 4.2 m porticoes: squash it vertically to the current heights
+      const bb = modelBox(por), w = 5.1, OLD = { far: 4.4, w: 4.2, e: 4.2 };
       for (const p of SH.porticoes) {
-        const s = p.bay / w, t = [];
+        const s = p.bay / w, t = [], sy = s * (p.run === 'far' ? ST.portH : PET.portH) / (OLD[p.run] || 4.4);
         for (let i = 0; i < p.n; i++) {
-          if (p.run === 'far') t.push({ x: ST.x0 + (i + 0.5) * p.bay, z: ST.colZ + bb.max.z * s, ry: PI, s });
-          else if (p.run === 'w') t.push({ x: PET.colW - bb.max.z * s, z: 46 + (i + 0.5) * p.bay, ry: PI / 2, s });
-          else t.push({ x: PET.colE + bb.max.z * s, z: PET.z0 + (i + 0.5) * p.bay, ry: -PI / 2, s });
+          if (p.run === 'far') t.push({ x: ST.x0 + (i + 0.5) * p.bay, z: ST.colZ + bb.max.z * s, ry: PI, s, sy });
+          else if (p.run === 'w') t.push({ x: PET.colW - bb.max.z * s, z: 46 + (i + 0.5) * p.bay, ry: PI / 2, s, sy });
+          else t.push({ x: PET.colE + bb.max.z * s, z: PET.z0 + (i + 0.5) * p.bay, ry: -PI / 2, s, sy });
         }
         instancedFrom(por, t, streetG);
       }
@@ -95,12 +96,12 @@ export function createDress(ctx) {
     if (celt) { const I = INTERIORS.celtic; facade(celt, { x: 3, z: ST.zFar, face: 's', H: ST.portH - 0.1, doorRel: 0.275, door: (I.door[0] + I.door[1]) / 2, sign: SH.signs && SH.signs.celtic, signW: 3.6, signH: 0.55 }); }
     if (sus) { const I = INTERIORS.sushi; facade(sus, { x: 23, z: ST.zFar, face: 's', H: ST.portH - 0.1, doorRel: 0.69, door: (I.door[0] + I.door[1]) / 2, sign: SH.signs && SH.signs.sushi, signW: 2.5, signH: 0.62 }); for (const l of SH.sushiLanterns || []) l.visible = false; }
     if (mil) { // the club facade stands in front of the black wall (its box goes into the entrance vestibule)
-      const bb = modelBox(mil), md = bb.max.z - bb.min.z; const oz = 78 + (bb.max.z - Math.min(0.9, md * 0.25));
-      const g = place(mil, streetG, 44, 0, oz, PI, 1); cutDoor(g, 42.6, 45.4, 3.3, 76, 83);
+      const bb = modelBox(mil), md = bb.max.z - bb.min.z; const MZ = 78 + MIL_DZ, oz = MZ + (bb.max.z - Math.min(0.9, md * 0.25));
+      const g = place(mil, streetG, 44, 0, oz, PI, 1); cutDoor(g, 42.6, 45.4, 3.3, MZ - 2, MZ + 5);
       for (const o of SH.milFront || []) o.visible = false;
       const back = oz - bb.min.z; // vestibule walls inside the club
-      if (back > 78.3) { addBox(40, 78.3, 42.6, back); addBox(45.4, 78.3, 48, back); }
-      const ms = SH.milSign; if (ms) { const s2 = ms.clone(); s2.position.set(44, (bb.max.y - bb.min.y) * 0.84, oz - bb.max.z + Math.min(0.9, md * 0.25) - 0.03); s2.scale.setScalar(0.46); streetG.add(s2); }
+      if (back > MZ + 0.3) { addBox(40, MZ + 0.3, 42.6, back); addBox(45.4, MZ + 0.3, 48, back); }
+      const ms = SH.milSign; if (ms) { const s2 = ms.clone(); s2.position.set(44, (bb.max.y - bb.min.y) * 0.84, oz - bb.max.z - 0.04); /* on the model's front (its sign board is blank): seen from Via Petroni too */ s2.scale.setScalar(0.46); streetG.add(s2); }
     }
     // ---- trees, benches, bikes, bins, edicola, bus
     if (tp && SH.trees) { instancedFrom(tp, SH.trees.map(t => ({ x: t.x, z: t.z, ry: t.ry, s: 0.7 * (t.s || 1) })), streetG); for (const im of SH.treeIms) im.visible = false; }
@@ -145,7 +146,7 @@ export function createDress(ctx) {
         const tp = await loadOptional('tortellini_plate'); if (tp) place(tp, p.group, 0.62, 0.765, 36.35, 0.4);
       } else if (id === 'millennium') {
         const dj = await loadOptional('dj_booth');
-        if (dj) { const bb = modelBox(dj); const z = 89.2 + bb.max.z; place(dj, p.group, 44, 0, z, PI); if (p.booth) p.booth.visible = false; setBox(findBox(42.0, 89.2), [44 + bb.min.x, 89.2], [44 + bb.max.x, z - bb.min.z]); }
+        if (dj) { const bb = modelBox(dj); const z = 89.2 + MIL_DZ + bb.max.z; place(dj, p.group, 44, 0, z, PI); if (p.booth) p.booth.visible = false; setBox(findBox(42.0, 89.2 + MIL_DZ), [44 + bb.min.x, 89.2 + MIL_DZ], [44 + bb.max.x, z - bb.min.z]); }
       } else if (id === 'ashish') {
         const desk = await loadOptional('gaming_desk');
         if (desk) { const bb = modelBox(desk); const a = ctx.anchors.discord; place(desk, p.group, -18.35 + bb.min.z, 0, a.z, a.yaw - PI); a.userData.furnished = 'gaming_desk'; p.desk = true; }

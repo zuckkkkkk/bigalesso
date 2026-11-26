@@ -22,7 +22,7 @@
 //     build(name), loadOptional(name), isNight(), zoneOf(x,z) }
 //   events: 'bigalesso:place' {id, name, first} on entering a place; 'bigalesso:knock' {house, name}.
 import * as THREE from 'three';
-import { BUILDINGS, INTERIORS, ZONES, ANCHORS, HOUSES, BOUNDS, ST, PET, MEADOW, CHECK, GATE } from './quartiere/layout.js';
+import { BUILDINGS, INTERIORS, ZONES, ANCHORS, HOUSES, BOUNDS, ST, PET, MEADOW, CHECK, GATE, MIL_DZ } from './quartiere/layout.js';
 import { buildStreet, groundRect, groundH } from './quartiere/street.js';
 import { buildTeletubby, teletubbyColliders, TT } from './quartiere/teletubby.js';
 import { PLACE_BUILDERS, placeColliders } from './quartiere/places.js';
@@ -32,6 +32,7 @@ import { createDress } from './quartiere/dress.js';
 import { instances } from './quartiere/kit.js';
 import { NORD_ZONES, NORD_ANCHORS, NORD_HOOKS, NORD_PROPS, nordColliders } from './quartiere/nord_layout.js';
 import { buildNord, nordSilhouette } from './quartiere/nord.js';
+import { DN } from './daynight.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const PI = Math.PI;
@@ -113,6 +114,7 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
   for (const x of [-29.5, -24.5, -15, -2.5, 3, 20, 26.5, 35]) box(x - 1.7, ST.curbNear + 0.25, x + 1.7, ST.curbNear + 1.85);
   for (const x of [-31, -20, -9, 2, 23, 34]) C.push({ type: 'circle', c: [x, ST.curbNear - 0.45], r: 0.2 });
   C.push({ type: 'circle', c: [41, 21.2], r: 0.2 }, { type: 'circle', c: [49, 32.6], r: 0.2 });
+  C.push({ type: 'circle', c: [36.6, 80.2], r: 0.2 }, { type: 'circle', c: [51.4, 80.2], r: 0.2 }); // Largo del Millennium lamps
   for (const [x0, z] of [[8.0, 20.5], [29.0, 20.5], [-38.2, 20.6]]) box(x0 - 0.45, z - 0.4, x0 + 3.45, z + 0.4);
   for (const b of SH.benchSpots) C.push({ type: 'circle', c: [b.x, b.z], r: 0.55 });
   for (const t of SH.trees) C.push({ type: 'circle', c: [t.x, t.z], r: 0.35 });
@@ -153,6 +155,7 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
     if (!S.preloading) try { window.__gfx && window.__gfx.warmup && window.__gfx.warmup(a.group); } catch (e) { }
     if (k === 'tele') { S.barrier = a.hooks.barrier; dress.tele(a.hooks, a.group); }
     if (k === 'nord') for (const v of a.hooks.lampSpots || []) SH.lampSpots.push(v); // the point-light pool picks them at night
+    if (k === 'nord' && a.hooks.bikeIm) swapInstanced('bicycle_parked', [a.hooks.bikeIm]).then(r => { if (Array.isArray(r)) warm(a.group); }).catch(() => { }); // the wire bikes read as scribbles
     return a;
   }
 
@@ -208,7 +211,9 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
   }
 
   // ================= night / quality =================
-  function nightK() { const fx = getFX ? getFX() : null; return fx && typeof fx.nightAmount === 'number' ? fx.nightAmount : (fx && fx.night ? 1 : 0); }
+  // the shared day/night cycle (daynight.js) through fx3d's smoothed nightAmount: window lights, neon, street lamp heads and
+  // pools fade in through the dusk (applyNight only touches emissive / opacity / instance counts: no recompiles)
+  function nightK() { const fx = getFX ? getFX() : null; return fx && typeof fx.nightAmount === 'number' ? fx.nightAmount : DN.update().night; }
   function quality() { const q = ui && ui.settings ? ui.settings.quality : 'auto'; return q === 'auto' ? (low ? 'low' : 'high') : q; }
   let lastNight = -1;
   function applyNight(k) {
@@ -297,7 +302,7 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
       act: () => { const r = Math.random(); const s = r < 0.06 ? 'BULLSEYE! 50' : r < 0.2 ? 'Tripla 20: 60!' : r < 0.5 ? String(1 + (Math.random() * 20 | 0)) : r < 0.8 ? String(5 + (Math.random() * 40 | 0)) : 'Fuori bersaglio. Ti guardano tutti'; if (audio) audio.sfx('click'); h.toast('Freccetta: ' + s);
         if (s.startsWith('BULL')) try { window.__save && window.__save.unlock && window.__save.unlock('bullseye_celtic', { title: 'Occhio di bue', desc: 'Bullseye al Celtic', icon: '🎯', group: 'Luoghi' }); } catch (e) { } } }); }
     // Millennium: the DJ console changes the light show
-    { const a = anchors.millennium_dj; items.push({ id: 'mil_dj', label: () => 'Cambia il light show', anchor: () => a, top: () => V(44, 1.4, 89.5), range: 1.5,
+    { const a = anchors.millennium_dj; items.push({ id: 'mil_dj', label: () => 'Cambia il light show', anchor: () => a, top: () => V(44, 1.4, 89.5 + MIL_DZ), range: 1.5,
       act: () => { const p = places.millennium; if (p) p.state.mode++; if (audio) audio.sfx('beat'); h.toast(['Luci: scacchiera', 'Luci: onda', 'Luci: strobo'][(p ? p.state.mode : 0) % 3]); } }); }
     // edicola
     { const a = at(44.3, 22.6); a.yaw = 0; let n = 0; items.push({ id: 'edicola', label: () => 'Compra il Corriere', anchor: () => a, top: () => V(44.3, 1.9, 23.2), range: 1.6,
@@ -313,7 +318,7 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
         if (an.gardenDoor) portals.push({ a: level.zoneAt(an.gardenDoor.x, an.gardenDoor.z - 0.6) || 'Salotto', b: level.zoneAt(an.gardenDoor.x, an.gardenDoor.z + 0.6) || 'Giardino', p: an.gardenDoor.clone(), n: V(0, 0, 1) });
         const P = (a, b, x, z, nx, nz) => portals.push({ a, b, p: V(x, 0, z), n: V(nx, 0, nz) });
         P('Giardino', 'Via Teletubbylandia', 13.1, 20, 0, 1);
-        P('Via Teletubbylandia', 'Piazzetta', 40, 26, 1, 0); P('Piazzetta', 'Via Petroni', 44, 33.6, 0, 1); P('Via Petroni', 'Millennium', 44, 78.1, 0, 1);
+        P('Via Teletubbylandia', 'Piazzetta', 40, 26, 1, 0); P('Piazzetta', 'Via Petroni', 44, 33.6, 0, 1); P('Via Petroni', 'Millennium', 44, 78.1 + MIL_DZ, 0, 1);
         P('Via Teletubbylandia', 'Celtic', 3, 33.75, 0, 1); P('Via Teletubbylandia', 'Sushi', 23, 33.75, 0, 1); P('Via Teletubbylandia', 'Casa di Ashish', -22, 33.75, 0, 1);
         P('Via Teletubbylandia', 'Voltone', -5, 33.6, 0, 1); P('Voltone', 'Via Zamboni', -5, 46, 0, 1); P('Via Zamboni', 'Piazza Verdi', -3, 55, 0, 1);
         P('Piazza Verdi', 'Via Rizzoli', -3, 74, 0, 1); P('Via Rizzoli', 'Piazza Maggiore', -17, 80, 0, 1);

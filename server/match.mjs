@@ -9,12 +9,20 @@
 //   match:act    { id, a, rid }  -> (only on rejection) match:error { id, rid, error }
 //   match:leave  { id }
 //   match:list   { rid, type }  -> match:list { rid, list:[{ id, type, name, players, max, lobby, mine, room, public }] }
-// Server -> client: match:view { id, v } (on change; every tick for ticking games), match:event { id, e },
-//   match:players { id, players:[{id,name,bot,online}], lobby, host }, match:over { id, r }, match:error { id?, rid?, error }
+//   match:invite { id, to }     a player of match `id` invites the client `to` (same room / shard) -> to the invitee:
+//                               match:invite { id, type, name, from, fromId }
+// match:create extras: link:true = anyone who knows the id can join (party codes, invite links; not listed);
+//   party:'<id>' = launched from that party match: its members can see/join it from any room.
+// Server -> client: match:view { id, v } (on change; every tick for ticking games, at most meta.viewHz per second),
+//   match:event { id, e }, match:players { id, players:[{id,name,bot,online}], lobby, host }, match:over { id, r },
+//   match:error { id?, rid?, error }
+// Rules may ask the referee for one AI text at a time (processo's judge): game.aiRequest() -> { id, model, system,
+//   prompt, maxTokens } | null, answered with game.aiResult(id, text|null) (server/ai.mjs, ANTHROPIC_API_KEY; null = offline).
 import { GAMES } from '../shared/index.mjs';
+import { askAI } from './ai.mjs';
 
 const MAX_MATCHES = Math.max(10, +process.env.MAX_MATCHES || 300);
-const MAX_PER_CLIENT = 3;
+const MAX_PER_CLIENT = 4; // a party + the minigame it launched + room for a leftover finished match
 const MAX_ACT = 2048, MAX_OPTS = 4096, MAX_VIEW = 64 * 1024;
 const IDLE_MS = 30000, LOBBY_MAX_MS = 15 * 60000, OVER_KEEP_MS = 60000;
 const ACT_RATE = 40, ACT_BURST = 80; // per client, all matches together
@@ -23,7 +31,7 @@ const ID_CHARS = 'abcdefghijkmnpqrstuvwxyz23456789';
 const botId = s => String(s || '').replace(/[^a-z0-9_]/gi, '').slice(0, 16);
 const cleanName = n => String(n || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 16) || 'Giocatore';
 
-export function createMatches({ send, log = () => { }, store = null }) {
+export function createMatches({ send, log = () => { }, store = null, ai = askAI }) {
   const matches = new Map();        // id -> match
   const byClient = new Map();       // client -> Set(match id)
   const mods = new Map();           // type -> Promise<module|null>
@@ -71,6 +79,23 @@ export function createMatches({ send, log = () => { }, store = null }) {
     }
     const o = safe(M, () => M.game.over, 'over');
     if (o && M.state === 'play') end(M, o);
+    if (M.state === 'play' && M.game.aiRequest && !M.aiBusy) aiAsk(M);
+  }
+
+  // one AI text at a time per match (the referee calls the model, the rules only see the answer or null)
+  function aiAsk(M) {
+    const q = safe(M, () => M.game.aiRequest(), 'aiRequest'); if (!q || !matches.has(M.id)) return;
+    M.aiBusy = true;
+    const done = text => {
+      M.aiBusy = false;
+      if (!matches.has(M.id) || M.state !== 'play' || !M.game.aiResult) return;
+      safe(M, () => M.game.aiResult(q.id, typeof text === 'string' && text.trim() ? text : null), 'aiResult');
+      if (matches.has(M.id)) flush(M);
+    };
+    let settled = false; const once = t => { if (!settled) { settled = true; clearTimeout(to); done(t); } };
+    const to = setTimeout(() => once(null), 20000);
+    Promise.resolve().then(() => ai({ model: q.model || 'smart', system: String(q.system || ''), prompt: String(q.prompt || ''), max_tokens: +q.maxTokens || 300 }))
+      .then(t => once(t), e => { log('match ai', M.type, e && e.message); once(null); });
   }
 
   function end(M, result, error) {
@@ -114,10 +139,12 @@ export function createMatches({ send, log = () => { }, store = null }) {
     c.mt -= 1; return true;
   }
 
-  function visibleTo(M, c) {
+  function visibleTo(M, c, byId = false) {
     if (M.state === 'over') return false;
     if (M.pub) return true;
     if (M.room && c.room && M.room === c.room.code) return true;
+    if (byId && M.link) return true; // the id is the invite code
+    if (M.party) { const P = matches.get(M.party); if (P && P.state !== 'over' && seatOf(P, c)) return true; }
     return M.host === c;
   }
 
@@ -131,8 +158,10 @@ export function createMatches({ send, log = () => { }, store = null }) {
         const opts = m.opts && typeof m.opts === 'object' ? m.opts : {};
         if (JSON.stringify(opts).length > MAX_OPTS) return err(c, 'opzioni troppo grandi', null, m.rid), true;
         const meta = mod.meta;
+        const pm = m.party ? matches.get(String(m.party)) : null;
         const M = { id: newId(), type: m.type, mod, opts, seed: (Math.random() * 4294967296) >>> 0, state: 'lobby', host: c, seats: [], game: null,
-          room: m.room !== false && c.room ? c.room.code : null, pub: !!m.public, created: Date.now(), touched: Date.now(), hz: Math.max(0, Math.min(30, +meta.tickHz || 0)), fill: m.fill !== false };
+          room: m.room !== false && c.room ? c.room.code : null, pub: !!m.public, created: Date.now(), touched: Date.now(), hz: Math.max(0, Math.min(30, +meta.tickHz || 0)), fill: m.fill !== false,
+          link: !!m.link, party: pm && pm.state !== 'over' && seatOf(pm, c) ? pm.id : null, vstep: +meta.viewHz > 0 ? 1000 / Math.min(30, +meta.viewHz) : 0, lastFlush: 0 };
         M.seats.push({ pid: pidOf(c), name: c.name, c, th: c.th || null });
         const seen = new Set([pidOf(c)]);
         for (const b of (Array.isArray(m.bots) ? m.bots : []).slice(0, (meta.maxPlayers || 8) - 1)) {
@@ -148,7 +177,7 @@ export function createMatches({ send, log = () => { }, store = null }) {
       }
       case 'match:join': {
         const M = matches.get(String(m.id || ''));
-        if (!M || !visibleTo(M, c)) return err(c, 'partita non trovata', m.id, m.rid), true;
+        if (!M || !visibleTo(M, c, true)) return err(c, 'partita non trovata', m.id, m.rid), true;
         if (seatOf(M, c)) { send(c, { t: 'match:joined', rid: m.rid, id: M.id, me: pidOf(c), lobby: M.state === 'lobby', host: M.host === c, meta: M.mod.meta }); players(M); flush(M); return true; }
         if ((byClient.get(c) || new Set()).size >= MAX_PER_CLIENT) return err(c, 'troppe partite aperte', M.id, m.rid), true;
         const meta = M.mod.meta, max = meta.maxPlayers || 8;
@@ -192,7 +221,16 @@ export function createMatches({ send, log = () => { }, store = null }) {
         const r = safe(M, () => M.game.act(st.pid, a), 'act');
         if (!matches.has(M.id)) return true;
         if (r && r.ok === false) err(c, String(r.error || 'mossa non valida').slice(0, 120), M.id, m.rid);
-        if (!M.hz || (r && r.ok !== false)) flush(M); // ticking games flush on the next tick anyway
+        if (!M.hz || (!M.vstep && r && r.ok !== false)) flush(M); // ticking games flush on the next tick anyway (viewHz: only there)
+        return true;
+      }
+      case 'match:invite': { // invite someone of my room / shard into a match I'm in (parties)
+        const M = matches.get(String(m.id || ''));
+        if (!M || M.state === 'over' || !seatOf(M, c)) return err(c, 'partita non trovata', m.id, m.rid), true;
+        if (!rate(c) || !rate(c)) return true; // costs 2
+        const dst = c.room && c.room.clients && c.room.clients.get(+m.to);
+        if (!dst || dst === c) return err(c, 'giocatore non trovato', M.id, m.rid), true;
+        send(dst, { t: 'match:invite', id: M.id, type: M.type, name: M.mod.meta.name || M.type, from: c.name, fromId: c.id });
         return true;
       }
       case 'match:leave': {
@@ -237,7 +275,7 @@ export function createMatches({ send, log = () => { }, store = null }) {
       if (now - M.next > 250) M.next = now; // fell behind: skip instead of a burst of catch-up ticks
       const step = 1000 / M.hz; let ticked = false;
       while (now >= M.next) { const dt = 1 / M.hz; if (safe(M, () => (M.game.tick && M.game.tick(dt), true), 'tick') === undefined) break; M.next += step; ticked = true; if (!matches.has(M.id) || M.state !== 'play') break; }
-      if (ticked && matches.has(M.id)) flush(M);
+      if (ticked && matches.has(M.id) && (!M.vstep || now - M.lastFlush >= M.vstep - 4 || M.state !== 'play')) { M.lastFlush = now; flush(M); }
     }
     ticking = n;
   }, BASE_MS);

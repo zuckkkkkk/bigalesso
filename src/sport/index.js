@@ -8,11 +8,16 @@
 //  - "Rigori" (5 penalties vs a friend in goal) and "Tiri liberi" at the basketball hoop south of the cage.
 // Install (main.js): const sport = installSport({...}) after buildQuartiere (colliders before createWorld);
 //   plugins.push(sport.plugin); sport.pre(dt) right before world.update; sport.update(dt) right after npcs.update.
-// Online: local only for now (other players see you on the pitch through the usual presence, not the ball).
+// Online ("Calcetto online", party → ⚽ 1 contro 1 / 2 contro 2, rules shared/calcetto.mjs): the server owns the ball (30 Hz
+// physics from the kick actions), every client moves its own player and reports it at 15 Hz, the ball is predicted here
+// with the same stepBall()/kickVel() between the 15 Hz views; bots = friends' NPC bodies, the other humans = their
+// presence avatars (net.js). Walk out of the cage for 6 s to leave (a bot takes your place).
 import * as THREE from 'three';
 import { PITCH as P } from '../quartiere/layout.js';
 import { buildPitch, pitchColliders, ballTex, HOOP, BOARD_SIGN } from './pitch.js';
 import { PERSONAS, persona } from '../ai.js';
+import { stepBall as netStep, kickVel as netKick } from '../../shared/calcetto.mjs';
+import { registerPartyGame } from '../net/party.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const PI = Math.PI, R = 0.13, G = 9.8, FAR = V(1e5, 0, 1e5);
@@ -207,7 +212,7 @@ export function installSport({ scene, level, man, input, ui, audio, camera, getF
 
   // ---------------- player input: shot / chip / pass ----------------
   function ballNear(m = 1.25) { return d2(player.pos, B.p) < m && B.p.y < 1.2 && !B.net; }
-  function canKick() { return !weaponOut() && ST.mode !== 'bb' && APP && APP.phase === 'world' && W() && W().mode === 'explore' && !(M && (M.phase === 'goal' || M.phase === 'end' || M.phase === 'intro')) && !(M && M.kind === 'pen' && M.phase !== 'aim'); }
+  function canKick() { return !weaponOut() && ST.mode !== 'bb' && APP && APP.phase === 'world' && W() && W().mode === 'explore' && !(M && (M.phase === 'goal' || M.phase === 'end' || M.phase === 'intro')) && !(M && M.kind === 'pen' && M.phase !== 'aim') && !(NM && !(NM.v && NM.v.ph === 'play' && NM.v.me >= 0)); }
   function startCharge(kind, src) { if (!canKick() || !ballNear()) return; ST.charge = { kind, src, t: 0 }; }
   function chargeHeld() {
     const c = ST.charge, I = input;
@@ -217,6 +222,7 @@ export function installSport({ scene, level, man, input, ui, audio, camera, getF
   }
   function playerShot(kind, power) {
     if (!ballNear(1.35)) return;
+    if (NM) return netShot(kind === 'chip' ? 1 : 0, power);
     const w = W(); let yaw = w ? w.yaw : 0;
     if (M && M.kind === 'pen' && w) yaw = clamp(wrapA(w.camYaw + PI), -PI / 2 - 0.42, -PI / 2 + 0.42); // penalties: aim with the camera
     const dir = fwdOf(yaw);
@@ -229,6 +235,7 @@ export function installSport({ scene, level, man, input, ui, audio, camera, getF
     if (M && M.kind === 'pen') penKicked();
   }
   function playerPass() {
+    if (NM) return netPass();
     if (!M || M.kind !== 'match' || !ballNear(1.0)) return false;
     const w = W(), f = fwdOf(w ? w.yaw : 0);
     let best = null, bs = 1e9;
@@ -254,7 +261,7 @@ export function installSport({ scene, level, man, input, ui, audio, camera, getF
     if (mouseEdge && locked && ballNear() && canKick()) { startCharge('shot', 'mouse'); I.drag.click = false; }
     if (touch.edge.has('shot')) startCharge('shot', 'touch');
     if (touch.edge.has('chip')) startCharge('chip', 'touch');
-    if ((I.pressed('KeyQ') || touch.edge.has('pass')) && M && M.kind === 'match' && canKick() && ballNear(1.0)) { if (playerPass()) I.edges.delete('KeyQ'); }
+    if ((I.pressed('KeyQ') || touch.edge.has('pass')) && ((M && M.kind === 'match') || NM) && canKick() && ballNear(1.0)) { if (playerPass()) I.edges.delete('KeyQ'); }
     touch.edge.clear();
   }
   function updateCharge(dt) {
@@ -308,7 +315,7 @@ export function installSport({ scene, level, man, input, ui, audio, camera, getF
     return V(own + sx * f[0], 0, P.cz + f[1] * (e.team === 0 ? 1 : -1));
   }
   function startMatch() {
-    if (M) return;
+    if (M || NM) return;
     const ids = pickFriends(5);
     if (ids.length < 3) { toast('Non c\'è nessuno per il calcetto… chiama qualcuno col telefono'); return; }
     fade.textContent = 'Arrivano gli amici…'; fade.classList.add('on');
@@ -551,7 +558,7 @@ export function installSport({ scene, level, man, input, ui, audio, camera, getF
 
   // ---------------- penalties (5 kicks vs a friend in the west goal) ----------------
   function startPens() {
-    if (M) return;
+    if (M || NM) return;
     const id = pickFriends(1)[0]; if (!id) { toast('Non c\'è nessuno in porta…'); return; }
     fade.textContent = 'Rigori'; fade.classList.add('on');
     setTimeout(() => {
@@ -608,7 +615,7 @@ export function installSport({ scene, level, man, input, ui, audio, camera, getF
   let BB = null;
   const bbBest = () => { try { return +localStorage.getItem('bigalesso_bb_best') || 0; } catch (e) { return 0; } };
   function startBB() {
-    if (M) return;
+    if (M || NM) return;
     BB = { n: 10, k: 0, made: 0, streak: 0, phase: 'aim', t: 0, p: V(), v: V(), charge: 0, holding: false, src: null, res: null };
     ST.mode = 'bb';
     man.root.position.set(HOOP.spot[0], man.root.position.y, HOOP.spot[1]); const w = W(); if (w) { w.yaw = PI; w.camYaw = 0; w.camPitch = 0.12; w.vel.set(0, 0, 0); BB.cam = w.camDist; w.camDist = 2.4; }
@@ -681,6 +688,191 @@ export function installSport({ scene, level, man, input, ui, audio, camera, getF
     bball.position.set(HOOP.x + 0.5, 0.12, HOOP.spot[1] + 0.6);
   }
 
+  // ---------------- online match (shared/calcetto.mjs through window.__match) ----------------
+  let NM = null;
+  const TEAM_NAME = ['BLU', 'ROSSI'];
+  function netAttach(s) {
+    if (NM && NM.s !== s) netEnd(true);
+    if (M) { if (M.kind === 'match') endMatch('forfeit'); releaseMatch(); }
+    if (BB) endBB(true);
+    NM = { s, v: null, base: null, baseAt: 0, kid: -1, ko: -1, off: V(), bodies: new Map(), sendT: 0, outT: 0, kickAt: -9, kickKid: -1, rewarded: false, endT: 0 };
+    const w = W();
+    if (!inCage(player.pos, 0.3)) { // teleport into the cage (the party may call us from anywhere)
+      fade.textContent = 'Al campetto di Teletubbylandia…'; fade.classList.add('on');
+      setTimeout(() => { if (!NM || NM.s !== s) return; if (!inCage(player.pos, 0.3)) { man.root.position.set(P.cx + 2.5, man.root.position.y, P.cz - 3.2); const ww = W(); if (ww) { ww.vel && ww.vel.set(0, 0, 0); ww.yaw = PI; ww.camYaw = 0; } } fade.classList.remove('on'); }, 380);
+    }
+    if (w) { NM.camDist = w.camDist; w.camDist = Math.max(w.camDist, 3.3); }
+    hud.style.display = 'block'; hud.innerHTML = '<i>Calcetto online</i> <i>· in attesa del fischio…</i>';
+    s.on('view', netView); s.on('event', netEvent); s.on('over', netOver);
+    s.on('error', e => { if (!NM || NM.s !== s || !e) return; if (e.fatal) { toast('Calcetto online: connessione persa', 'warn'); netEnd(false); } });
+    resetBall(KICKOFF);
+    return true;
+  }
+  const ballOf = a => ({ x: a[0], y: a[1], z: a[2], vx: a[3], vy: a[4], vz: a[5], spin: 0, net: 0 });
+  const predicted = (base, t) => { const b = { ...base }; const n = Math.min(40, Math.ceil(t / (1 / 120))); for (let i = 0; i < n; i++) netStep(b, Math.min(1 / 120, t / n || 0)); return b; };
+  function netView(v) {
+    if (!NM) return;
+    const first = !NM.v; NM.v = v;
+    const now = performance.now();
+    // the ball: adopt the server state unless my own kick is still in flight to the server
+    const mine = NM.kickKid === v.kid && now - NM.kickAt < 300;
+    if (mine) NM.v = { ...v, o: -1 };
+    if (!mine) {
+      const prev = NM.base ? predicted(NM.base, (now - NM.baseAt) / 1000) : null;
+      NM.base = ballOf(v.b); NM.baseAt = now; NM.kid = v.kid;
+      if (prev && v.o < 0) { NM.off.x += prev.x - NM.base.x; NM.off.y += prev.y - NM.base.y; NM.off.z += prev.z - NM.base.z; if (NM.off.length() > 3) NM.off.set(0, 0, 0); }
+    }
+    if (v.ko !== NM.ko) { // kick-off: everyone to the spots the referee gives
+      NM.ko = v.ko; NM.off.set(0, 0, 0);
+      if (v.hm) { man.root.position.set(v.hm[0], man.root.position.y, v.hm[1]); const w = W(); if (w) { w.vel && w.vel.set(0, 0, 0); w.yaw = v.hm[2]; w.camYaw = v.hm[2] + PI; } }
+      banner.classList.remove('on');
+    }
+    if (first) {
+      const meT = v.me >= 0 ? v.ps[v.me][3] : 0;
+      toast(`Calcetto online ${v.mode === '2v2' ? '2 contro 2' : '1 contro 1'}: sei nei ${TEAM_NAME[meT]}. E o clic = tira (tieni premuto), R = pallonetto${v.mode === '2v2' ? ', Q = passa' : ''}. Esci dal campo 6 s per lasciare`);
+      sfx('whistle');
+    }
+    netBodies(v);
+    netHud();
+  }
+  // bots and humans not in my room (no presence avatar): a friend's NPC body driven by the view
+  function netBodies(v) {
+    const net = window.__net, used = new Set([...NM.bodies.values()].map(b => b.id));
+    v.ps.forEach((p, i) => {
+      if (i === v.me) return;
+      const id = v.pl[i][0], human = !p[4], present = human && net && net.players && net.players.has(+String(id).slice(1));
+      let B0 = NM.bodies.get(i);
+      if (present) { if (B0) { netDrop(B0); NM.bodies.delete(i); } return; }
+      if (!B0) {
+        const fid = pickFriends(8).find(f => !used.has(f)); if (!fid) return; used.add(fid);
+        const g = grabNPC(fid, V(p[0], 0, p[1])); if (!g) return;
+        B0 = { id: fid, n: g.n, keep: g.keep, x: p[0], z: p[1], yaw: p[2], name: v.pl[i][1] };
+        NM.bodies.set(i, B0);
+        if (human) g.n.say(v.pl[i][1] + ' (online)', 3); else if (Math.random() < 0.6) g.n.say(rnd(LINES.kickoff), 3);
+      }
+      B0.tx = p[0]; B0.tz = p[1]; B0.tyaw = p[2];
+    });
+  }
+  function netDrop(b) { const n = b.n; n.root.rotation.x = 0; n.root.rotation.z = 0; n.state = 'idle'; n.wait = 2; n.leaving = false; n.chatCD = 10; n.target = null; n.home = n.root.position.clone(); if (b.keep && !b.keep.was) { try { window.__npcs.despawn(n.id); } catch (e) { } } }
+  function netHud() {
+    const v = NM.v; if (!v) return;
+    const c = Math.max(0, v.cl), m = Math.floor(c / 60), s2 = Math.floor(c % 60), meT = v.me >= 0 ? v.ps[v.me][3] : -1;
+    const names = t => v.ps.map((p, i) => p[3] === t ? (i === v.me ? 'tu' : v.pl[i][1]) : null).filter(Boolean).join(', ');
+    hud.innerHTML = `<i title="${esc(names(0))}">${meT === 0 ? '▶ ' : ''}${TEAM_NAME[0]}</i> <b>${v.sc[0]}</b> – <b>${v.sc[1]}</b> <i title="${esc(names(1))}">${TEAM_NAME[1]}${meT === 1 ? ' ◀' : ''}</i><span class="clk">${v.ph === 'ko' ? 'calcio d\'inizio' : m + ':' + String(s2).padStart(2, '0')}</span>`;
+  }
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  function netEvent(e) {
+    if (!NM || !e) return; const v = NM.v;
+    if (e.k === 'whistle') sfx('whistle');
+    else if (e.k === 'kick') { if (!(v && e.i === v.me)) { sfx('ballBounce', 0.6 + (e.sp || 8) / 18); if ((e.sp || 0) > 12) sfx('kick'); const b = NM.bodies.get(e.i); if (b) b.n.root.rotation.x = -0.12; } }
+    else if (e.k === 'post') { sfx('hit'); toast('Palo!'); }
+    else if (e.k === 'steal' && v && e.from === v.me) toast('Ti hanno rubato palla');
+    else if (e.k === 'goal' && v) {
+      sfx('whistle'); sfx('clear');
+      const meT = v.me >= 0 ? v.ps[v.me][3] : -1, by = e.by >= 0 ? (e.by === v.me ? 'Tu' : v.pl[e.by][1]) : '';
+      banner.innerHTML = (e.own ? 'AUTOGOL' : 'GOOOOL!') + `<small>${esc(by)}${by ? ' · ' : ''}${TEAM_NAME[0]} ${e.sc[0]} – ${e.sc[1]} ${TEAM_NAME[1]}</small>`; banner.classList.add('on');
+      if (e.by === v.me && !e.own) { ST.cheerNext = true; xp(25, 'Gol al calcetto online'); save('bomber_online', 'Bomber online', 'Un gol al calcetto online con gli amici', '⚽'); }
+      for (const [i, b] of NM.bodies) { try { b.n.man.gesture(v.ps[i][3] === e.team ? 'cheer' : 'facepalm'); } catch (x) { } if (i === e.by && !e.own && Math.random() < 0.8) b.n.say(rnd(LINES.goalUs), 3); }
+      if (meT >= 0 && meT !== e.team && Math.random() < 0.5) { const b = [...NM.bodies.values()][0]; if (b) b.n.say(rnd(LINES.goalThem), 3); }
+    }
+  }
+  function netOver(r) {
+    if (!NM || NM.rewarded) return; NM.rewarded = true;
+    const v = NM.v, me = NM.s.me, meT = v && v.me >= 0 ? v.ps[v.me][3] : -1;
+    const won = !!(r && r.winners && r.winners.includes(me)), draw = !!(r && r.winners && !r.winners.length), sc = (r && r.sc) || (v ? v.sc : [0, 0]);
+    sfx('whistle'); setTimeout(() => sfx('whistle'), 380);
+    banner.innerHTML = (meT < 0 ? 'FINE' : won ? 'VITTORIA!' : draw ? 'PAREGGIO' : 'SCONFITTA') + `<small>${TEAM_NAME[0]} ${sc[0]} – ${sc[1]} ${TEAM_NAME[1]}</small>`; banner.classList.add('on');
+    if (meT >= 0) {
+      const humans = v ? v.ps.filter(p => !p[4]).length : 1, eur = won && humans > 1 ? 20 : 0;
+      xp(won ? 120 : draw ? 70 : 40, 'Calcetto online');
+      try { eur && window.__rpg && window.__rpg.money && window.__rpg.money.add && window.__rpg.money.add(eur); } catch (e) { }
+      save('calcetto_online', 'Calcetto del mercoledì (online)', 'Hai giocato una partita di calcetto online', '👟');
+      if (won && humans > 1) save('calcetto_online_win', 'Campioni online', 'Hai vinto una partita di calcetto contro gli amici veri', '🏆');
+      toast(`Calcetto online: ${won ? 'vittoria' : draw ? 'pareggio' : 'sconfitta'} ${sc[0]}–${sc[1]} · +${won ? 120 : draw ? 70 : 40} XP${eur ? ' · +€ ' + eur : ''}`, won ? 'gold' : '');
+    }
+    for (const b of NM.bodies.values()) { try { b.n.man.gesture('shrug'); } catch (x) { } }
+    NM.endT = 4.5;
+  }
+  function netEnd(leave) {
+    if (!NM) return; const X = NM; NM = null;
+    if (leave) { try { X.s.leave(); } catch (e) { } } else { try { X.s.leave(); } catch (e) { } }
+    const w = W(); if (w && X.camDist != null) w.camDist = X.camDist;
+    const gate = V((P.gate[0] + P.gate[1]) / 2, 0, P.z0), ex = [];
+    for (const b of X.bodies.values()) { const n = b.n; n.root.rotation.x = 0; n.root.rotation.z = 0; ex.push({ n, keep: b.keep, path: [V(gate.x, 0, gate.z + 0.9), V(gate.x, 0, gate.z - 1.4), V(gate.x - 3 + Math.random() * 6, 0, gate.z - 3 - Math.random() * 3)], t: 0 }); }
+    if (ex.length) ST.exits = (ST.exits || []).concat(ex);
+    hud.style.display = 'none'; banner.classList.remove('on');
+    resetBall(V(P.cx + 2.2, R, P.cz));
+  }
+  function netUpdate(dt) {
+    const v = NM.v, w = W(), now = performance.now();
+    if (NM.endT > 0) { NM.endT -= dt; if (NM.endT <= 0) { netEnd(true); return; } }
+    if (!v) return;
+    // hold the kick-off spot until the whistle
+    if (v.ph === 'ko' && v.hm && w && w.mode === 'explore') { man.root.position.x = v.hm[0]; man.root.position.z = v.hm[1]; w.vel && w.vel.set(0, 0, 0); }
+    // my position to the referee (15 Hz)
+    if (v.me >= 0 && now - NM.sendT > 66 && v.ph !== 'end') { NM.sendT = now; const r = man.root.position; NM.s.act({ p: [Math.round(r.x * 100) / 100, Math.round(r.z * 100) / 100, Math.round((w ? w.yaw : 0) * 1000) / 1000] }); }
+    // walked out of the cage: leave after 6 s (a bot takes the seat)
+    if (v.me >= 0 && v.ph !== 'end') {
+      if (!inCage(player.pos, -0.3)) { NM.outT += dt; if (NM.outT > 0.6 && !NM.warned) { NM.warned = true; toast('Torna in campo entro 6 secondi o lasci la partita a un bot', 'warn'); } if (NM.outT > 6.5) { toast('Hai lasciato il calcetto online'); netEnd(true); return; } }
+      else { NM.outT = 0; NM.warned = false; }
+    }
+    // bodies
+    for (const [i, b] of NM.bodies) {
+      const n = b.n; if (!n.root.parent) continue;
+      const p = n.root.position, k = 1 - Math.exp(-dt * 10), ox = p.x, oz = p.z;
+      p.x += ((b.tx ?? p.x) - p.x) * k; p.z += ((b.tz ?? p.z) - p.z) * k; p.y = 0;
+      const sp = Math.hypot(p.x - ox, p.z - oz) / Math.max(dt, 1e-3);
+      n.root.rotation.y += wrapA((b.tyaw ?? n.root.rotation.y) - n.root.rotation.y) * Math.min(1, dt * 10);
+      n.speed = sp * 1.15; n.state = 'match'; n.yawGoal = null; n.target = null; n.leaving = true; n.chatCD = 1e9;
+      n.root.rotation.x *= 1 - Math.min(1, dt * 6);
+      void i;
+    }
+  }
+  function netBall(dt) {
+    const v = NM && NM.v; bangT -= dt;
+    if (!v || !NM.base) { ballMesh.position.copy(B.p); return; }
+    const k = Math.exp(-dt * 9); NM.off.multiplyScalar(k);
+    if (v.o >= 0 && v.o === v.me && v.ph === 'play') { // I have the ball: at my feet, now
+      const f = fwdOf(W() ? W().yaw : 0); tmp.set(player.pos.x + f.x * 0.46 + player.vel.x * 0.06, R, player.pos.z + f.z * 0.46 + player.vel.z * 0.06);
+      B.p.lerp(tmp, 1 - Math.exp(-dt * 25)); B.v.set(0, 0, 0); B.owner = player;
+    } else {
+      B.owner = null;
+      const b = v.o >= 0 ? NM.base : predicted(NM.base, Math.min(0.4, (performance.now() - NM.baseAt) / 1000));
+      B.p.set(b.x + NM.off.x, Math.max(R, b.y + NM.off.y), b.z + NM.off.z); B.v.set(b.vx, b.vy, b.vz);
+    }
+    const sp = Math.hypot(B.v.x, B.v.z);
+    if (sp > 0.02) { axis.set(B.v.z, 0, -B.v.x).normalize(); qRoll.setFromAxisAngle(axis, sp * dt / R); ballMesh.quaternion.premultiply(qRoll); }
+    ballMesh.position.copy(B.p);
+  }
+  function netKickLocal(kind, dx, dz, power) {
+    const v = NM.v; if (!v || v.me < 0) return;
+    const team = v.ps[v.me][3], b = { x: B.p.x, y: Math.max(R + 0.02, B.p.y), z: B.p.z, vx: 0, vy: 0, vz: 0, spin: 0, net: 0 };
+    const kv = netKick(b, team, dx, dz, power, kind, 0);
+    NM.s.act({ k: [Math.round(dx * 1000) / 1000, Math.round(dz * 1000) / 1000, Math.round(power * 100) / 100, kind] });
+    Object.assign(b, kv); NM.base = b; NM.baseAt = performance.now(); NM.off.set(0, 0, 0);
+    NM.kickAt = performance.now(); NM.kickKid = v.kid; // the next views without my kick don't overwrite the prediction
+    NM.v = { ...v, o: -1 };
+    ST.kickAnim = 0.34; player.cool = 0.35;
+    sfx('ballBounce', 0.6 + Math.hypot(kv.vx, kv.vz) / 18); if (Math.hypot(kv.vx, kv.vz) > 12) sfx('kick');
+  }
+  function netShot(kind, power) { const w = W(); const f = fwdOf(w ? w.yaw : 0); netKickLocal(kind, f.x, f.z, power); }
+  function netPass() {
+    const v = NM.v; if (!v || v.me < 0 || v.mode !== '2v2' || !ballNear(1.0)) return false;
+    const team = v.ps[v.me][3], w = W(), f = fwdOf(w ? w.yaw : 0);
+    let best = null, bs = 1e9;
+    v.ps.forEach((p, i) => { if (i === v.me || p[3] !== team) return; const dx = p[0] - player.pos.x, dz = p[1] - player.pos.z, d = Math.hypot(dx, dz); const fa = (dx * f.x + dz * f.z) / (d || 1); const sc = d * (1.6 - fa); if (sc < bs) { bs = sc; best = { dx, dz, d }; } });
+    if (!best) return false;
+    netKickLocal(2, best.dx, best.dz, clamp((best.d * 1.45 + 2.8 - 5) / 8, 0, 1)); ST.kickAnim = 0.28;
+    return true;
+  }
+  registerPartyGame('calcetto', {
+    name: 'Calcetto online', icon: '⚽', desc: 'al campetto di Teletubbylandia, la palla la arbitra il server', min: 1, max: 4,
+    choices: [{ id: '1v1', label: '1 contro 1', opts: { mode: '1v1', seats: 2, mins: 3 } }, { id: '2v2', label: '2 contro 2', opts: { mode: '2v2', seats: 4, mins: 3 } }],
+    busy: () => (M || BB ? 'Finisci prima quello che stai facendo al campetto' : W() && W().mode !== 'explore' && W().mode !== 'goto' ? 'Torna a piedi prima di andare al calcetto' : (window.__gulagRun && window.__gulagRun.state && window.__gulagRun.state().on) ? 'Sei nel Gulag: esci prima' : null),
+    attach: s => netAttach(s),
+    detach: s => { if (NM && NM.s === s) netEnd(false); },
+  });
+
   // ---------------- explore plugin: the ball, the chalkboard, the hoop ----------------
   const plugin = (ctx, w, h) => {
     ST.W = w; ST.H = h;
@@ -689,18 +881,18 @@ export function installSport({ scene, level, man, input, ui, audio, camera, getF
       { id: 'sport_ball', range: 1.3,
         label: () => weaponOut() ? 'Metti via l\'arma per calciare' : (M && M.kind === 'pen') ? 'Tira il rigore (tieni premuto)' : 'Tira (tieni premuto per caricare)',
         alt: () => weaponOut() ? null : 'Pallonetto',
-        extra: () => (M && M.kind === 'match' && !weaponOut()) ? [{ key: 'Q', label: 'Passa' }] : [],
-        anchor: () => (ST.mode === 'bb' || !inCage(player.pos, -0.4) || B.net || (M && (M.phase === 'end' || M.phase === 'goal'))) ? FAR : (B.owner === player ? player.pos : B.p),
+        extra: () => (((M && M.kind === 'match') || (NM && NM.v && NM.v.mode === '2v2')) && !weaponOut()) ? [{ key: 'Q', label: 'Passa' }] : [],
+        anchor: () => (ST.mode === 'bb' || !inCage(player.pos, -0.4) || B.net || (M && (M.phase === 'end' || M.phase === 'goal')) || (NM && !(NM.v && NM.v.ph === 'play'))) ? FAR : (B.owner === player || (NM && NM.v && NM.v.o === NM.v.me) ? player.pos : B.p),
         top: () => tmp2.copy(B.p).add(V(0, 0.55, 0)),
         act: () => { if (weaponOut()) { toast('Prima metti via l\'arma'); return; } startCharge('shot', 'key'); },
         altAct: () => startCharge('chip', 'key') },
       { id: 'sport_challenge', range: 1.7,
         label: () => 'Sfida gli amici a calcetto (3 contro 3)', alt: () => 'Rigori contro un amico',
-        anchor: () => (M || ST.mode) ? FAR : signA, top: () => V(BOARD_SIGN.x, 1.6, BOARD_SIGN.z - 0.6),
+        anchor: () => (M || ST.mode || NM) ? FAR : signA, top: () => V(BOARD_SIGN.x, 1.6, BOARD_SIGN.z - 0.6),
         act: () => startMatch(), altAct: () => startPens() },
       { id: 'sport_centre', range: 1.6,
         label: () => 'Sfida gli amici a calcetto (3 contro 3)', alt: () => 'Rigori contro un amico',
-        anchor: () => (M || ST.mode || d2(B.p, KICKOFF) < 1.2) ? FAR : KICKOFF, top: () => V(P.cx, 1.0, P.cz),
+        anchor: () => (M || ST.mode || NM || d2(B.p, KICKOFF) < 1.2) ? FAR : KICKOFF, top: () => V(P.cx, 1.0, P.cz),
         act: () => startMatch(), altAct: () => startPens() },
       { id: 'sport_hoop', range: 1.6,
         label: () => 'Tiri liberi al canestro (10 tiri)', anchor: () => (M || ST.mode) ? FAR : V(HOOP.spot[0], 0, HOOP.spot[1]), top: () => V(HOOP.x, 2.2, HOOP.spot[1] - 0.5),
@@ -715,15 +907,16 @@ export function installSport({ scene, level, man, input, ui, audio, camera, getF
     // visible with Teletubbylandia (quartiere areas): hidden from the house/garden/street east side
     const tele = q && q.areas && q.areas.tele, vis = tele && tele.group ? tele.group.visible : true;
     group.visible = vis; ballMesh.visible = vis; bball.visible = vis;
-    if (!vis && !M && !BB) { touch.edge.clear(); btns.classList.remove('on'); return; }
+    if (!vis && !M && !BB && !NM) { touch.edge.clear(); btns.classList.remove('on'); return; }
     const w = W();
     if (w) { player.yaw = w.yaw; player.vel.copy(w.vel); }
-    if (M) { if (M.kind === 'match') updateMatch(dt); else updatePens(dt); }
+    if (NM) netUpdate(dt);
+    else if (M) { if (M.kind === 'match') updateMatch(dt); else updatePens(dt); }
     else if (inCage(player.pos, -0.5)) contacts([player], dt);
     else if (B.owner === player) B.owner = null;
     if (BB) updateBB(dt);
     updateCharge(dt);
-    updateBall(dt);
+    if (NM) netBall(dt); else updateBall(dt);
     kickPose(dt);
     updateExits(dt);
     // first time in the cage: how it works
@@ -732,7 +925,8 @@ export function installSport({ scene, level, man, input, ui, audio, camera, getF
     touch.edge.clear();
   }
 
-  const api = { pre, update, plugin, get match() { return M; }, ball: B, startMatch, startPens, startBB, endMatch: () => M && (M.kind === 'match' ? endMatch('forfeit') : endPens(true)), group, ballMesh, PITCH: P };
+  const api = { pre, update, plugin, get match() { return M; }, ball: B, startMatch, startPens, startBB, endMatch: () => M && (M.kind === 'match' ? endMatch('forfeit') : endPens(true)), group, ballMesh, PITCH: P,
+    netAttach: s => netAttach(s), netState: () => (NM ? { ph: NM.v && NM.v.ph, sc: NM.v && NM.v.sc, me: NM.v && NM.v.me, cl: NM.v && NM.v.cl, ball: [B.p.x, B.p.y, B.p.z], online: NM.s.online, id: NM.s.id } : null), netLeave: () => netEnd(true) };
   window.__sport = api;
   return api;
 }

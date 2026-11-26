@@ -1,11 +1,16 @@
-// "Zombata notturna": with the lights off (night) and the player outdoors (garden / Teletubbylandia), procedural
+// "Zombata notturna": at night (shared day/night cycle, daynight.js) with the player outdoors (garden / Teletubbylandia), procedural
 // zombies rise from the ground and shamble toward the player. Survive 60 s or reach the checkpoint; get caught and you
 // wake up at the garden door. The extinguisher (F while carrying it) pushes them back. Flashlight on the man at night.
 // Cheap: all zombies are 5 InstancedMeshes (body, arms, two legs, eyes); disabled on the "Basso" quality.
+// Online (src/worldsync.js sets api.net): one zombata for the players together. The first who triggers it runs it
+// (world state 'nz:<id>' with the start time on the server clock); the others outdoors within 40 m join it with the same
+// timer, see his zombies (streamed, puppets here) and their spray is sent to him; his zombies go for the nearest of
+// them. Getting caught / going home ends it only for you; when he ends it, it ends for everybody. Solo: unchanged.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { V, rnd, pick, clamp, smooth, unlock, phone, catchphrase, logEvent, anchor, overlayCSS } from './shared.js';
 import { loadZombieModel, makeZombieRig } from './zmodel.js';
+import { DN, zombiesOut } from '../daynight.js'; // zombies only at night; at dawn they cover their eyes and sink
 
 const MAX = 10, DUR = 60;
 const OUTDOOR = /giardino|teletubby|colli|via |strada|petroni|checkpoint|parco|piazzett/i;
@@ -52,7 +57,8 @@ export function createNightZombies(M) {
   }
   function newRig() { const r = makeZombieRig(ZM); scene.add(r.root); rigs.push(r); try { window.__gfx && window.__gfx.addBlob && window.__gfx.addBlob(r.root, 0.34, 0.32); } catch (e) { } return r; }
   const freeRig = z => { if (z.rig) { z.rig.busy = false; z.rig.root.visible = false; z.rig = null; } };
-  const st = { on: false, t: 0, armed: 0, cool: 20, caught: false, outT: 0, wins: 0, sprays: 0, endT: 0, msg: null, groanT: 1, beatT: 0, firstHint: false };
+  let NET = null, zid = 0; // online hooks (src/worldsync.js)
+  const st = { on: false, follow: 0, t: 0, armed: 0, cool: 20, caught: false, outT: 0, wins: 0, sprays: 0, endT: 0, msg: null, groanT: 1, beatT: 0, firstHint: false };
   const m4 = new THREE.Matrix4(), mRoot = new THREE.Matrix4(), mLoc = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s1 = V(1, 1, 1), p0 = V();
   const ZERO_M = new THREE.Matrix4().makeScale(0, 0, 0);
   function build() {
@@ -84,7 +90,7 @@ export function createNightZombies(M) {
   const flash = document.createElement('div'); flash.id = 'mg-zflash'; document.body.appendChild(flash);
   const setHud = (title, sub) => { hud.innerHTML = title ? `${title}<small>${sub || ''}</small>` : ''; hud.classList.toggle('on', !!title); };
 
-  function nightAmount() { const f = fx(); if (f && typeof f.nightAmount === 'number') return f.nightAmount; const w = M.getWorld && M.getWorld(); return w && w.night ? 1 : 0; }
+  function nightAmount() { const f = fx(); if (f && typeof f.nightAmount === 'number') return f.nightAmount; return DN.update().night; }
   function zone(p) { return (level && level.zoneAt && level.zoneAt(p.x, p.z)) || ''; }
   const outdoor = p => { const z = zone(p); return !!z && OUTDOOR.test(z) && !INDOOR.test(z); };
   const walk = (x, z, r = 0.28) => !level || !level.isWalkable || level.isWalkable(x, z, r);
@@ -97,7 +103,7 @@ export function createNightZombies(M) {
       const a = Math.random() * Math.PI * 2, r = e ? rnd(0, 3) : rnd(7, 12), x = (e ? e.x : p.x) + Math.cos(a) * r, z = (e ? e.z : p.z) + Math.sin(a) * r;
       const pt = V(x, 0, z);
       if (!walk(x, z, 0.35) || !outdoor(pt)) continue;
-      const zb = { pos: pt, yaw: Math.atan2(p.x - x, p.z - z), ph: rnd(0, 6), sp: rnd(0.7, 1.12), rise: 0, stun: 0, sink: 0, tilt: rnd(-0.15, 0.15), groan: rnd(1, 5) };
+      const zb = { nid: ++zid, pos: pt, yaw: Math.atan2(p.x - x, p.z - z), ph: rnd(0, 6), sp: rnd(0.7, 1.12), rise: 0, stun: 0, sink: 0, tilt: rnd(-0.15, 0.15), groan: rnd(1, 5) };
       zb.rig = takeRig(); Z.push(zb); sfxRise(zb); return zb;
     }
     return null;
@@ -109,6 +115,7 @@ export function createNightZombies(M) {
     const f = rnd(85, 140); a.tone('sawtooth', f, f * 0.6, rnd(0.6, 1.1), v, a.room); a.noise(0.8, v * 0.8, 700, 160, a.room, 0.05, 2, 'bandpass');
   }
 
+  function sizzle() { const a = audio.ctx ? audio : null; if (!a) return; a.noise(0.9, 0.03, 5200, 2600, a.room, 0, 1, 'highpass'); a.tone('sawtooth', rnd(150, 210), 70, 0.7, 0.02, a.room, 0.05); }
   function start(force) {
     if (st.on || (!enabled() && !force)) return false;
     build(); const w = M.getWorld && M.getWorld(); if (!w) return false;
@@ -119,7 +126,7 @@ export function createNightZombies(M) {
     return true;
   }
   function end(kind) {
-    if (!st.on) return; st.on = false; st.cool = kind === 'win' ? 90 : 35; st.endT = 2.2;
+    if (!st.on) return; st.on = false; if (NET) NET.ended(kind, st.follow); st.follow = 0; st.t0 = 0; st.cool = kind === 'win' ? 90 : 35; st.endT = 2.2;
     for (const z of Z) z.sink = z.sink || 0.001;
     const w = M.getWorld && M.getWorld();
     if (kind === 'win' || kind === 'checkpoint') {
@@ -138,7 +145,19 @@ export function createNightZombies(M) {
       phone('asche', 'raga ma chi si fa prendere dagli zombi lmaooo');
     } else if (kind === 'home') {
       setHud('BARRICATO IN CASA', 'Gli zombi tornano sottoterra');
-    } else setHud(null);
+    } else if (kind === 'dawn') {
+      // comic retreat: hands over the eyes, a fizz of smoke and sparks, then down into the ground
+      setHud('IL SOLE!', 'Gli zombi si coprono gli occhi e tornano sottoterra');
+      st.wins++;
+      unlock('zombata_alba', { title: 'Fino all\'alba', desc: 'Hai visto gli zombi scappare alle prime luci', icon: '🌅' });
+      const f = fx();
+      Z.forEach((z, i) => {
+        z.dawn = true; z.sink = 0.001;
+        setTimeout(() => { try { const h = z.pos.clone().add(V(0, 1.65, 0)); f && f.sparkles && f.sparkles(h, 10); f && f.spray && f.spray(h, V(0, 1, 0), 0.12); sizzle(); } catch (e) { } }, 80 + i * 110);
+      });
+      phone('seghino', rnd(['zombi sciolti dal sole 🌅', 'alba. sopravvissuti, palese', 'il sole li ha fatti neri']));
+    } else if (kind === 'host') setHud('ZOMBATA FINITA', 'Chi l\'ha cominciata è stato preso o è tornato a casa');
+    else setHud(null);
     setTimeout(() => { if (!st.on) setHud(null); }, 3200);
     void w;
   }
@@ -172,21 +191,25 @@ export function createNightZombies(M) {
     const busy = ui.menuOpen || (w.mode !== 'explore' && w.mode !== 'goto') || document.body.dataset.overlay;
     if (!st.on) {
       st.cool = Math.max(0, st.cool - dt);
-      if (enabled() && n > 0.6 && out && !busy && !M.S.online) {
+      // dusk build-up: the first groans from the bottom of the garden before the zombies may come out
+      if (enabled() && out && n > 0.2 && !zombiesOut(n) && !busy && /giardino/i.test(zone(p))) { /* (streets: combat/enemies.js) */ st.duskT = (st.duskT ?? 3) - dt; if (st.duskT <= 0) { st.duskT = rnd(5, 9); groan(null, rnd(5, 9)); } }
+      if (enabled() && zombiesOut(n) && out && !busy && (!M.S.online || NET)) {
         st.armed += dt;
         if (!st.firstHint && st.armed > 1.5) { st.firstHint = true; w.toast && w.toast('Si sentono dei lamenti dal fondo del giardino…'); }
-        if (st.armed > 6 && st.cool <= 0) start();
+        if (st.armed > 6 && st.cool <= 0) { if (!NET) start(); else if (!st.claiming) { st.claiming = true; NET.claim(p).then(t0 => { st.claiming = false; if (t0 && !st.on) { start(); st.t0 = t0; } else if (!st.on) st.cool = 6; }); } } // online: one per group, its start time on the server clock
       } else st.armed = Math.max(0, st.armed - dt * 2);
     } else {
-      st.t += dt;
+      st.t = st.t0 && NET ? Math.max(0, (NET.now() - st.t0) / 1000) : st.t + dt; // online: the same timer for everybody in it
       if (!out) { st.outT += dt; if (st.outT > 1.2) end(INDOOR.test(zone(p)) || !zone(p) ? 'home' : 'home'); }
       else st.outT = 0;
-      if (!w.night && n < 0.3) end('lights');
+      if (st.on && !zombiesOut(n)) end('dawn'); // sunrise (shared clock): the night is over
+    }
+    if (st.on) { // (still on: no spawn / HUD overwrite in the frame the event ended)
       // spawn
       st.spawnT -= dt;
       const alive = Z.filter(z => !z.sink).length;
       const target = Math.min(MAX, 4 + Math.floor(st.t / 8));
-      if (st.spawnT <= 0 && alive < target) { spawnOne(p); st.spawnT = rnd(1.5, 3); }
+      if (st.spawnT <= 0 && alive < target && !st.follow) { spawnOne(p); st.spawnT = rnd(1.5, 3); }
       const left = Math.max(0, DUR - st.t);
       setHud('ZOMBATA NOTTURNA', `Sopravvivi ancora ${Math.ceil(left)}s · zombi: ${alive}` + (st.cp ? ` · checkpoint a ${Math.round(Math.hypot(st.cp.x - p.x, st.cp.z - p.z))} m` : ''));
       if (st.cp && Math.hypot(st.cp.x - p.x, st.cp.z - p.z) < 1.6) end('checkpoint');
@@ -200,17 +223,21 @@ export function createNightZombies(M) {
     // zombies
     let nearest = 1e9;
     for (const z of Z) {
-      z.ph += dt * z.sp * 5.2;
+      z.ph += dt * z.sp * (z.dawn ? 14 : 5.2);
       if (z.sink) { z.sink += dt; continue; }
       z.rise = Math.min(1, z.rise + dt / 1.4);
       z.stun = Math.max(0, z.stun - dt);
-      const dx = p.x - z.pos.x, dz = p.z - z.pos.z, d = Math.hypot(dx, dz);
-      nearest = Math.min(nearest, d);
-      if (spraying && d < 3.2 && (-dx * fwd.x - dz * fwd.z) / (d || 1) > 0.72) {
-        if (z.stun < 0.5) st.sprays++;
-        z.stun = 1.6; const k = 1.6 * dt; z.pos.x -= dx / d * k * 1.4; z.pos.z -= dz / d * k * 1.4;
+      const ld = Math.hypot(p.x - z.pos.x, p.z - z.pos.z); // from me: caught, spray, heartbeat
+      const tp = NET && st.on && !st.follow ? NET.target(z.pos, p) : p; // online: his zombies go for the nearest player in it
+      const dx = tp.x - z.pos.x, dz = tp.z - z.pos.z, d = Math.hypot(dx, dz);
+      nearest = Math.min(nearest, ld);
+      if (spraying && ld < 3.2 && (-(p.x - z.pos.x) * fwd.x - (p.z - z.pos.z) * fwd.z) / (ld || 1) > 0.72) {
+        if (z.stun < 0.5) { st.sprays++; if (st.follow && NET) NET.spray(z.nid, p); }
+        z.stun = 1.6; const k = 1.6 * dt; z.pos.x -= (p.x - z.pos.x) / ld * k * 1.4; z.pos.z -= (p.z - z.pos.z) / ld * k * 1.4;
       }
-      if (z.rise > 0.85 && st.on) {
+      if (st.follow && z.np) { const k = 1 - Math.exp(-dt * 8); z.pos.x += (z.np.x - z.pos.x) * k; z.pos.z += (z.np.z - z.pos.z) * k; let dy = z.ny - z.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2; z.yaw += dy * Math.min(1, dt * 6); }
+      if (st.follow) { if (z.rise > 0.85 && st.on && ld < 0.62 && z.stun <= 0 && !st.caught && w.mode === 'explore') { st.caught = true; z.attackT = 1.2; caught(); } } // puppet: moved by his stream
+      else if (z.rise > 0.85 && st.on) {
         const ty = Math.atan2(dx, dz); let dy = ty - z.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
         z.yaw += dy * Math.min(1, dt * 2.5);
         const sp = z.sp * (z.stun > 0 ? 0.0 : 1) * (0.75 + 0.25 * Math.sin(z.ph * 0.5));
@@ -225,24 +252,27 @@ export function createNightZombies(M) {
         }
         // zombies don't overlap
         for (const o of Z) if (o !== z && !o.sink) { const ox = z.pos.x - o.pos.x, oz = z.pos.z - o.pos.z, od = Math.hypot(ox, oz); if (od < 0.55 && od > 1e-3) { z.pos.x += ox / od * (0.55 - od) * 0.5; z.pos.z += oz / od * (0.55 - od) * 0.5; } }
-        if (d < 0.62 && z.stun <= 0 && st.on && !st.caught && w.mode === 'explore') { st.caught = true; z.attackT = 1.2; caught(); }
+        if (ld < 0.62 && z.stun <= 0 && st.on && !st.caught && w.mode === 'explore') { st.caught = true; z.attackT = 1.2; caught(); }
       }
-      z.groan -= dt; if (z.groan <= 0) { z.groan = rnd(2.5, 6); groan(z, d); }
+      z.groan -= dt; if (z.groan <= 0) { z.groan = rnd(2.5, 6); groan(z, ld); }
     }
     // skinned zombies: transform + animation state
     for (const z of Z) {
       const r = z.rig; if (!r) continue;
-      const yOff = (z.sink ? -smooth((z.sink - 0.6) / 1.2) * 1.9 * (z.sink > 0.6 ? 1 : 0) : -(1 - smooth(z.rise)) * 1.9);
-      r.root.position.set(z.pos.x, yOff, z.pos.z); r.root.rotation.y = z.yaw;
+      const yOff = (z.sink ? -smooth((z.sink - (z.dawn ? 1.0 : 0.6)) / 1.2) * 1.9 * (z.sink > (z.dawn ? 1.0 : 0.6) ? 1 : 0) : -(1 - smooth(z.rise)) * 1.9);
+      r.root.position.set(z.pos.x, yOff, z.pos.z); r.root.rotation.y = z.yaw + (z.dawn ? Math.sin(z.ph * 3.1) * 0.25 : 0);
       z.attackT = Math.max(0, (z.attackT || 0) - dt);
-      if (z.sink) r.play(r.has('fall') ? 'fall' : 'idle', 0.2);
+      if (z.sink && z.dawn) { r.play('idle', 0.2); r.setRate(2.6); }
+      else if (z.sink) r.play(r.has('fall') ? 'fall' : 'idle', 0.2);
       else if (z.attackT > 0 && r.has('attack')) r.play('attack', 0.12);
       else if (z.stun > 0 || z.rise < 0.85 || !st.on) { r.play('idle', 0.3); r.setRate(1); }
       else { const run = z.sp > 1.05 && r.has('run'); r.play(run ? 'run' : 'walk', 0.3); r.setRate(clamp(z.sp / (run ? r.speed.run : r.speed.walk), 0.45, 1.8)); }
       r.update(dt);
     }
-    for (const z of Z) if (z.sink >= 1.6) freeRig(z);
-    Z = Z.filter(z => z.sink < 1.6);
+    if (st.follow) for (const z of Z) if (performance.now() - (z.seen || 0) > 1500 && !z.sink) z.sink = 0.001; // gone from his stream
+    if (NET && st.on && !st.follow) NET.stream(Z);
+    for (const z of Z) if (z.sink >= (z.dawn ? 2.4 : 1.6)) freeRig(z);
+    Z = Z.filter(z => z.sink < (z.dawn ? 2.4 : 1.6));
     // heartbeat when they get close
     if (st.on && nearest < 3.5 && audio.ctx) { st.beatT -= dt; if (st.beatT <= 0) { st.beatT = 0.35 + nearest * 0.18; audio.tone('sine', 62, 40, 0.12, 0.12 * (1 - nearest / 3.5), audio.room); audio.tone('sine', 58, 38, 0.1, 0.08 * (1 - nearest / 3.5), audio.room, 0.16); } }
     // instances
@@ -250,12 +280,12 @@ export function createNightZombies(M) {
     for (const z of Z) {
       if (i >= MAX) break;
       if (z.rig) continue;
-      const yOff = (z.sink ? -smooth(z.sink / 1.5) * 1.9 : -(1 - smooth(z.rise)) * 1.9);
-      const sway = Math.sin(z.ph * 0.5) * 0.07 + z.tilt * 0.3;
-      e.set(0.12 + (z.stun > 0 ? -0.25 : 0), z.yaw, sway); q.setFromEuler(e);
+      const yOff = z.dawn ? -smooth((z.sink - 0.9) / 1.4) * 1.9 : (z.sink ? -smooth(z.sink / 1.5) * 1.9 : -(1 - smooth(z.rise)) * 1.9);
+      const sway = z.dawn ? Math.sin(z.ph * 2.3) * 0.08 : Math.sin(z.ph * 0.5) * 0.07 + z.tilt * 0.3;
+      e.set(z.dawn ? -0.22 : 0.12 + (z.stun > 0 ? -0.25 : 0), z.yaw + (z.dawn ? Math.sin(z.ph * 1.7) * 0.2 : 0), sway); q.setFromEuler(e);
       p0.set(z.pos.x, yOff, z.pos.z); mRoot.compose(p0, q, s1);
       meshes.body.setMatrixAt(i, mRoot); meshes.eyes.setMatrixAt(i, mRoot);
-      mLoc.makeRotationX(-0.12 + Math.sin(z.ph * 0.9) * 0.1 + (z.stun > 0 ? -0.9 : 0)).setPosition(0, 1.42, 0); m4.multiplyMatrices(mRoot, mLoc); meshes.arms.setMatrixAt(i, m4);
+      mLoc.makeRotationX(z.dawn ? -0.72 + Math.sin(z.ph * 2.9) * 0.06 : -0.12 + Math.sin(z.ph * 0.9) * 0.1 + (z.stun > 0 ? -0.9 : 0)).setPosition(0, 1.42, 0); m4.multiplyMatrices(mRoot, mLoc); meshes.arms.setMatrixAt(i, m4);
       const sw = Math.sin(z.ph) * 0.38 * (z.rise > 0.85 && !z.sink ? 1 : 0.2);
       mLoc.makeRotationX(sw).setPosition(-0.1, 0.86, 0); m4.multiplyMatrices(mRoot, mLoc); meshes.legL.setMatrixAt(i, m4);
       mLoc.makeRotationX(-sw).setPosition(0.1, 0.86, 0); m4.multiplyMatrices(mRoot, mLoc); meshes.legR.setMatrixAt(i, m4);
@@ -263,5 +293,22 @@ export function createNightZombies(M) {
     }
     for (const k in meshes) { const im = meshes[k]; im.count = i; im.instanceMatrix.needsUpdate = true; }
   }
-  return { update, start, end, get active() { return st.on; }, get zombies() { return Z.length; }, debug: () => Z.map(z => ({ x: +z.pos.x.toFixed(2), z: +z.pos.z.toFixed(2), rig: !!z.rig, rise: +z.rise.toFixed(2) })), get model() { return !!ZM; } };
+  // online (src/worldsync.js): join someone's zombata with his start time · his zombies' snapshot · a spray on one of mine
+  function follow(t0, owner) {
+    const man = M.man; if (st.on || !enabled() || !man || !outdoor(man.root.position) || !zombiesOut(nightAmount()) || !start(true)) return false;
+    st.follow = owner; st.t0 = t0; st.t = Math.max(0, (NET.now() - t0) / 1000); return true;
+  }
+  function puppets(list) {
+    if (!st.follow || !Array.isArray(list)) return;
+    const now = performance.now();
+    for (const a of list) {
+      if (!Array.isArray(a)) continue;
+      let z = Z.find(q => q.nid === a[0]);
+      if (!z) { if (Z.length >= MAX || a[6]) continue; z = { nid: a[0], pos: V(a[1] / 100, 0, a[2] / 100), yaw: a[3] / 100, ph: rnd(0, 6), sp: 1, rise: 0, stun: 0, sink: 0, tilt: rnd(-0.15, 0.15), groan: rnd(1, 5), np: V() }; z.rig = takeRig(); Z.push(z); sfxRise(z); }
+      if (!z.np) z.np = V();
+      z.np.set(a[1] / 100, 0, a[2] / 100); z.ny = a[3] / 100; z.rise = Math.max(z.rise, a[4] / 10); z.stun = Math.max(z.stun, a[5] / 10); if (a[6] && !z.sink) z.sink = a[6] / 10; z.seen = now;
+    }
+  }
+  function sprayed(id, from) { const z = Z.find(q => q.nid === id); if (!z || z.sink || !from) return; if (z.stun < 0.5) st.sprays++; z.stun = 1.6; const dx = from.x - z.pos.x, dz = from.z - z.pos.z, d = Math.hypot(dx, dz) || 1; z.pos.x -= dx / d * 0.25; z.pos.z -= dz / d * 0.25; }
+  return { update, start, end, follow, puppets, sprayed, set net(v) { NET = v; }, get net() { return NET; }, get state() { return st; }, get list() { return Z; }, get active() { return st.on; }, get zombies() { return Z.length; }, debug: () => Z.map(z => ({ x: +z.pos.x.toFixed(2), z: +z.pos.z.toFixed(2), rig: !!z.rig, rise: +z.rise.toFixed(2) })), get model() { return !!ZM; } };
 }

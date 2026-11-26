@@ -2,10 +2,20 @@
 // boss "Il Vigile Urbano Zombie" (Via Petroni). Spawn director per area: only in the outdoor quartiere zones (never the
 // house, the garden or interiors), out of view, capped by the quality preset (Basso 3 · Medio 6 · Alto 10 · Ultra 14),
 // fewer by day. Everything is built during the preload (pools), nothing is created while playing.
+// Online (src/worldsync.js sets C.sync): every client keeps running this director around its own player and owns what it
+// spawns; enemies of other players are puppets here (e.remote = owner id) moved by their snapshots (puppet()), hits on
+// them go to the owner (C.sync.hit), owned enemies chase the nearest player (C.sync.target) and hurt remote ones through
+// C.sync.hurt; one boss per room (C.sync.bossTaken / bossSpawned). Solo: C.sync is null and nothing changes.
 import * as THREE from 'three';
 import { loadZombieModel, makeZombieRig } from '../minigames/zmodel.js';
 import { loadOptional } from '../quartiere/models.js'; // the original (skinned) pigeon scene: SkeletonUtils clones need it
 import { OUTDOOR_ZONES } from '../quartiere/layout.js';
+import { zombiesOut } from '../daynight.js';
+// Day/night rule (shared clock, daynight.js): THE single hook for which enemy types may walk now. Zombies and the Vigile
+// only at night (nightAmount ≥ ZOMBIE_NIGHT, ≈ 20:00 → 06:00 game time); by day the director sends the mutant pigeons only.
+// At dawn the zombies out in the streets cover their eyes and sink into the ground ('dawn', every client by its own clock).
+export const mayWalk = (type, night) => type === 'pigeon' || zombiesOut(night);
+const DAWN_LINES = ['AAAH, IL SOLE!', 'LA LUCE!', 'BRUCIAAA!', 'I MIEI OCCHI!', 'TROPPO PRESTO!'];
 import { currentQuality } from '../scene.js';
 import { weaponMaterial } from './weapons.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -121,22 +131,25 @@ export function createEnemies(C) {
       id: nid++, type, alive: true, dead: false, level: L, pos: pos.clone(), vel: V(), yaw: o.yaw ?? Math.random() * 6.28, state: 'rise', t: 0, cool: rnd(0.3, 1), rig, obj,
       rootY: 0, sc: type === 'boss' ? 1.38 : 1, mass: type === 'boss' ? 4 : type === 'pigeon' ? 0.5 : 1, slowT: 0, hitT: -9, stagT: 0, rise: type === 'pigeon' ? 1 : 0,
       wanderT: 0, wtarget: pos.clone(), lostT: 0, throwT: 3, deathT: 0, tumble: 0, tAxis: V(1, 0, 0), side: Math.random() < 0.5 ? 1 : -1,
+      remote: o.remote || 0, gid: o.gid || 0, net: null,
     };
     const k = 1 + 0.28 * (L - 1);
     if (type === 'zombie') { e.max = Math.round(60 * k); e.dmg = 10 * (1 + 0.12 * (L - 1)); e.speed = 1.95 + Math.min(0.6, 0.06 * L); }
     if (type === 'boss') { e.max = Math.round(650 * (1 + 0.25 * (L - 1))); e.dmg = 22 * (1 + 0.1 * (L - 1)); e.speed = 1.45; e.name = 'Il Vigile Urbano Zombie'; }
     if (type === 'pigeon') { e.max = Math.round(18 * (1 + 0.2 * (L - 1))); e.dmg = 5 * (1 + 0.1 * (L - 1)); e.speed = 7; e.alt = rnd(5.5, 8); e.ang = Math.random() * 6.28; e.rad = rnd(4.5, 7); e.state = 'circle'; e.pos.y = e.alt + 4; }
     e.hp = e.max;
+    if (o.max > 0) { e.max = o.max; e.hp = Math.min(o.max, o.hp ?? o.max); } // puppet / adopted: the owner's numbers
     if (rig) { rig.root.visible = true; rig.root.position.copy(e.pos); rig.root.position.y = -1.8; rig.root.rotation.set(0, e.yaw, 0); rig.play('idle', 0); }
     if (obj) { obj.root.visible = true; obj.root.position.copy(e.pos); }
     if (type === 'boss' && bossCap) bossCap.visible = true;
     list.push(e);
-    if (type !== 'pigeon') fx.burst(V(e.pos.x, 0.1, e.pos.z), '#6a4a2a', 6, { size: 0.5, speed: 1.2, life: 0.9, up: 0.6 });
-    C.emit('spawn', { type, id: e.id, level: L, pos: e.pos.clone() });
+    if (type !== 'pigeon' && !o.quiet) { fx.burst(V(e.pos.x, 0.1, e.pos.z), '#6a4a2a', 6, { size: 0.5, speed: 1.2, life: 0.9, up: 0.6 }); if (type === 'boss') fx.bossEntrance(e.pos); else fx.zombieSpawn(e.pos, { dur: 1.1 }); } // particles.js: earth bursting, cracks (boss: + police lights)
+    if (!e.remote) C.emit('spawn', { type, id: e.id, level: L, pos: e.pos.clone() });
     return e;
   }
   function release(e) {
-    e.alive = false;
+    if (!e.alive) return;
+    e.alive = false; if (C.sync) C.sync.released(e);
     if (e.rig) { e.rig.busy = false; e.rig.root.visible = false; e.rig.root.rotation.set(0, 0, 0); if (e.type === 'boss' && bossCap) bossCap.visible = false; }
     if (e.obj) { e.obj.busy = false; e.obj.root.visible = false; e.obj.root.rotation.set(0, 0, 0); }
     const i = list.indexOf(e); if (i >= 0) list.splice(i, 1);
@@ -169,8 +182,10 @@ export function createEnemies(C) {
   function spawn(type, pos, opts = {}) { // public: spawnEnemy(type, pos, {level})
     if (!ready) return null;
     const zone = level.zoneAt ? level.zoneAt(pos.x, pos.z) : null;
+    if (opts.quest && !mayWalk(type, C.night()) && !arenaAt(pos.x, pos.z)) type = 'pigeon'; // quests by day: no zombies in the sun
     const e = newEnemy(type, pos, opts.level || levelFor(zone, C.night()), opts);
     if (e && opts.aggro !== false) { e.state = type === 'pigeon' ? 'circle' : 'rise'; e.aggro = true; }
+    if (e && type === 'boss' && C.sync) C.sync.bossSpawned(e);
     return e;
   }
   function spawnFlock(P, n, L) {
@@ -198,14 +213,21 @@ export function createEnemies(C) {
   function near(p, R) { const out = []; for (const e of list) { if (!e.alive || e.dead) continue; const cy = e.type === 'pigeon' ? e.pos.y : e.rootY + 0.9 * e.sc; const d = Math.hypot(e.pos.x - p.x, cy - p.y, e.pos.z - p.z); if (d < R + 0.3 * e.sc) out.push({ e, d }); } return out; }
   function damage(e, amount, o = {}) {
     if (!e || !e.alive || e.dead) return 0;
-    amount = Math.max(1, amount); e.hp -= amount; e.hitT = performance.now() / 1000;
+    amount = Math.max(1, amount);
+    if (e.remote && C.sync) { // puppet: the owner applies it; here only the number and a predicted bar
+      C.sync.hit(e, amount, o); e.hitT = performance.now() / 1000; e.hp = Math.max(1, e.hp - amount);
+      hud.num(o.point || (e.type === 'pigeon' ? e.pos : V(e.pos.x, e.rootY + (o.head ? 1.75 : 1.3) * e.sc, e.pos.z)), amount, { crit: o.head || o.crit, color: o.color });
+      return amount;
+    }
+    if (C.sync) (e.hitBy || (e.hitBy = new Map())).set(o.by || 0, performance.now()); // kill credit / assists (0 = me)
+    e.hp -= amount; e.hitT = performance.now() / 1000;
     if (o.dir && o.knock) { const k = o.knock / e.mass; e.vel.x += o.dir.x * k; e.vel.z += o.dir.z * k; if (e.type === 'pigeon') e.vel.y += Math.max(0, o.dir.y) * k; }
     if (o.slow) e.slowT = Math.max(e.slowT, o.slow);
     if (e.type === 'zombie' && (o.knock || 0) > 2.2) e.stagT = 0.35;
     if (e.state !== 'chase' && e.type !== 'pigeon' && e.state !== 'rise') e.state = 'chase';
     e.aggro = true;
     const hp = e.type === 'pigeon' ? e.pos : V(e.pos.x, e.rootY + (o.head ? 1.75 : 1.3) * e.sc, e.pos.z);
-    hud.num(o.point || hp, amount, { crit: o.head || o.crit, color: o.color });
+    if (!o.by) hud.num(o.point || hp, amount, { crit: o.head || o.crit, color: o.color }); // remote hits: the shooter shows it
     if (e.hp <= 0) { kill(e, o); return amount; }
     if (e.type === 'boss' && Math.random() < 0.15) C.fxSfx('whistle', e.pos, 0.6);
     return amount;
@@ -215,13 +237,15 @@ export function createEnemies(C) {
     const dir = o.dir ? V(o.dir.x, 0, o.dir.z) : V(Math.sin(e.yaw + Math.PI), 0, Math.cos(e.yaw + Math.PI)); if (dir.lengthSq() < 1e-4) dir.set(0, 0, 1); dir.normalize();
     e.tAxis.set(dir.z, 0, -dir.x); e.vel.addScaledVector(dir, 1.5 + (o.knock || 0) * 0.35 / e.mass);
     if (e.rig) e.rig.play(e.rig.has('fall') ? 'fall' : 'idle', 0.12);
-    if (e.type === 'pigeon') { e.vel.y = 2; C.fxSfx('squawk', e.pos, 1); fx.burst(e.pos, '#d8d8e8', 6, { size: 0.18, speed: 2, life: 0.9, grav: 1.5 }); }
+    if (e.type === 'pigeon') { e.vel.y = 2; C.fxSfx('squawk', e.pos, 1); fx.burst(e.pos, '#d8d8e8', 6, { size: 0.18, speed: 2, life: 0.9, grav: 1.5 }); fx.feathers(e.pos, 12); }
     else C.fxSfx('zdie', e.pos, 1);
-    C.onKill(e, o);
+    if (C.sync) C.sync.died(e, o); // online: may set o.noCredit (a remote player landed the last hit: credit goes to him)
+    if (!o.noCredit) C.onKill(e, o);
   }
 
   // ---------------------------------------------------------------- per frame
   const _t = V(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), UP = V(0, 1, 0);
+  const hurt = (T, e, n, k) => (T && T.id ? C.sync.hurt(T.id, n, e, k) : C.hitPlayer(n, e, k)); // T.id: a remote player (online)
   function update(dt, ctx) {
     if (!ready) return;
     const P = man.root.position, zone = level.zoneAt ? level.zoneAt(P.x, P.z) : null, outdoor = (!!zone && OUTDOOR_ZONES.has(zone)) || !!arenaAt(P.x, P.z);
@@ -229,23 +253,26 @@ export function createEnemies(C) {
     // ---------- director
     if (ctx.spawning && outdoor) {
       st.outT = 0;
-      const cap = Math.max(1, Math.round((CAPS[currentQuality()] || 6) * (night > 0.5 ? 1 : 0.55)));
+      const zOK = mayWalk('zombie', night), arena = !!arenaAt(P.x, P.z);
+      const cap = Math.max(1, Math.round((CAPS[currentQuality()] || 6) * (zOK ? 1 : 0.55)));
       const alive = list.filter(e => !e.dead).length;
       st.spawnT -= dt; st.flockT -= dt;
       if (st.spawnT <= 0 && alive < cap) {
-        st.spawnT = night > 0.5 ? rnd(1.2, 2.2) : rnd(2.4, 4);
+        st.spawnT = zOK ? rnd(1.2, 2.2) : rnd(2.4, 4);
         const L = levelFor(zone, night);
-        if (st.flockT <= 0 && cap - alive >= 3 && !list.some(e => e.type === 'pigeon')) { st.flockT = rnd(35, 70); spawnFlock(P, Math.min(4, cap - alive), L); }
-        else { const sp = findSpawn(P, zone); if (sp) newEnemy('zombie', sp, L, { yaw: Math.atan2(P.x - sp.x, P.z - sp.z) }); }
+        if (st.flockT <= 0 && cap - alive >= 3 && !list.some(e => e.type === 'pigeon')) { st.flockT = zOK ? rnd(35, 70) : rnd(22, 45); spawnFlock(P, Math.min(4, cap - alive), L); }
+        else if (zOK || arena) { const sp = findSpawn(P, zone); if (sp) newEnemy('zombie', sp, L, { yaw: Math.atan2(P.x - sp.x, P.z - sp.z) }); }
       }
+      // dusk build-up: the first groans out of sight before they may come out
+      if (!zOK && night > 0.2 && !arena) { st.duskT = (st.duskT ?? 2) - dt; if (st.duskT <= 0) { st.duskT = rnd(5, 10); const a = Math.random() * 6.28; C.fxSfx('groan', V(P.x + Math.cos(a) * 16, 0, P.z + Math.sin(a) * 16), 0.9); } }
       // boss in Via Petroni
       st.bossCool = Math.max(0, st.bossCool - dt);
       if (zone === 'Via Petroni') st.petroniT += dt; else st.petroniT = Math.max(0, st.petroniT - dt * 0.5);
-      if (st.petroniT > 25 && st.bossCool <= 0 && bossRig && !bossRig.busy) {
+      if (st.petroniT > 25 && st.bossCool <= 0 && bossRig && !bossRig.busy && mayWalk('boss', night) && !(C.sync && C.sync.bossTaken())) {
         st.bossCool = 12; // retry soon if the dice say no
-        if (Math.random() < (night > 0.5 ? 0.5 : 0.25)) {
+        if (Math.random() < 0.5) {
           const far = P.z < 56 ? V(44, 0, 75.5) : V(44, 0, 37);
-          if (walkable(far.x, far.z, 0.6)) { const b = newEnemy('boss', far, levelFor(zone, night) + 2, { yaw: Math.atan2(P.x - far.x, P.z - far.z) }); if (b) { st.bossCool = 240; C.onBoss(b); } }
+          if (walkable(far.x, far.z, 0.6)) { const b = newEnemy('boss', far, levelFor(zone, night) + 2, { yaw: Math.atan2(P.x - far.x, P.z - far.z) }); if (b) { st.bossCool = 240; C.onBoss(b); if (C.sync) C.sync.bossSpawned(b); } }
         }
       }
     } else if (!outdoor) st.outT += dt;
@@ -254,35 +281,40 @@ export function createEnemies(C) {
     let nearest = 1e9;
     for (let i = list.length - 1; i >= 0; i--) {
       const e = list[i]; e.t += dt;
-      const dx = P.x - e.pos.x, dz = P.z - e.pos.z, d = Math.hypot(dx, dz);
-      if (!e.dead && (d > 62 || (st.outT > 25 && d > 14))) { release(e); continue; }
-      if (e.type === 'pigeon') { updPigeon(e, dt, P, d, attackable, now); continue; }
+      const dm = Math.hypot(P.x - e.pos.x, P.z - e.pos.z); // from me: despawn range
+      if (!e.dead && (dm > 62 || (st.outT > 25 && dm > 14))) { if (!e.remote && C.sync) C.sync.handoff(e); release(e); continue; } // online: a player near it takes it over
+      if (e.remote && !e.dead) { puppet(e, dt); continue; }
+      // online: owned enemies go for the nearest player (T.id = remote player id, null = me)
+      const T = C.sync ? C.sync.target(e, P, attackable) : null, tp = T ? T.pos : P, att = T ? T.attackable : attackable;
+      const dx = tp.x - e.pos.x, dz = tp.z - e.pos.z, d = Math.hypot(dx, dz);
+      if (e.type === 'pigeon') { updPigeon(e, dt, tp, d, att, now, T); continue; }
       e.rootY = 0;
       if (e.dead) {
         e.deathT += dt; e.vel.multiplyScalar(Math.exp(-dt * 3)); step(e, dt, true);
         e.tumble = Math.min(1.25, e.tumble + dt * 2.6);
-        if (e.deathT > 1.35 && !e.poofed) { e.poofed = true; const c = V(e.pos.x, 0.7 * e.sc, e.pos.z); fx.burst(c, '#f4f0ff', 12, { size: 0.65 * e.sc, speed: 1.6, life: 0.8, up: 0.8 }); fx.stars(c.add(V(0, 0.4, 0)), 6); C.fxSfx('poof', e.pos, 1); }
+        if (e.deathT > 1.35 && !e.poofed) { e.poofed = true; const c = V(e.pos.x, 0.7 * e.sc, e.pos.z); fx.burst(c, '#f4f0ff', 8, { size: 0.65 * e.sc, speed: 1.6, life: 0.8, up: 0.8 }); fx.poof(c, e.sc); fx.stars(c.add(V(0, 0.4, 0)), 6); C.fxSfx('poof', e.pos, 1); }
         if (e.deathT > 1.45) { release(e); continue; }
         poseRig(e, dt); continue;
       }
-      if (e.state === 'rise') { e.rise = Math.min(1, e.rise + dt / 1.1); if (e.rise >= 1) e.state = e.aggro || (attackable && d < 22) ? 'chase' : 'wander'; if (Math.random() < dt * 6) fx.puff(V(e.pos.x + rnd(-0.3, 0.3), 0.05, e.pos.z + rnd(-0.3, 0.3)), '#6a4a2a', { size: 0.35, speed: 0.6, life: 0.7 }); poseRig(e, dt); continue; }
+      if (e.state === 'dawn' || (!mayWalk(e.type, night) && !arenaAt(e.pos.x, e.pos.z))) { if (dawnStep(e, dt, true)) continue; poseRig(e, dt); continue; }
+      if (e.state === 'rise') { e.rise = Math.min(1, e.rise + dt / 1.1); if (e.rise >= 1) e.state = e.aggro || (att && d < 22) ? 'chase' : 'wander'; if (Math.random() < dt * 6) fx.puff(V(e.pos.x + rnd(-0.3, 0.3), 0.05, e.pos.z + rnd(-0.3, 0.3)), '#6a4a2a', { size: 0.35, speed: 0.6, life: 0.7 }); poseRig(e, dt); continue; }
       e.slowT = Math.max(0, e.slowT - dt); e.stagT = Math.max(0, e.stagT - dt); e.cool = Math.max(0, e.cool - dt);
       const notice = night > 0.5 ? 22 : 18;
-      if (attackable && (d < notice || (e.aggro && d < 34))) { if (e.state === 'wander' || e.state === 'idle') { e.state = 'chase'; if (Math.random() < 0.5) C.fxSfx('groan', e.pos, 0.9); } e.lostT = 0; }
-      else if (e.state === 'chase' || e.state === 'attack') { e.lostT += dt; if (e.lostT > (attackable ? 4 : 1.5)) { e.state = 'wander'; e.aggro = false; e.wanderT = 0; } }
-      if (!e.dead && e.state !== 'wander') nearest = Math.min(nearest, d);
+      if (att && (d < notice || (e.aggro && d < 34))) { if (e.state === 'wander' || e.state === 'idle') { e.state = 'chase'; if (Math.random() < 0.5) C.fxSfx('groan', e.pos, 0.9); } e.lostT = 0; }
+      else if (e.state === 'chase' || e.state === 'attack') { e.lostT += dt; if (e.lostT > (att ? 4 : 1.5)) { e.state = 'wander'; e.aggro = false; e.wanderT = 0; } }
+      if (!e.dead && e.state !== 'wander') nearest = Math.min(nearest, dm);
       const slowK = e.slowT > 0 ? 0.5 : 1;
       let want = 0, tyaw = e.yaw;
       if (e.state === 'chase') {
         tyaw = Math.atan2(dx, dz);
-        const reach = (e.type === 'boss' ? 1.9 : 1.15) + (C.personal ? C.personal() - 0.55 : 0);
-        if (d < reach && e.cool <= 0 && attackable) { e.state = 'attack'; e.t = 0; e.hitDone = false; e.rig.play(e.rig.has('attack') ? 'attack' : 'idle', 0.1); }
+        const reach = (e.type === 'boss' ? 1.9 : 1.15) + (C.personal && !(T && T.id) ? C.personal() - 0.55 : 0);
+        if (d < reach && e.cool <= 0 && att) { e.state = 'attack'; e.t = 0; e.hitDone = false; e.rig.play(e.rig.has('attack') ? 'attack' : 'idle', 0.1); }
         else if (d > reach * 0.8) want = e.speed * slowK * (e.type === 'boss' ? 1 : (d > 6 ? 1 : 0.8));
         // the boss throws "multe" from mid range
-        if (e.type === 'boss') { e.throwT -= dt; if (e.throwT <= 0 && d > 4 && d < 16 && attackable) { e.throwT = rnd(2.8, 4.2); C.bossThrow(e); e.rig.play(e.rig.has('attack') ? 'attack' : 'idle', 0.1); e.state = 'attack'; e.t = 0.5; e.hitDone = true; } }
+        if (e.type === 'boss') { e.throwT -= dt; if (e.throwT <= 0 && d > 4 && d < 16 && att) { e.throwT = rnd(2.8, 4.2); C.bossThrow(e, T ? T.pos : null); e.rig.play(e.rig.has('attack') ? 'attack' : 'idle', 0.1); e.state = 'attack'; e.t = 0.5; e.hitDone = true; } }
       } else if (e.state === 'attack') {
         tyaw = Math.atan2(dx, dz);
-        if (!e.hitDone && e.t > 0.45) { e.hitDone = true; if (d < (e.type === 'boss' ? 2.4 : 1.6) && attackable) C.hitPlayer(e.dmg, e, e.type === 'boss' ? 7 : 2.2); }
+        if (!e.hitDone && e.t > 0.45) { e.hitDone = true; if (d < (e.type === 'boss' ? 2.4 : 1.6) && att) hurt(T, e, e.dmg, e.type === 'boss' ? 7 : 2.2); }
         if (e.t > 1.05) { e.state = 'chase'; e.cool = e.type === 'boss' ? 1.2 : rnd(0.6, 1.1); }
       } else { // wander
         e.wanderT -= dt;
@@ -304,7 +336,7 @@ export function createEnemies(C) {
       step(e, dt, false);
       // no overlap: other enemies + the player
       for (const o of list) if (o !== e && !o.dead && o.type !== 'pigeon') { const ox = e.pos.x - o.pos.x, oz = e.pos.z - o.pos.z, od = Math.hypot(ox, oz), m = 0.32 * (e.sc + o.sc); if (od < m && od > 1e-3) { e.pos.x += ox / od * (m - od) * 0.5; e.pos.z += oz / od * (m - od) * 0.5; } }
-      const ps = (C.personal ? C.personal() : 0.55) * e.sc; // first person: more room, the camera must not end up inside a head
+      const ps = (T && T.id ? 0.55 : C.personal ? C.personal() : 0.55) * e.sc; // first person: more room, the camera must not end up inside a head
       if (d < ps && d > 1e-3) { e.pos.x -= dx / d * (ps - d); e.pos.z -= dz / d * (ps - d); }
       poseRig(e, dt);
     }
@@ -320,11 +352,12 @@ export function createEnemies(C) {
   }
   function poseRig(e, dt) {
     const r = e.rig; if (!r) return;
-    const yOff = e.state === 'rise' ? -(1 - e.rise) * 1.8 : 0;
+    const yOff = e.state === 'rise' ? -(1 - e.rise) * 1.8 : (e.sinkY || 0);
     r.root.position.set(e.pos.x, yOff, e.pos.z);
     if (e.dead) { _q.setFromAxisAngle(UP, e.yaw); _q2.setFromAxisAngle(e.tAxis, e.tumble * 0.55); r.root.quaternion.copy(_q2.multiply(_q)); r.root.position.y = -Math.max(0, e.deathT - 0.9) * 0.8; }
     else r.root.rotation.set(0, e.yaw, 0);
-    if (!e.dead && e.state !== 'attack') {
+    if (!e.dead && e.dawnT > 0) { r.play('idle', 0.2); r.setRate(2.6); r.root.rotation.set(-0.12, e.yaw + Math.sin(e.dawnT * 19) * 0.22, Math.sin(e.dawnT * 23) * 0.07); } // trembling in the sun
+    else if (!e.dead && e.state !== 'attack') {
       if (e.state === 'rise' || !e.moving) { r.play('idle', 0.3); r.setRate(1); }
       else { const run = e.moving > 1.3 && r.has('run'); r.play(run ? 'run' : 'walk', 0.3); r.setRate(clamp(e.moving / (run ? r.speed.run : r.speed.walk), 0.5, 1.7)); }
     }
@@ -338,11 +371,11 @@ export function createEnemies(C) {
       bossCap.rotation.set(e.dead ? e.tumble * 0.8 : -0.12, e.yaw, 0);
     }
   }
-  function updPigeon(e, dt, P, d, attackable, now) {
+  function updPigeon(e, dt, P, d, attackable, now, T) {
     const o = e.obj; if (!o) return;
     if (e.dead) {
       e.deathT += dt; e.vel.y -= 9.8 * dt; e.pos.addScaledVector(e.vel, dt);
-      if (e.pos.y <= 0.1) { e.pos.y = 0.1; if (!e.poofed) { e.poofed = true; fx.burst(e.pos, '#ffffff', 8, { size: 0.3, speed: 1.4, life: 0.8 }); fx.stars(e.pos.clone().add(V(0, 0.3, 0)), 3, { size: 0.16 }); C.fxSfx('poof', e.pos, 0.6); } e.vel.set(0, 0, 0); }
+      if (e.pos.y <= 0.1) { e.pos.y = 0.1; if (!e.poofed) { e.poofed = true; fx.burst(e.pos, '#ffffff', 8, { size: 0.3, speed: 1.4, life: 0.8 }); fx.feathers(e.pos, 8); fx.stars(e.pos.clone().add(V(0, 0.3, 0)), 3, { size: 0.16 }); C.fxSfx('poof', e.pos, 0.6); } e.vel.set(0, 0, 0); }
       o.root.position.copy(e.pos); o.root.rotation.x += dt * 9; o.root.rotation.z += dt * 5;
       if (e.deathT > 2.2 || (e.poofed && e.deathT > 0.6)) release(e);
       return;
@@ -352,7 +385,7 @@ export function createEnemies(C) {
     let goal;
     if (e.state === 'dive' && attackable) {
       goal = head; const dd = e.pos.distanceTo(head);
-      if (dd < 0.7) { C.hitPlayer(e.dmg, e, 0.8); e.state = 'climb'; e.t = 0; C.fxSfx('squawk', e.pos, 0.8); }
+      if (dd < 0.7) { hurt(T, e, e.dmg, 0.8); e.state = 'climb'; e.t = 0; C.fxSfx('squawk', e.pos, 0.8); }
       if (e.t > 3) { e.state = 'climb'; e.t = 0; }
     } else if (e.state === 'climb') { goal = V(e.pos.x + (e.pos.x - P.x), e.alt + 3, e.pos.z + (e.pos.z - P.z)); if (e.t > 1.4) { e.state = 'circle'; e.t = 0; } }
     else {
@@ -369,13 +402,54 @@ export function createEnemies(C) {
     o.root.rotation.set(clamp(pitch, -1, 1), yaw, Math.sin(e.t * 2) * 0.3, 'YXZ');
     o.body.scale.set(1 + Math.sin(e.t * 26) * 0.12, 1 - Math.sin(e.t * 26) * 0.1, 1);
   }
+  // online puppet (an enemy simulated by another player, src/worldsync.js writes e.net = {x, z, y, yaw, st, hp, rise, at}):
+  // eased toward the latest snapshot, the walk/run clip from the speed it really moves at, the owner's state and HP
+  function puppet(e, dt) {
+    const n = e.net; if (!n) return;
+    const ox = e.pos.x, oz = e.pos.z, oy = e.pos.y, k = 1 - Math.exp(-dt * 9);
+    if ((n.x - ox) ** 2 + (n.z - oz) ** 2 > 49) { e.pos.x = n.x; e.pos.z = n.z; } else { e.pos.x += (n.x - ox) * k; e.pos.z += (n.z - oz) * k; }
+    if (e.type === 'pigeon') e.pos.y += (n.y - oy) * k;
+    const sp = Math.hypot(e.pos.x - ox, e.pos.z - oz) / Math.max(dt, 1e-3);
+    e.moving += ((sp > 0.2 ? sp : 0) - (e.moving || 0)) * Math.min(1, dt * 6);
+    e.yaw += wrapA(n.yaw - e.yaw) * Math.min(1, dt * 8);
+    if (n.st !== e.state) { e.state = n.st; e.t = 0; if (e.state === 'attack' && e.rig) e.rig.play(e.rig.has('attack') ? 'attack' : 'idle', 0.1); }
+    if (e.state === 'rise') e.rise = Math.min(1, Math.max(e.rise, n.rise ?? 0) + dt / 1.1); else e.rise = 1;
+    if (performance.now() / 1000 - e.hitT > 0.6) e.hp = n.hp; else e.hp = Math.min(e.hp, n.hp); // keep my predicted bar until the owner's HP arrives
+    e.rootY = 0;
+    if (e.type !== 'pigeon' && !e.dead && !mayWalk(e.type, C.night()) && !arenaAt(e.pos.x, e.pos.z)) dawnStep(e, dt, false);
+    if (e.type !== 'pigeon') { poseRig(e, dt); return; }
+    const o = e.obj; if (!o) return;
+    e.vel.set((e.pos.x - ox) / Math.max(dt, 1e-3), (e.pos.y - oy) / Math.max(dt, 1e-3), (e.pos.z - oz) / Math.max(dt, 1e-3));
+    o.root.position.copy(e.pos);
+    const pitch = -Math.atan2(e.vel.y, Math.hypot(e.vel.x, e.vel.z) + 1e-3);
+    o.root.rotation.set(clamp(pitch, -1, 1), e.yaw, Math.sin(e.t * 2) * 0.3, 'YXZ');
+    o.body.scale.set(1 + Math.sin(e.t * 26) * 0.12, 1 - Math.sin(e.t * 26) * 0.1, 1);
+  }
+  // dawn: hands over the eyes (trembling idle), smoke and sparks from the head, then down into the ground.
+  // own = this client owns it (it releases it at the end); puppets only play the visual. Returns true once released.
+  function dawnStep(e, dt, own) {
+    if (!(e.dawnT > 0)) {
+      e.dawnT = 1e-3; e.state = own ? 'dawn' : e.state; e.aggro = false; e.moving = 0; e.vel.set(0, 0, 0);
+      if (Math.random() < 0.7) hud.num(V(e.pos.x, 2.15 * e.sc, e.pos.z), 0, { text: DAWN_LINES[(Math.random() * DAWN_LINES.length) | 0], color: '#ffd25a' });
+      C.fxSfx('zdie', e.pos, 0.8);
+    }
+    e.dawnT += dt;
+    const head = V(e.pos.x, (e.sinkY || 0) + 1.7 * e.sc, e.pos.z);
+    if (Math.random() < dt * 9) fx.puff(head.clone().add(V(rnd(-0.15, 0.15), 0, rnd(-0.15, 0.15))), '#d9d2c6', { size: 0.4, speed: 0.7, life: 0.9, up: 0.9 });
+    if (e.dawnT < 1.2 && Math.random() < dt * 5) fx.stars(head, 1, { size: 0.12 });
+    const sk = Math.max(0, Math.min(1, (e.dawnT - 0.9) / 1.3)); e.sinkY = -sk * sk * 2.1 * e.sc;
+    if (e.dawnT > 0.9 && Math.random() < dt * 6) fx.puff(V(e.pos.x + rnd(-0.35, 0.35), 0.05, e.pos.z + rnd(-0.35, 0.35)), '#6a4a2a', { size: 0.4, speed: 0.6, life: 0.7 });
+    if (own && e.dawnT > 2.3) { fx.burst(V(e.pos.x, 0.1, e.pos.z), '#6a4a2a', 8, { size: 0.5, speed: 1.2, life: 0.9, up: 0.6 }); C.fxSfx('poof', e.pos, 0.6); release(e); return true; }
+    return false;
+  }
   function clearAll() { for (const e of list.slice()) release(e); }
   function bars(now) {
     const out = [];
     for (const e of list) { if (e.dead || e.type === 'boss' || now - e.hitT > 3.5) continue; out.push({ pos: e.type === 'pigeon' ? V(e.pos.x, e.pos.y + 0.5, e.pos.z) : V(e.pos.x, (e.rootY || 0) + 2.05 * e.sc, e.pos.z), k: e.hp / e.max, level: e.level, a: Math.min(1, (3.5 - (now - e.hitT)) * 2) }); if (out.length >= 10) break; }
     return out;
   }
-  return { preload, update, spawn, ray, near, damage, list, clearAll, bars, walkable, outdoorAt, get ready() { return ready; }, get model() { return !!ZM; }, st };
+  return { preload, update, spawn, ray, near, damage, list, clearAll, bars, walkable, outdoorAt, get ready() { return ready; }, get model() { return !!ZM; }, st,
+    ctx: C, _int: { newEnemy, release, kill, levelFor } }; // ctx.sync / _int: src/worldsync.js
 }
 
 // ---------------------------------------------------------------- ray helpers (also used by the core)

@@ -12,11 +12,12 @@
 const PI = Math.PI;
 
 export const NORD = { x0: -36, x1: 30, z0: 46, z1: 106 };
-export const ZAM = { z0: 46, walkS: 47.5, roadN: 51.2, colZ: 51.6, z1: 55, portH: 4.6 };
+export const ZAM = { z0: 46, walkS: 47.5, roadN: 51.2, colZ: 51.6, z1: 55, portH: 3.9 };
+export const PORT_DEEP_H = 4.1; // the deep monumental arcades (Teatro, Podestà): a little taller than the others
 export const VERDI = { x0: -14, x1: 8, z0: 55, z1: 74 };
 export const RIZ = { z0: 74, z1: 80 };
 export const MAGG = { x0: -30, x1: -4, z0: 80, z1: 104 };
-export const VOLT = { x0: -7.6, x1: -2.4, z0: 33.6, z1: 46, h: 4.4 };
+export const VOLT = { x0: -7.6, x1: -2.4, z0: 33.6, z1: 46, h: 3.7 }; // = ST.portH of f4
 export const NETTUNO = { x: -11, z: 85, r: 2.6 };            // the Gigante, NE corner of the piazza (steps r+1.1)
 export const CRESC = { x0: -24, z0: 89, x1: -10, z1: 99, h: 0.08 }; // the Crescentone (raised slab, walkable)
 
@@ -116,7 +117,7 @@ export function nordColliders() {
     if (b.kind === 'petronio') { box(g[0] - 1.2, g[1] - 1.0, g[2] + 1.2, g[3]); blk(g[0], 0, g[1] - 1.0, g[2], b.h + 8, g[3]); continue; } // pilasters + buttresses
     box(g[0], g[1], g[2], g[3]); blk(g[0], 0, g[1], g[2], b.h + 3, g[3]);
     if (b.portico) { // overhang above the arcade (camera stays below it) + columns
-      const [x0, z0, x1, z1] = b.rect, p = b.portico, H = p.depth > 3.5 ? 4.8 : ZAM.portH;
+      const [x0, z0, x1, z1] = b.rect, p = b.portico, H = p.depth > 3.5 ? PORT_DEEP_H : ZAM.portH;
       if (p.side === 's') blk(x0, H, z0, x1, b.h + 3, z0 + p.depth); if (p.side === 'w') blk(x0, H, z0, x0 + p.depth, b.h + 3, z1);
       for (const c of columnsOf(b)) C.push({ type: 'circle', c: [c.x, c.z], r: 0.32 });
     }

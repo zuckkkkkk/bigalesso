@@ -103,7 +103,7 @@ export function createUI() {
   <div class="bg"></div>
   <div class="mart" aria-hidden="true"><div class="ma"></div><div class="ma"></div><div class="mshade"></div></div>
   <nav class="mtabs" role="tablist" aria-label="Sezioni">
-    <button data-go="hero">Personaggio</button><button data-go="map">Mappa</button><button data-go="achievements">Obiettivi</button><button data-go="characters">Personaggi</button><button data-go="gallery">Galleria</button><button data-go="secrets">Segreti</button><button data-go="online">Online</button><button data-go="settings">Impostazioni</button><button data-go="controls">Comandi</button><button data-go="credits">Crediti</button>
+    <button data-go="hero">Personaggio</button><button data-go="map">Mappa</button><button data-go="achievements">Obiettivi</button><button data-go="characters">Personaggi</button><button data-go="gallery">Galleria</button><button data-go="secrets">Segreti</button><button data-go="online">Online</button><button data-go="settings">Impostazioni</button><button data-go="controls">Comandi</button><button data-go="guide">Guida</button><button data-go="credits">Crediti</button>
   </nav>
   <aside class="mside" aria-hidden="true"></aside>
   <div class="mkeys"><span><kbd>↑</kbd><kbd>↓</kbd> Seleziona</span><span><kbd>Invio</kbd> Conferma</span><span class="kq"><kbd>Q</kbd><kbd>E</kbd> Schede</span><button class="kesc" data-back><kbd>Esc</kbd> Indietro</button></div>
@@ -124,6 +124,7 @@ export function createUI() {
       </div>
       <div class="mlist small">
         <button class="mbtn" data-go="settings" data-desc="Grafica, audio, camera, salvataggi"><span><b>Impostazioni</b></span></button>
+        <button class="mbtn" data-go="guide" data-desc="Il tutorial e la lista di tutto quello che si può fare"><span><b>Tutorial e guida</b></span></button>
         <button class="mbtn" data-act="intro" data-desc="Rivedi l'apertura BIGALESSO GAMES"><span><b>Rivedi intro</b></span></button>
         <button class="mbtn" data-go="credits" data-desc="Chi ha fatto cosa"><span><b>Crediti</b></span></button>
         <button class="mbtn" data-act="quit" data-desc="Chiudi il gioco"><span><b>Esci</b></span></button>
@@ -137,6 +138,7 @@ export function createUI() {
       </div>
       <div class="mlist mid">
         <button class="mbtn" data-act="games" data-desc="Chi l'ha detto?, Processo AI, Corriere AI, compettina, sushi"><span class="ic">${ICON.joy}</span><span><b>Minigiochi</b><small>dal telefono</small></span></button>
+        <button class="mbtn" data-go="guide" data-desc="Cose da fare: ogni gioco, dove sta, come si comincia e i tasti · rifai il tutorial"><span class="ic">${ICON.help}</span><span><b>Tutorial e guida</b><small>cose da fare</small></span></button>
         <button class="mbtn" data-act="inv" data-desc="Armi, accessori, cibo e munizioni: equipaggia, smonta, butta (I)"><span class="ic">🎒</span><span><b>Zaino</b><small>tasto I</small></span></button>
         <button class="mbtn" data-go="hero" data-desc="Livello, punti abilità e talenti (Teppista, Cuoco, Festaiolo)"><span class="ic">⭐</span><span><b>Personaggio</b><small>livello e talenti</small></span></button>
         <button class="mbtn" data-go="map" data-desc="Dove sei e i posti che hai scoperto"><span class="ic">${ICON.home}</span><span><b>Mappa</b></span></button>
@@ -275,6 +277,10 @@ export function createUI() {
     <section class="page" data-page="gallery">
       <div class="ph"><button class="back" data-back aria-label="Indietro">${ICON.back}</button><h2>GALLERIA</h2></div>
       <div id="galBody"></div>
+    </section>
+    <section class="page" data-page="guide">
+      <div class="ph"><button class="back" data-back aria-label="Indietro">${ICON.back}</button><h2>GUIDA</h2></div>
+      <div id="guideBody"></div>
     </section>
     <section class="page" data-page="credits">
       <div class="ph"><button class="back" data-back aria-label="Indietro">${ICON.back}</button><h2>CREDITI</h2></div>
@@ -876,6 +882,7 @@ export function createUI() {
       if (p === 'achievements') renderAch();
       if (p === 'characters') renderChars();
       if (p === 'hero') { try { window.__rpg && window.__rpg.renderHero($('#heroBody')); } catch (e) { console.warn('hero', e); } } // rpg/ui.js
+      if (p === 'guide') { try { window.__tutorial && window.__tutorial.renderGuide($('#guideBody')); } catch (e) { console.warn('guide', e); } } // tutorial.js: Cose da fare + rifai il tutorial
       if (p === 'gallery') renderGallery();
       if (p === 'map') { MV.fit = false; renderPlaces(); if (!MV.raf) MV.raf = requestAnimationFrame(mapDraw); }
     },

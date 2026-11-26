@@ -7,6 +7,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rng, makeNoise, fbm, canvas, tex, normalFromHeight, clamp, batchMeshes } from './util.js';
 import { currentQuality } from './scene.js';
+import { DN } from './daynight.js'; // shared day/night cycle: sun direction, sky, fog
 import { RESERVED, OUTDOOR_ZONES, GATE } from './quartiere/layout.js'; // the neighbourhood beyond the garden (quartiere.js)
 // 0..1: how much a point is inside the quartiere's reserved rects (distant hills/trees step aside there)
 const reservedK = (x, z, m = 10) => { let k = 0; for (const r of RESERVED) { const d = Math.max(r[0] - x, x - r[2], r[1] - z, z - r[3]); k = Math.max(k, clamp(1 - d / m, 0, 1)); } return k; };
@@ -633,7 +634,7 @@ export function buildLevel(scene, opts = {}) {
   // ---------- sky dome ----------
   const sunDir = lights && lights.key ? lights.key.position.clone().sub(lights.key.target.position).normalize() : V(-0.55, 0.62, 0.55).normalize();
   const skyMat = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { uTime: U.uTime, uNight: { value: 0 }, uSun: { value: sunDir } },
+    uniforms: { uTime: U.uTime, uNight: { value: 0 }, uSun: { value: sunDir }, uDusk: { value: 0 }, uBlue: { value: 0 }, uMoon: { value: V(0.4, 0.55, -0.6).normalize() }, uSunCol: { value: new THREE.Color(1, 0.9, 0.7) } }, // gfx.js's sky shares these objects
     vertexShader: `varying vec3 vD; void main(){ vD = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p.xyww; }`,
     fragmentShader: `uniform float uTime, uNight; uniform vec3 uSun; varying vec3 vD;
       float h(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
@@ -736,32 +737,52 @@ export function buildLevel(scene, opts = {}) {
   };
 
   // ---------- light follow / outdoor / night ----------
+  // key light = the sun (daynight.js): exact original window light in the arcade (intro shots), the real sun direction
+  // elsewhere. Shadow camera stability: it follows the player, but its target is snapped to whole shadow-map texels in
+  // LIGHT space (no shimmering edges while walking); only the slow sun motion moves the texel grid.
   const key = lights && lights.key;
-  const keyBase = key ? { p: key.position.clone(), t: key.target.position.clone(), sc: { l: key.shadow.camera.left, r: key.shadow.camera.right, t: key.shadow.camera.top, b: key.shadow.camera.bottom } } : null;
+  const keyBase = key ? { p: key.position.clone(), t: key.target.position.clone(), sc: { l: key.shadow.camera.left, r: key.shadow.camera.right, t: key.shadow.camera.top, b: key.shadow.camera.bottom, n: key.shadow.camera.near, f: key.shadow.camera.far }, bias: key.shadow.bias } : null;
   const keyOff = keyBase ? keyBase.p.clone().sub(keyBase.t) : null;
-  const st8 = { arc: 1, out: 0, zone: null, night: 0 };
-  const tmpT = V();
+  const keyLen = keyOff ? keyOff.length() : 6.5, keyOffDir = keyOff ? keyOff.clone().normalize() : V(0, 1, 0);
+  const st8 = { arc: 1, out: 0, house: 1, zone: null, night: 0, snap: -1 };
+  const tmpT = V(), offV = V(), lx = V(), ly = V(), UPV = V(0, 1, 0), NIGHT_IN = V(-0.3, 1, 0.4).normalize();
   function update(dt, t, focus, cam) {
     U.uTime.value = t;
     U.uWind.value = 0.8 + Math.sin(t * 0.21) * 0.25 + Math.sin(t * 0.53) * 0.12;
     const fp = focus || (cam ? cam.position : V());
     const zn = zoneAt(fp.x, fp.z) || 'Giardino';
     const fx = getFX ? getFX() : null;
-    const night = fx && typeof fx.nightAmount === 'number' ? fx.nightAmount : (fx && fx.night ? 1 : 0);
+    const D = DN.update();
+    const night = fx && typeof fx.nightAmount === 'number' ? fx.nightAmount : D.night;
+    if (D.snap !== st8.snap) { st8.snap = D.snap; st8.night = D.night; } // debug jump of the clock: no slow fade
     st8.night += (night - st8.night) * Math.min(1, dt * 2);
     const camZone = cam ? zoneAt(cam.position.x, cam.position.z) : zn;
-    // key light: exact original placement in the arcade (intro shots), follow the player elsewhere
     st8.arc += ((zn === 'Sala giochi' ? 1 : 0) - st8.arc) * Math.min(1, dt * 1.2);
     if (key) {
-      const sn = 0.05; tmpT.set(Math.round(fp.x / sn) * sn, 0.5, Math.round(fp.z / sn) * sn);
-      tmpT.lerp(keyBase.t, st8.arc);
-      key.target.position.copy(tmpT); key.position.copy(tmpT).add(keyOff); key.target.updateMatrixWorld();
-      const k = 1 + (1 - st8.arc) * 0.8, sc = key.shadow.camera;
-      const nl = keyBase.sc.l * k, nr = keyBase.sc.r * k; if (Math.abs(sc.left - nl) > 0.01) { sc.left = nl; sc.right = nr; sc.top = keyBase.sc.t * k; sc.bottom = keyBase.sc.b * k; sc.updateProjectionMatrix(); }
+      // direction: the window light in the arcade, the sun outdoors; a longer throw outdoors so low sun shadows
+      // (porticoes, trees) still reach the player
+      // (indoors at night the key is the rooms' lamp light: from above, not from a sun under the horizon)
+      offV.copy(D.keyDir).lerp(NIGHT_IN, st8.night * (1 - st8.out)).normalize().lerp(keyOffDir, st8.arc).normalize();
+      const len = keyLen + (16 - keyLen) * st8.out * (1 - st8.arc);
+      const sc = key.shadow.camera, k = 1 + (1 - st8.arc) * 0.8;
+      const nl = keyBase.sc.l * k, nr = keyBase.sc.r * k;
+      const nn = keyBase.sc.n * (len / keyLen) * 0.5 + 0.5, nf = len + (keyBase.sc.f - keyLen) * (1 + 0.6 * (1 - st8.arc));
+      if (Math.abs(sc.left - nl) > 0.01 || Math.abs(sc.far - nf) > 0.05) {
+        sc.left = nl; sc.right = nr; sc.top = keyBase.sc.t * k; sc.bottom = keyBase.sc.b * k; sc.near = nn; sc.far = nf; sc.updateProjectionMatrix();
+        key.shadow.bias = keyBase.bias * (keyBase.sc.f - keyBase.sc.n) / (nf - nn); // same bias in metres whatever the depth range
+      }
+      tmpT.set(fp.x, 0.5, fp.z).lerp(keyBase.t, st8.arc);
+      // texel snap in light space (basis of the shadow camera: lookAt along -offV, up = +y)
+      const tx = (sc.right - sc.left) / Math.max(1, key.shadow.mapSize.x), ty = (sc.top - sc.bottom) / Math.max(1, key.shadow.mapSize.y);
+      lx.crossVectors(UPV, offV); if (lx.lengthSq() < 1e-6) lx.set(1, 0, 0); lx.normalize(); ly.crossVectors(offV, lx);
+      const a = tmpT.dot(lx), b = tmpT.dot(ly), c = tmpT.dot(offV);
+      tmpT.copy(lx).multiplyScalar(Math.round(a / tx) * tx).addScaledVector(ly, Math.round(b / ty) * ty).addScaledVector(offV, c);
+      key.target.position.copy(tmpT); key.position.copy(tmpT).addScaledVector(offV, len); key.target.updateMatrixWorld();
     }
     const outT = (zn === 'Giardino' || OUTDOOR_ZONES.has(zn)) ? 1 : zn === 'Salotto' ? 0.22 : 0;
     st8.out += (outT - st8.out) * Math.min(1, dt * 1.5);
-    if (fx && fx.setOutdoor) fx.setOutdoor(st8.out);
+    st8.house += (((zn === 'Sala giochi' || zn === 'Salotto') ? 1 : 0) - st8.house) * Math.min(1, dt * 3);
+    if (fx && fx.setOutdoor) fx.setOutdoor(st8.out, st8.house);
     // reflector only when the camera is in the arcade room (saves a full scene render elsewhere)
     if (opts.room && opts.room.reflector) opts.room.reflector.visible = camZone === 'Sala giochi';
     // grass: by far the most triangles of the level (≈50k per 5 m tile): thinned by preset, off beyond a range
@@ -771,15 +792,19 @@ export function buildLevel(scene, opts = {}) {
       const cp = cam ? cam.position : fp;
       for (const g of grassTiles) { const d = Math.hypot(cp.x - g.c.x, cp.z - g.c.z); g.im.visible = d < range; const c = Math.max(1, Math.floor(g.n * dens)); if (g.im.count !== c) g.im.count = c; }
     }
-    // night: lamps, sky, fog
+    // night: lamps, sky, fog (time of day: daynight.js)
     const n = st8.night;
-    skyMat.uniforms.uNight.value = n;
-    if (scene.fog) scene.fog.color.setRGB(0.9 - 0.8 * n, 0.85 - 0.73 * n, 0.79 - 0.57 * n); // warm afternoon haze (sky horizon follows uFog); night unchanged
+    const SU = skyMat.uniforms;
+    SU.uNight.value = n; SU.uDusk.value = D.dusk; SU.uBlue.value = D.blue; SU.uSun.value.copy(D.sunDir); SU.uMoon.value.copy(D.moonDir); SU.uSunCol.value.copy(D.skySunCol);
+    if (scene.fog) scene.fog.color.copy(D.fog); // warm afternoon haze by day, golden / pink at sunset, blue hour, night (the sky horizon follows uFog)
     lampGlass.emissiveIntensity = n * 2.2;
-    // point lights cost every lit pixel even at intensity 0: only enable them at night
+    // point lights cost every lit pixel even at intensity 0: only enable them at night (lightpad.js keeps the count
+    // constant, the gfx.js warm-up compiled this combination: no recompile at dusk)
     const lampsOn = n > 0.04;
     for (const L of gardenLamps) { L.visible = lampsOn; L.intensity = n * 15; } // pools of light, not floodlights: night has to read as night
-    loungeLamp.visible = lampsOn; loungeLamp.intensity = n * 11; lampMat.emissiveIntensity = 0.4 + n * 2.0;
+    // the lounge pendant follows the house light switch (explore.js -> fx3d.setNight = house lamp off)
+    const houseLamp = fx && fx.lampOff ? 0 : 1;
+    loungeLamp.visible = lampsOn; loungeLamp.intensity = n * 11 * houseLamp; lampMat.emissiveIntensity = (0.4 + n * 2.0) * houseLamp;
     sky.position.copy(cam ? cam.position : fp);
     if (root.userData.jetMat && cam) root.userData.jetMat.uniforms.uScale.value = (opts.renderer ? opts.renderer.getDrawingBufferSize(new THREE.Vector2()).y : innerHeight) * cam.projectionMatrix.elements[5] * 0.5;
     if (root.userData.platter) root.userData.platter.rotation.y -= dt * 3.5;

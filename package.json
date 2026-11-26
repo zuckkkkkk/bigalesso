@@ -1,6 +1,6 @@
 {
   "name": "bigalesso-arcade",
-  "version": "8.1.1",
+  "version": "8.2.0",
   "private": true,
   "description": "BIGALESSO GAMES – cabinato arcade 3D in Three.js con gioco pixel-art giocabile",
   "license": "MIT",

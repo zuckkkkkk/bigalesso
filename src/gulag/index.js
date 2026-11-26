@@ -6,19 +6,25 @@
 // the normal inventory/loadout is set aside and comes back untouched. Meta-progression: "Gettoni del Gulag" unlock
 // starting perks (localStorage bigalesso_gulag_v1, synced with the rest of the save).
 // Controls: as in the quartiere (weapons, Q ombrello) · E at doors / chest / Spaccio · Esc menu
-// API: window.__gulagRun = { open(), quit(), state(), session }
+// Co-op (2–4 friends, rules shared/gulag_coop.mjs): the party leader launches "⛓️ Gulag profondo co-op" (O), or the
+// pre-run screen offers "Co-op con un bot" offline. The referee simulates the enemies: here they are puppets in the
+// combat/ pools (combat/enemies.js e.remote + E.ctx.sync = our hooks for the run), hits go to the referee in batches,
+// damage comes back as 'hurt' events, health is the referee's. At 0 hp you are DOWN: a friend holds E next to you
+// (2.5 s) to revive you; after 30 s you are OUT until the next room is cleared. Shared wallet, vizi, score and timer.
+// API: window.__gulagRun = { open(), quit(), state(), session, coop(session) }
 import * as THREE from 'three';
 import { PERKS, META } from '../../shared/gulag.mjs';
+import { ARENA, LAYOUTS, DECO } from '../../shared/gulag_coop.mjs';
 import { loadOptional } from '../quartiere/models.js';
+import { registerPartyGame } from '../net/party.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const A0 = { x0: 24, x1: 44, z0: -44, z1: -30 }, AC = V((A0.x0 + A0.x1) / 2, 0, (A0.z0 + A0.z1) / 2), WALL_H = 4.2, DOOR_W = 2.4;
+const A0 = ARENA, AC = V((A0.x0 + A0.x1) / 2, 0, (A0.z0 + A0.z1) / 2), WALL_H = 4.2, DOOR_W = 2.4; // arena + layouts shared with the co-op referee
 const DOOR_POS = { n: V(AC.x, 0, A0.z1), s: V(AC.x, 0, A0.z0), e: V(A0.x1, 0, AC.z), w: V(A0.x0, 0, AC.z) };
 const DOOR_YAW = { n: 0, s: Math.PI, e: Math.PI / 2, w: -Math.PI / 2 }; // facing the door from inside
 const ENTER = { n: V(AC.x, 0, A0.z1 - 1.6), s: V(AC.x, 0, A0.z0 + 1.6), e: V(A0.x1 - 1.6, 0, AC.z), w: V(A0.x0 + 1.6, 0, AC.z) };
 const IRON = { x: 30.02, z: 5.5 }; // iron door in the basement (west wall, between the stairs and the cell set)
-const LAYOUTS = [[], [[-4, -2.5], [4, 2.5]], [[-4, 2.5], [4, -2.5], [0, 0]], [[-6, 0], [6, 0]], [[-3, -3], [3, -3], [-3, 3], [3, 3]], [[0, -3], [0, 3]]];
 const TINTS = ['#b8a48c', '#a89a8a', '#9fae9a', '#b3a2a2', '#a3a9b8'];
 const WICON = { pistola: '💧', tortellini: '🥟', nerf: '🎯', spritz: '🍹' };
 const WNAME = { pistola: 'Pistola ad acqua', tortellini: 'Lanciatortellini', nerf: 'Nerf blaster', spritz: 'Spritz-Bazooka' };
@@ -97,7 +103,7 @@ export function installGulagRun({ scene, camera, man, ui, audio, level, S, getWo
     } catch (e) { console.warn('gulag deco', e); }
   }
   loadDeco(); // during the loading screen (joins the quartiere model cache)
-  const decoCols = [[A0.x0 + 1.4, A0.z1 - 3.2, A0.x0 + 5, A0.z1], [A0.x1 - 5, A0.z1 - 3.2, A0.x1 - 1.4, A0.z1], [A0.x0 + 1.4, A0.z0, A0.x0 + 5, A0.z0 + 3.2], [A0.x1 - 5, A0.z0, A0.x1 - 1.4, A0.z0 + 3.2]];
+  const decoCols = DECO;
   // iron door in the basement (gulag.js set)
   const iron = new THREE.Group(); iron.name = 'gulag-iron-door'; iron.position.set(IRON.x, 0, IRON.z); iron.rotation.y = Math.PI / 2; scene.add(iron);
   { mesh(new THREE.BoxGeometry(1.2, 2.2, 0.08), ironMat, 0, 1.1, 0.04, 0, iron); for (let i = 0; i < 5; i++) mesh(new THREE.BoxGeometry(0.05, 0.05, 0.03), new THREE.MeshStandardMaterial({ color: 0x9a9da2, metalness: 0.8, roughness: 0.3 }), -0.45 + i * 0.22, 1.8, 0.1, 0, iron);
@@ -151,13 +157,14 @@ export function installGulagRun({ scene, camera, man, ui, audio, level, S, getWo
     showOv('pre', `<div class="box"><h1>Il Gulag <em>profondo</em></h1><p class="sub">Stanze a caso sotto la casa, nemici, lo Spaccio di Cesco e il Secondino in fondo. Se muori perdi tutto quello che hai trovato nella run (il tuo zaino resta a casa).</p>
       <p>🪙 <b>${meta.gettoni}</b> Gettoni del Gulag · record ${meta.best} · run ${meta.runs} · evasioni ${meta.wins}</p>
       <p class="sub">Vizi di partenza (sbloccali coi gettoni, massimo 3 per run):</p><div class="cards">${cards}</div>
-      <button class="b" data-go="daily">Run del giorno (${today()})</button><button class="b" data-go="free">Run libera</button><button class="b g" data-go="close">Esci</button></div>`);
+      <button class="b" data-go="daily">Run del giorno (${today()})</button><button class="b" data-go="free">Run libera</button><button class="b g" data-go="close">Esci</button>
+      <p class="sub" style="margin-top:14px">In compagnia: <button class="b g" data-go="coopbot">⛓️ Co-op con un bot</button><button class="b g" data-go="party">🎉 Co-op con gli amici (party · O)</button></p></div>`);
   }
   ov.addEventListener('click', e => {
     const m = e.target.closest('[data-meta]');
     if (m) { const k = m.dataset.meta; if (meta.unlocked.includes(k)) { st.startPerks = st.startPerks.includes(k) ? st.startPerks.filter(x => x !== k) : st.startPerks.concat(k).slice(-3); } else if (meta.gettoni >= META[k]) { meta.gettoni -= META[k]; meta.unlocked.push(k); st.startPerks = st.startPerks.concat(k).slice(-3); saveMeta(); sfx('coin'); } preRun(); return; }
     const g = e.target.closest('[data-go]');
-    if (g) { const a = g.dataset.go; if (a === 'close') hideOv(); else if (a === 'daily' || a === 'free') startRun(a === 'daily'); else if (a === 'home') { hideOv(); exitRun(); } return; }
+    if (g) { const a = g.dataset.go; if (a === 'close') hideOv(); else if (a === 'daily' || a === 'free') startRun(a === 'daily'); else if (a === 'home') { hideOv(); exitRun(); } else if (a === 'coopbot') coopBot(); else if (a === 'party') { hideOv(); setTimeout(() => window.__party && window.__party.open(), 60); } return; }
     const p = e.target.closest('[data-pick]'); if (p) { act({ pick: +p.dataset.pick }); sfx('ok'); return; }
     const b = e.target.closest('[data-buy]'); if (b) { st.buyHeal = st.v && st.v.shop && st.v.shop[+b.dataset.buy] && st.v.shop[+b.dataset.buy].id === 'brodo'; act({ buy: +b.dataset.buy }); return; }
   });
@@ -197,7 +204,7 @@ export function installGulagRun({ scene, camera, man, ui, audio, level, S, getWo
     w.dogFollow = false;
     if (c) { c.setEnabled(false); c.setEnabled(true); c.setSpawning(false); c.arena = arena; c.player.dead = false; c.setLoadout([null, null, null, null], 0); }
     st.wKey = '';
-    st.dmgOff = c && c.on ? c.on('damage', () => { if (st.on && !st.resultsShown && c.player.hp <= 0) { c.player.hp = 0.5; onDeath(); } }) : null;
+    st.dmgOff = c && c.on ? c.on('damage', () => { if (st.on && !st.resultsShown && c.player.hp <= 0) { c.player.hp = 0.5; if (!st.coop) onDeath(); } }) : null; // co-op: the referee decides who is down
     st.killOff = c && c.on ? c.on('kill', () => { if (st.fight) st.fight.kills++; }) : null;
     root.visible = true; if (Q && Q.root) Q.root.visible = false; if (level.root) level.root.visible = false;
     level.bounds.x0 = A0.x0 + 0.15; level.bounds.x1 = A0.x1 - 0.15; level.bounds.z0 = A0.z0 + 0.15; level.bounds.z1 = A0.z1 - 0.15;
@@ -208,11 +215,13 @@ export function installGulagRun({ scene, camera, man, ui, audio, level, S, getWo
   function onView(v) {
     if (!st.on || !v || !v.room) return;
     st.v = v;
+    if (st.coop) coopPre(v);
     applyRun(v);
     if (v.room.id !== st.roomId) { st.roomId = v.room.id; buildRoom(v, st.pendingSide); st.pendingSide = null; setTimeout(() => { fade.classList.remove('on'); fade.textContent = ''; }, 120); }
     else if (v.room.cleared && st.room && !st.room.cleared) roomCleared(v);
     else if (st.room && v.room.opened && !st.room.opened) { chest.userData.lid.rotation.x = -1.1; chest.userData.lid.position.z = -0.3; }
     st.room = v.room;
+    if (st.coop) coopView(v);
     if (v.offer && ovMode !== 'offer') showOffer(v.offer);
     else if (!v.offer && ovMode === 'offer') hideOv();
     else if (ovMode === 'shop') renderShop();
@@ -251,14 +260,15 @@ export function installGulagRun({ scene, camera, man, ui, audio, level, S, getWo
     man.root.position.set(p.x, 0, p.z);
     if (w) { w.vel && w.vel.set(0, 0, 0); w.yaw = fromSide ? DOOR_YAW[fromSide] + Math.PI : 0; w.camYaw = w.yaw + Math.PI; if (w.mode !== 'explore') w.setMode('explore'); }
     if (c && st.mods && st.mods.shield) c.player.invulnT = Math.max(c.player.invulnT || 0, st.mods.shield);
-    st.fight = !room.cleared && room.waves && room.waves.length ? { waves: room.waves, wave: -1, t: 0, tAll: 0, kills: 0, waitT: 1.4, list: [], sent: false } : null;
+    st.fight = !st.coop && !room.cleared && room.waves && room.waves.length ? { waves: room.waves, wave: -1, t: 0, tAll: 0, kills: 0, waitT: 1.4, list: [], sent: false } : null;
+    if (st.coop) { const me = v.pl && v.pl.find(x => x.id === v.me); if (me) man.root.position.set(me.x, 0, me.z); for (const e of st.coop.pup.values()) { try { E() && E()._int.release(e); } catch (x) { } } st.coop.pup.clear(); }
     sub(room.name + (room.type === 'boss' ? ' — Il Secondino ti aspetta' : room.type === 'shop' ? ' — Cesco ha la merce' : room.type === 'elite' ? ' — occhio' : ''), 2.4);
     if (room.type === 'boss') sfx('boss');
   }
   function roomCleared(v) {
     st.fight = null;
     for (const s of ['n', 's', 'e', 'w']) { doors[s].bars.visible = false; doors[s].arrow.visible = v.room.doors[s] !== undefined; }
-    const c = C(); act({ hp: c ? Math.round(c.player.hp) : 0 });
+    const c = C(); if (!st.coop) act({ hp: c ? Math.round(c.player.hp) : 0 });
     if (!v.over) sub('Stanza ripulita', 1.6);
   }
   let subT = 0; const subEl = el('div', 'gr-sub'); subEl.style.cssText = 'position:fixed;left:50%;top:22%;transform:translateX(-50%);z-index:22;font:900 clamp(22px,3.4vw,40px) system-ui;color:#f2e6cf;text-shadow:0 3px 14px #000;pointer-events:none;opacity:0;transition:opacity .3s;text-align:center;text-transform:uppercase;width:90vw';
@@ -293,13 +303,14 @@ export function installGulagRun({ scene, camera, man, ui, audio, level, S, getWo
       st.rewarded = true;
       meta.gettoni += o.gettoni || 0; meta.best = Math.max(meta.best, o.score || 0); if (o.victory) meta.wins++; saveMeta();
       st.xp = Math.round(30 + (o.score || 0) / 20); try { const R = window.__rpg; R && R.addXP && R.addXP(st.xp, 'gulag'); } catch (e) { }
-      try { const B = window.__board; if (B && B.submit) B.submit(o.daily ? 'gulag-daily' : 'gulag', o.score || 0, { daily: o.daily, seed: o.seed, rooms: o.rooms, kills: o.kills, victory: o.victory }); } catch (e) { }
+      try { const B = window.__board; if (B && B.submit && !o.team) B.submit(o.daily ? 'gulag-daily' : 'gulag', o.score || 0, { daily: o.daily, seed: o.seed, rooms: o.rooms, kills: o.kills, victory: o.victory }); } catch (e) { }
       try { if (o.victory) window.__save && window.__save.unlock('gulag_escape', { title: 'Evaso dal Gulag', desc: 'Hai battuto il Secondino', icon: '🗝️' }); } catch (e) { }
       try { if ((o.score || 0) >= 3000) window.__save && window.__save.unlock('gulag_3000', { title: 'Ergastolano modello', desc: '3000 punti in una run del Gulag', icon: '📜' }); } catch (e) { }
       try { window.dispatchEvent(new CustomEvent('bigalesso:event', { detail: { type: 'gulag', text: o.victory ? `è evaso dal Gulag profondo con ${o.score} punti` : `è rimasto nel Gulag profondo (${o.score} punti)` } })); } catch (e) { }
     }
     showOv('end', `<div class="box"><h1>${o.victory ? 'Sei <em>evaso</em>!' : 'Fine della <em>run</em>'}</h1><p class="sub">${esc(o.summary)}</p>
       <div class="big">${o.score} punti</div><p>${o.rooms} stanze · ${o.kills} nemici · +${o.gettoni} 🪙 Gettoni del Gulag · +${st.xp} XP${o.daily ? ' · run del giorno ' + o.daily : ''}</p>
+      ${o.team ? `<p class="sub">Squadra: ${o.team.map(t => esc((t.bot ? '🤖 ' : '') + t.name) + ' ' + t.kills + ' 💀').join(' · ')}${o.mvp ? ' · MVP ' + esc(o.mvp) : ''}${o.time ? ' · tempo ' + Math.floor(o.time / 60) + ':' + String(o.time % 60).padStart(2, '0') : ''}</p>` : ''}
       <p class="sub">Gettoni totali: ${meta.gettoni} · record ${meta.best}</p>
       <button class="b" data-go="home">Torna su</button></div>`);
   }
@@ -315,20 +326,40 @@ export function installGulagRun({ scene, camera, man, ui, audio, level, S, getWo
     }
     if (st.dmgOff) st.dmgOff(); if (st.killOff) st.killOff(); st.dmgOff = st.killOff = null;
     try { st.s && st.s.leave(); } catch (e) { }
+    if (st.coop) coopExit();
     st.on = false; st.s = null; st.v = null; st.room = null; st.saved = null; st.wKey = ''; st.mods = null; st.rewarded = false; st.revived = false; st.dying = false;
     root.visible = false; hud.classList.remove('on'); mapC.classList.remove('on'); fade.classList.remove('on'); hideOv(); subEl.style.opacity = 0;
   }
-  function quit() { if (!st.on) return; if (st.v && st.v.over) { showResults(); return; } st.quitting = true; act({ quit: true }); }
+  function quit() { if (!st.on) return; if (st.v && st.v.over) { showResults(); return; } if (st.coop) { toast('Hai lasciato la squadra nel Gulag'); exitRun(); return; } st.quitting = true; act({ quit: true }); }
 
   // ---------------------------------------------------------------- rewards / shop / offers
   function onEvent(e) {
     if (!e) return;
+    if (st.coop && coopEvent(e)) return;
     if (e.k === 'enter') { if (e.from) st.pendingSide = e.from; }
     else if (e.k === 'cleared') { sfx('clear'); toast(`🍽️ +${e.coins} buoni pasto`, 'gold'); if (e.heal) { const c = C(); c && c.heal(e.heal); } }
     else if (e.k === 'weapon') toast(`${WICON[e.w.base] || '🔫'} ${WNAME[e.w.base] || e.w.base} ${e.w.rarity}${e.w.doppio ? ' (doppio)' : ''}`, 'gold');
     else if (e.k === 'perk') { const P = PERKS[e.perk]; if (P) toast(`${P.icon} ${P.name}`, 'gold'); }
     else if (e.k === 'buy') { sfx('coin'); if (e.item === 'brodo') { const c = C(); c && c.heal(40); } }
     else if (e.k === 'revive') { /* applied locally in onDeath */ }
+  }
+  function coopEvent(e) { // co-op only events (true = handled)
+    const v = st.v, me = v && v.me, nm = id => { const p = v && v.pl.find(x => x.id === id); return p ? p.name : 'Un amico'; };
+    if (e.k === 'hurt') { if (e.id === me) { const c = C(), en = st.coop.pup.get(e.e); if (c && c.damagePlayer) c.damagePlayer(e.n, { type: e.et || 'zombie', pos: en ? en.pos : man.root.position }); } return true; }
+    if (e.k === 'down') { if (e.id !== me) { toast(`🚑 ${e.name} è a terra! Vai da lui e tieni premuto E`, 'warn'); sfx('warning'); } return true; }
+    if (e.k === 'out') { if (e.id !== me) toast(`${e.name} è fuori fino alla prossima stanza`); return true; }
+    if (e.k === 'up') { if (e.id !== me) toast(`${nm(e.id)} è di nuovo in piedi${e.by === me ? ': l\'hai rianimato tu!' : ''}`, e.by === me ? 'gold' : ''); if (e.by === me) { try { window.__save && window.__save.unlock('gulag_revive', { title: 'Crocerossina del Gulag', desc: 'Hai rianimato un amico nel Gulag co-op', icon: '🚑' }); } catch (x) { } } return true; }
+    if (e.k === 'revive') { if (e.id === me) { sub('Crescentina fritta! Seconda vita', 2); sfx('respawn'); } return true; }
+    if (e.k === 'kill') { if (e.by === me) { const c = C(), en = st.coop.pup.get(e.e); try { c && c._credit && c._credit({ type: e.t, level: en ? en.level : 1, x: en ? en.pos.x : man.root.position.x, z: en ? en.pos.z : man.root.position.z }, false); } catch (x) { } } return true; }
+    if (e.k === 'weapon') { if (e.id === me) toast(`${WICON[e.w.base] || '🔫'} ${WNAME[e.w.base] || e.w.base} ${e.w.rarity}${e.w.doppio ? ' (doppio)' : ''}`, 'gold'); else toast(`${nm(e.id)} ha trovato ${WNAME[e.w.base] || e.w.base} ${e.w.rarity}`); return true; }
+    if (e.k === 'buy') { sfx('coin'); if (e.item === 'brodo' && e.by === me) { const c = C(); c && c.heal(40); } if (e.by !== me) toast(`${nm(e.by)} ha comprato allo Spaccio`); return true; }
+    if (e.k === 'perk') { const P = PERKS[e.perk]; if (P) toast(`${P.icon} ${P.name}${e.by && e.by !== me ? ' (scelto da ' + nm(e.by) + ')' : ''}`, 'gold'); return true; }
+    if (e.k === 'enter') { if (e.from) st.pendingSide = e.from; fade.textContent = ''; fade.classList.add('on'); setTimeout(() => fade.classList.remove('on'), 900); return true; }
+    if (e.k === 'wave') { if (e.i > 0) sub('Ondata ' + (e.i + 1), 1.4); return true; }
+    if (e.k === 'multa') { sfx('whistle'); return true; }
+    if (e.k === 'left') { toast(`${e.name} ha lasciato la run`); return true; }
+    if (e.k === 'shot' || e.k === 'open') return true;
+    return false; // cleared, offer… as in the solo run
   }
   function showOffer(list) {
     showOv('offer', `<div class="box"><h1>Scegli un <em>vizio</em></h1><div class="cards">${list.map((k, i) => PERKS[k] ? `<button class="card" data-pick="${i}"><b>${PERKS[k].icon} ${esc(PERKS[k].name)}</b><small>${esc(PERKS[k].desc)}</small></button>` : '').join('')}</div></div>`);
@@ -353,12 +384,154 @@ export function installGulagRun({ scene, camera, man, ui, audio, level, S, getWo
     }
   }
 
+  // ---------------------------------------------------------------- co-op (shared/gulag_coop.mjs)
+  const E = () => { const c = C(); return c && c._debug && c._debug.E; };
+  const TYPES = ['zombie', 'pigeon', 'boss'];
+  function coopAttach(s) {
+    if (st.on) { toast('Sei già in una run del Gulag'); try { s.leave(); } catch (e) { } return false; }
+    const w = W(); if (!w || S.phase !== 'world') { try { s.leave(); } catch (e) { } return false; }
+    hideOv(); loadDeco();
+    st.coop = { pup: new Map(), hitQ: [], sendT: 0, hitT: 0, prevSync: undefined, reviving: null, rvT: 0, bodies: new Map(), lastSt: 'ok', hudT: 0 };
+    st.s = s; st.daily = null; st.v = null; st.room = null; st.roomId = -1; st.resultsShown = false; st.quitting = false; st.dying = false; st.pendingSide = null;
+    s.on('event', e => { if (st.s === s && st.on) onEvent(e); });
+    s.on('error', e => { if (!e || !e.error || st.s !== s) return; if (/rianimare|avvicinati/.test(e.error)) return; fade.classList.remove('on'); toast(e.error); if (e.fatal) { toast('Run persa: connessione caduta'); if (st.on) exitRun(); else st.coop = null; } });
+    s.on('view', v => { if (st.s !== s || !st.coop) return; if (!st.on) { enterRun(); fade.textContent = 'Giù nel Gulag profondo, in squadra…'; } onView(v); }); // down in the arena when the leader starts
+    return true;
+  }
+  function coopDetach(s) { if (st.s === s && st.coop && !st.on) { st.coop = null; st.s = null; } }
+  async function coopBot() {
+    hideOv();
+    try { const s = await window.__match.start('gulag_coop', { online: false, players: [{ id: 'bot_seghino', name: 'Seghino', bot: true }], opts: { seed: (Math.random() * 0xfffffff + 1) >>> 0 } }); coopAttach(s); }
+    catch (e) { console.warn('gulag coop', e); toast('Il Gulag è chiuso, riprova'); }
+  }
+  // our hooks for the puppets while the run lasts (combat/enemies.js calls them instead of the open-world sync)
+  const coopSync = {
+    target: () => null, hurt: () => 0, released: () => { }, handoff: () => false, bossTaken: () => true, bossSpawned: () => { }, multa: () => { },
+    hit(e, amount, o) { const q = st.coop && st.coop.hitQ; if (q && e.sid && q.length < 40) q.push([e.sid, Math.round(amount * 10) / 10, o && o.head ? 1 : 0]); },
+    died(e, o) { if (o) o.noCredit = true; },
+  };
+  function coopPre(v) { // before applyRun: health is the referee's
+    const c = C(); if (!c || !v.mine) return;
+    st.maxHp = v.maxHp;
+  }
+  function coopView(v) {
+    const K = st.coop, c = C(), En = E(), net = window.__net; if (!K || !c) return;
+    // my health / status
+    const me = v.pl.find(x => x.id === v.me);
+    if (me) {
+      if (c.player.maxHp !== v.maxHp) c.player.maxHp = v.maxHp;
+      if (me.st === 'ok' && Math.abs(c.player.hp - v.mine.hp) > 1) c.player.hp = Math.max(0.5, v.mine.hp);
+      if (me.st !== K.lastSt) {
+        const w = W();
+        if (me.st === 'down') { if (w) { w.setMode('ko'); w.vel && w.vel.set(0, 0, 0); } c.player.hp = 0.5; sfx('ko'); sub('A terra! Un amico può rianimarti (E)', 2.6); }
+        else if (me.st === 'out') { sub('Sei fuori: rientri quando la squadra pulisce la stanza', 3); }
+        else if (me.st === 'ok') { if (w && w.mode === 'ko') w.setMode('explore'); c.player.hp = Math.max(1, v.mine.hp); c.player.invulnT = 1.5; sfx('respawn'); if (K.lastSt) sub('Di nuovo in piedi!', 1.6); }
+        K.lastSt = me.st;
+      }
+    }
+    // enemies: puppets in the combat pools
+    if (En) {
+      const tag = (net && net.id) || 'gulag', seen = new Set();
+      for (const a of v.en) {
+        const [id, ty, x, z, y, yaw, hp, max, sti, , lv] = a; seen.add(id);
+        let e = K.pup.get(id);
+        if (e && !e.alive) { K.pup.delete(id); e = null; }
+        if (!e) {
+          if (sti === 3) continue;
+          e = En._int.newEnemy(TYPES[ty] || 'zombie', V(x, ty === 1 ? y : 0, z), Math.max(1, lv || 1), { remote: tag, max, hp, yaw, quiet: sti !== 0 });
+          if (!e) continue;
+          e.sid = id; e.aggro = true; e.state = sti === 0 ? 'rise' : ty === 1 ? 'circle' : 'chase'; if (sti !== 0) e.rise = 1;
+          if (ty === 2) e.name = 'Il Secondino';
+          K.pup.set(id, e);
+        }
+        e.remote = tag;
+        e.net = { x, z, y: ty === 1 ? y : 0, yaw, st: sti === 0 ? 'rise' : sti === 2 ? (ty === 1 ? 'dive' : 'attack') : ty === 1 ? 'circle' : 'chase', hp, rise: sti === 0 ? 0 : 1, at: performance.now() };
+        if (sti === 3 && !e.dead) { try { En._int.kill(e, { noCredit: true }); } catch (x) { } }
+      }
+      for (const [id, e] of K.pup) if (!seen.has(id)) { if (e.alive && !e.dead) { try { En._int.release(e); } catch (x) { } } K.pup.delete(id); }
+    }
+    coopBodies(v);
+  }
+  // bots and friends outside my room (no presence avatar): a friend's NPC body
+  function coopBodies(v) {
+    const K = st.coop, net = window.__net, api = window.__npcs;
+    for (const p of v.pl) {
+      if (p.id === v.me) continue;
+      const human = !p.bot, present = human && net && net.players && net.players.has(+String(p.id).slice(1));
+      let b = K.bodies.get(p.id);
+      if (present) { if (b) { coopDropBody(b); K.bodies.delete(p.id); } continue; }
+      if (!b && api) {
+        const used = new Set([...K.bodies.values()].map(x => x.fid));
+        const fid = (String(p.id).startsWith('bot_') ? String(p.id).slice(4) : null) || ['seghino', 'asche', 'forla', 'lombu', 'cesco', 'parme'].find(f => !used.has(f));
+        const n = fid && (api.get(fid) || api.spawn(fid, { at: V(p.x, 0, p.z) }));
+        if (!n) continue;
+        b = { fid, n, was: !!api.get(fid) }; K.bodies.set(p.id, b);
+        n.state = 'match'; n.leaving = true; n.chatCD = 1e9; n.greeted = true; n.root.position.set(p.x, 0, p.z);
+      }
+      if (b) { b.tx = p.x; b.tz = p.z; b.tyaw = p.yaw; b.st = p.st; }
+    }
+    for (const [id, b] of K.bodies) if (!v.pl.some(p => p.id === id)) { coopDropBody(b); K.bodies.delete(id); }
+  }
+  function coopDropBody(b) { const n = b.n; if (!n) return; n.root.rotation.z = 0; n.state = 'idle'; n.leaving = false; n.chatCD = 10; n.target = null; try { if (!b.was) window.__npcs.despawn(n.id); } catch (e) { } }
+  function coopUpdate(dt) {
+    const K = st.coop, v = st.v, c = C(), En = E(), w = W(), now = performance.now(), I = window.__app && window.__app.input;
+    if (!K) return;
+    if (En && En.ctx && En.ctx.sync !== coopSync) { if (K.prevSync === undefined) K.prevSync = En.ctx.sync || null; En.ctx.sync = coopSync; }
+    if (!v || v.over) return;
+    const me = v.pl.find(x => x.id === v.me), ok = me && me.st === 'ok';
+    if (ok && now - K.sendT > 100) { K.sendT = now; const r = man.root.position; act({ p: [Math.round(r.x * 100) / 100, Math.round(r.z * 100) / 100, Math.round((w ? w.yaw : 0) * 1000) / 1000] }); }
+    if (K.hitQ.length && now - K.hitT > 90) { K.hitT = now; act({ h: K.hitQ.splice(0, 40) }); }
+    if (!ok && c) { c.player.hp = Math.max(0.5, c.player.hp); if (w && w.mode !== 'ko' && me && me.st !== 'ok') w.setMode('ko'); }
+    // reviving: hold E next to a downed friend
+    if (K.reviving) {
+      const t = v.pl.find(x => x.id === K.reviving), P = man.root.position;
+      const held = I && (I.k('KeyE') || (I.tHeld && I.tHeld('act')));
+      if (!t || t.st !== 'down' || !ok || !held || Math.hypot(t.x - P.x, t.z - P.z) > 2.3) { if (t && t.st === 'down' && held === false) sub('Tieni premuto E per rianimare', 1); K.reviving = null; }
+      else if (now - K.rvT > 220) { K.rvT = now; act({ rv: t.id }); }
+    }
+    // NPC bodies of bots / far friends
+    for (const b of K.bodies.values()) {
+      const n = b.n; if (!n || !n.root.parent) continue;
+      const p = n.root.position, k = 1 - Math.exp(-dt * 10), ox = p.x, oz = p.z;
+      p.x += ((b.tx ?? p.x) - p.x) * k; p.z += ((b.tz ?? p.z) - p.z) * k; p.y = 0;
+      n.speed = Math.hypot(p.x - ox, p.z - oz) / Math.max(dt, 1e-3) * 1.15; n.state = 'match'; n.yawGoal = null; n.target = null; n.leaving = true; n.chatCD = 1e9;
+      let d = (b.tyaw ?? n.root.rotation.y) - n.root.rotation.y; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; n.root.rotation.y += d * Math.min(1, dt * 10);
+      n.root.rotation.z = b.st === 'down' || b.st === 'out' ? -1.4 : 0;
+    }
+    if ((K.hudT -= dt) <= 0) { K.hudT = 0.25; coopHud(v); }
+  }
+  let teamEl = null;
+  function coopHud(v) {
+    if (!teamEl) { teamEl = el('div', 'gr-team'); teamEl.style.cssText = 'position:fixed;top:56px;right:12px;z-index:21;display:flex;flex-direction:column;gap:6px;font:700 13px system-ui;color:#fff;pointer-events:none'; }
+    teamEl.style.display = st.coop && st.on ? 'flex' : 'none';
+    const t = Math.max(0, v.t || 0);
+    teamEl.innerHTML = `<div style="background:rgba(20,14,10,.75);padding:5px 10px;border-radius:8px;border:1px solid rgba(255,220,160,.18)">⏱️ ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')} · 🏆 ${v.score}${v.room && !v.room.cleared && v.wave ? ' · ondata ' + v.wave[0] + '/' + v.wave[1] : ''}</div>` + v.pl.map(p => {
+      const k = Math.max(0, Math.min(1, p.hp / (p.max || 100))), col = p.st === 'down' ? '#ff6050' : p.st === 'out' ? '#777' : k < 0.3 ? '#ffb030' : '#6ad07a';
+      return `<div style="background:rgba(20,14,10,.75);padding:5px 10px;border-radius:8px;min-width:170px;border:1px solid ${p.id === v.me ? '#e0b050' : 'rgba(255,220,160,.18)'}">${p.bot ? '🤖 ' : ''}${esc(p.name)}${p.id === v.me ? ' (tu)' : ''} · 💀 ${p.k}<div style="height:6px;border-radius:3px;background:#333;margin-top:4px;overflow:hidden"><i style="display:block;height:100%;width:${p.st === 'ok' ? k * 100 : p.st === 'down' ? (1 - p.rv) * 0 + p.rv * 100 : 0}%;background:${p.st === 'down' ? '#4aa8ff' : col}"></i></div>${p.st === 'down' ? `<small style="color:#ff8a70">A TERRA · ${p.dn}s${p.rv ? ' · rianimazione ' + Math.round(p.rv * 100) + '%' : ''}</small>` : p.st === 'out' ? '<small style="color:#aaa">fuori fino alla prossima stanza</small>' : ''}</div>`;
+    }).join('');
+  }
+  function coopExit() {
+    const K = st.coop; if (!K) return; st.coop = null;
+    const En = E(); if (En && En.ctx && En.ctx.sync === coopSync) { const ws = window.__wsync; En.ctx.sync = ws && ws.attached ? ws.sync : (K.prevSync || null); }
+    for (const e of K.pup.values()) { try { if (e.alive) En && En._int.release(e); } catch (x) { } }
+    for (const b of K.bodies.values()) coopDropBody(b);
+    if (teamEl) teamEl.style.display = 'none';
+  }
+  registerPartyGame('gulag_coop', {
+    name: 'Gulag profondo co-op', icon: '⛓️', desc: 'la run del Gulag in squadra: nemici condivisi, rianima gli amici (E)', min: 1, max: 4, fill: false, bots: 1,
+    choices: [{ id: 'free', label: 'Run libera', opts: {} }, { id: 'daily', label: 'Run del giorno', opts: { daily: today() } }],
+    busy: () => st.on ? 'Sei già nel Gulag' : (window.__br && window.__br.state && window.__br.state().on) ? 'Finisci prima la battle royale' : (W() && W().mode !== 'explore' && W().mode !== 'goto') ? 'Torna a piedi prima' : null,
+    attach: s => coopAttach(s),
+    detach: s => coopDetach(s),
+  });
+
   // ---------------------------------------------------------------- per frame
   let ironP = false;
   function update(dt) {
     if (subT > 0) { subT -= dt; if (subT <= 0) subEl.style.opacity = 0; }
     if (!ironP && getGulag) { const g = getGulag(); if (g && g.root) { g.root.add(iron); ironP = true; } } // shown with the basement only
     if (!st.on) return;
+    if (st.coop) coopUpdate(dt);
     const c = C(), w = W(), v = st.v;
     if (c && st.mods) { c.mods.damage = 1 + st.mods.dmg; c.mods.fireRate = 1 + st.mods.rate; c.mods.armor = Math.min(0.8, st.mods.armor); if (w) w.speedMul = 1 + st.mods.speed; }
     if (c && st.dying) c.player.hp = Math.max(0.5, c.player.hp);
@@ -406,10 +579,20 @@ export function installGulagRun({ scene, camera, man, ui, audio, level, S, getWo
         { id: 'gulag-iron', label: () => 'Porta di ferro: Gulag profondo (run)', anchor: () => (!st.on && getGulag && getGulag() && getGulag().inside ? ironStand : FAR), top: () => ironTop, range: 1.3, act: () => open() },
         ...['n', 's', 'e', 'w'].map(doorItem),
         { id: 'grun-chest', label: () => 'Apri il ripostiglio', anchor: () => (st.on && st.room && st.room.type === 'chest' && !st.room.opened ? V(AC.x, 0, AC.z - 1.1) : FAR), top: () => V(AC.x, 0.8, AC.z), range: 1.5, act: () => { act({ open: true }); sfx('chest'); } },
+        { id: 'grun-exit', label: () => st.coop ? 'Risali in superficie (lasci la squadra)' : 'Risali in superficie (finisci la run)', range: 1.4,
+          anchor: () => (st.on && st.room && st.room.type === 'start' && !(st.v && (st.v.offer || st.v.over)) ? V(AC.x + 3, 0, A0.z0 + 1.2) : FAR), top: () => V(AC.x + 3, 1.6, A0.z0 + 0.4), act: () => quit() },
+        ...[0, 1, 2].map(i => ({ id: 'grun-revive-' + i, range: 1.9,
+          label: () => { const t = downed(i); return t ? `Tieni premuto: rianima ${t.name}${t.rv ? ' (' + Math.round(t.rv * 100) + '%)' : ''}` : ''; },
+          anchor: () => { const t = downed(i); return t ? V(t.x, 0, t.z) : FAR; }, top: () => { const t = downed(i); return t ? V(t.x, 1.2, t.z) : FAR; },
+          act: () => { const t = downed(i); if (t && st.coop) { st.coop.reviving = t.id; st.coop.rvT = 0; } } })),
         { id: 'grun-shop', label: () => 'Compra dallo Spaccio di Cesco', anchor: () => (st.on && st.room && st.room.type === 'shop' ? V(AC.x, 0, A0.z1 - 3.4) : FAR), top: () => V(AC.x, 1.3, A0.z1 - 2.2), range: 1.7, act: () => renderShop() },
       ],
     };
   };
+  function downed(i) { // i-th downed friend (co-op), when I'm standing
+    const v = st.v; if (!st.coop || !v || !v.pl) return null; const me = v.pl.find(x => x.id === v.me); if (!me || me.st !== 'ok') return null;
+    return v.pl.filter(x => x.id !== v.me && x.st === 'down')[i] || null;
+  }
   function go(side) {
     if (fade.classList.contains('on')) return;
     st.pendingSide = OPP[side]; fade.textContent = ''; fade.classList.add('on'); sfx('door');
@@ -417,7 +600,7 @@ export function installGulagRun({ scene, camera, man, ui, audio, level, S, getWo
     setTimeout(() => fade.classList.remove('on'), 2500); // safety (no answer)
   }
 
-  const api = { open, quit, exit: exitRun, state: () => ({ on: st.on, room: st.room, view: st.v, meta: { ...meta }, fight: st.fight ? { wave: st.fight.wave, waves: st.fight.waves.length, alive: st.fight.list.filter(e => !e.dead).length } : null }), get session() { return st.s; }, _st: st, arena, start: startRun, _go: go };
+  const api = { coop: s => coopAttach(s), coopBot, open, quit, exit: exitRun, state: () => ({ on: st.on, room: st.room, view: st.v, meta: { ...meta }, fight: st.fight ? { wave: st.fight.wave, waves: st.fight.waves.length, alive: st.fight.list.filter(e => !e.dead).length } : null }), get session() { return st.s; }, _st: st, arena, start: startRun, _go: go };
   window.__gulagRun = api;
   return { plugin, update, api };
 }

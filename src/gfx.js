@@ -90,32 +90,47 @@ function upgradeMaterials(roots) {
   return n;
 }
 
-// ---------- sky: same uniforms as world.js (shared objects, so its night fade keeps driving it) ----------
-const SKY_FRAG = `uniform float uTime, uNight; uniform vec3 uSun; uniform vec3 uFog; varying vec3 vD;
+// ---------- sky: same uniforms as world.js (shared objects, so its day/night cycle keeps driving it) ----------
+// uSun / uMoon: directions, uNight 0..1, uDusk: sunset/sunrise glow, uBlue: blue hour, uSunCol: sun tint (daynight.js)
+const SKY_FRAG = `uniform float uTime, uNight, uDusk, uBlue; uniform vec3 uSun, uMoon, uSunCol; uniform vec3 uFog; varying vec3 vD;
   float h(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
   float n(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(h(i),h(i+vec2(1,0)),f.x), mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x), f.y); }
   float fb(vec2 p){ float s=0.0, a=0.5; for(int i=0;i<5;i++){ s+=a*n(p); p=p*2.03+vec2(1.7,9.2); a*=0.5; } return s; }
   void main(){
-    vec3 d = normalize(vD); float y = d.y; vec3 sun = normalize(uSun); float mu = dot(d, sun);
+    vec3 d = normalize(vD); float y = d.y; vec3 sun = normalize(uSun); float mu = dot(d, sun), mp = max(mu, 0.0);
     float hh = pow(clamp(y, 0.0, 1.0), 0.42);
+    // 1 toward the sun's azimuth, 0 opposite (NaN-safe: no normalize of a vertical vector)
+    float sl = length(sun.xz) * length(d.xz);
+    float az = clamp((sl > 1e-4 ? dot(d.xz, sun.xz) / sl : 0.0) * 0.5 + 0.5, 0.0, 1.0), a3 = az * az * az;
+    float sunUp = smoothstep(-0.06, 0.03, sun.y);
     vec3 day = mix(vec3(0.76,0.79,0.86), vec3(0.17,0.34,0.68), hh); // warmer horizon (Bologna art direction)
-    day += vec3(1.0,0.84,0.6) * (pow(max(mu,0.0), 6.0) * 0.22 + pow(max(mu,0.0), 48.0) * 0.5) * (1.0 - 0.4 * hh);
-    day += vec3(1.0,0.96,0.88) * smoothstep(0.9991, 0.9996, mu) * 5.0;
+    // sunset / sunrise: orange band toward the sun, pink-violet opposite, deeper zenith
+    vec3 dsk = mix(mix(vec3(0.62,0.38,0.46), vec3(1.0,0.5,0.2), a3), vec3(0.16,0.22,0.48), pow(clamp(y, 0.0, 1.0), 0.6));
+    vec3 c = mix(day, dsk, uDusk);
+    c += uSunCol * (pow(mp, 6.0) * 0.22 + pow(mp, 48.0) * 0.5) * (1.0 - 0.4 * hh) * sunUp * (1.0 + 1.3 * uDusk);
+    c += mix(vec3(1.0,0.96,0.88), uSunCol * 1.15, uDusk) * smoothstep(0.9991, 0.9996, mu) * 5.0 * sunUp;
     vec3 night = mix(vec3(0.06,0.08,0.15), vec3(0.012,0.02,0.055), hh);
-    vec3 c = mix(day, night, uNight);
+    c = mix(c, night, uNight);
+    // blue hour: deep blue, a last pink glow low on the sun side
+    vec3 blu = mix(vec3(0.2,0.26,0.52), vec3(0.035,0.06,0.19), hh) + vec3(0.42,0.2,0.16) * a3 * (1.0 - hh) * 0.7;
+    c = mix(c, blu, uBlue);
     if (y > 0.0) {
       vec2 uv = d.xz / (y + 0.22) * 1.5 + vec2(uTime*0.006, uTime*0.002);
       float n1 = fb(uv), n2 = n(uv * 4.3 + 7.1);
       float cov = smoothstep(0.5, 0.78, n1 * 0.85 + n2 * 0.15) * smoothstep(0.0, 0.22, y);
       float toward = fb(uv + sun.xz * 0.07);
       float lit = clamp(1.0 - (toward - n1) * 4.0, 0.35, 1.25);
-      vec3 cl = mix(vec3(0.58,0.62,0.70), vec3(1.02,1.0,0.97), lit * 0.8) + vec3(1.0,0.82,0.55) * pow(max(mu,0.0), 5.0) * 0.35;
-      c = mix(c, mix(cl, vec3(0.10,0.11,0.16), uNight), cov * 0.9);
-      float st = step(0.9965, h(floor(d.xz/(y+0.3)*160.0))) * uNight * smoothstep(0.05,0.3,y) * (1.0 - cov);
+      vec3 cl = mix(vec3(0.58,0.62,0.70), vec3(1.02,1.0,0.97), lit * 0.8) + vec3(1.0,0.82,0.55) * pow(mp, 5.0) * 0.35;
+      cl = mix(cl, mix(vec3(0.44,0.3,0.42), vec3(1.15,0.6,0.34), clamp(lit * 0.6 + a3 * 0.6, 0.0, 1.0)), uDusk); // undersides catch the low sun
+      cl = mix(cl, vec3(0.10,0.11,0.16), uNight);
+      cl = mix(cl, mix(vec3(0.13,0.15,0.3), vec3(0.42,0.28,0.36), a3), uBlue);
+      c = mix(c, cl, cov * 0.9);
+      float st = step(0.9965, h(floor(d.xz/(y+0.3)*160.0))) * uNight * (1.0 - 0.8 * uBlue) * smoothstep(0.05,0.3,y) * (1.0 - cov);
       c += vec3(st);
-      float m = max(dot(d, normalize(vec3(0.4,0.55,-0.6))), 0.0); c += vec3(0.9,0.92,1.0) * (pow(m, 900.0) * 2.0 + pow(m, 40.0) * 0.06) * uNight;
+      float m = max(dot(d, normalize(uMoon)), 0.0); c += vec3(0.9,0.92,1.0) * (pow(m, 900.0) * 2.0 + pow(m, 40.0) * 0.06) * uNight;
     }
-    c = mix(c, uFog, (1.0 - smoothstep(-0.02, 0.16, y)) * 0.8); // the horizon melts into the fog: distant hills meet the sky
+    // the horizon melts into the fog (distant hills meet the sky); less around a setting sun, so the disc shows
+    c = mix(c, uFog, (1.0 - smoothstep(-0.02, 0.16, y)) * 0.8 * (1.0 - 0.6 * uDusk * pow(mp, 8.0)));
     gl_FragColor = vec4(c, 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -125,7 +140,8 @@ function upgradeSky(level, scene) {
   if (!old || !old.uniforms || !old.uniforms.uNight || old.userData.gfx) return false;
   const U = old.uniforms;
   const m = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { uTime: U.uTime || { value: 0 }, uNight: U.uNight, uSun: U.uSun || { value: new THREE.Vector3(-0.55, 0.62, 0.55) }, uFog: { value: scene.fog ? scene.fog.color : new THREE.Color(0xd6dde6) } },
+    uniforms: { uTime: U.uTime || { value: 0 }, uNight: U.uNight, uSun: U.uSun || { value: new THREE.Vector3(-0.55, 0.62, 0.55) }, uFog: { value: scene.fog ? scene.fog.color : new THREE.Color(0xd6dde6) },
+      uDusk: U.uDusk || { value: 0 }, uBlue: U.uBlue || { value: 0 }, uMoon: U.uMoon || { value: new THREE.Vector3(0.4, 0.55, -0.6).normalize() }, uSunCol: U.uSunCol || { value: new THREE.Color(1, 0.9, 0.7) } },
     vertexShader: old.vertexShader, fragmentShader: SKY_FRAG });
   m.userData.gfx = true; sky.material = m; return true;
 }

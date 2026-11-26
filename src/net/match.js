@@ -20,6 +20,11 @@
 //   __match.lobby(type) -> Promise<[{ id, type, name, players:[names], bots, max, lobby, dropIn, mine, room, public }]>
 //                          open online matches I can join (my room's and public ones); [] offline
 //   __match.join(id) -> Promise<session>  (online only)
+//   start() online extras: link: true (joinable by id from anywhere: party codes), party: '<party match id>' (its members
+//   can join from any room). __match.invite(id, toNetId) sends a server invite to a player of my room / shard;
+//   __match.onInvite(fn) -> off: fn({ id, type, name, from, fromId }) (src/net/party.js).
+//   Rules with game.aiRequest()/aiResult() (Processo's judge) get their AI text from window.__ai locally; online the
+//   server asks it (server/ai.mjs).
 //
 // online: 'auto' (default) = refereed by the server when I'm already connected to it (in a room or the public
 // quartiere) and the server knows the type; otherwise local. true = always on the server (opens the socket; throws
@@ -42,7 +47,7 @@ function localSession(type, mod, { opts = {}, players = [], me } = {}) {
   const all = [{ id: myId, name: (window.__net && window.__net.name) || 'Tu', bot: false }, ...players.filter(p => p.id !== myId)];
   const game = mod.create({ players: all, opts, seed: newSeed() });
   const hz = (mod.meta && mod.meta.tickHz) || 0;
-  let timer = null, last = 0, closed = false, overSent = false;
+  let timer = null, last = 0, closed = false, overSent = false, aiBusy = false;
   const emit = (k, v) => { for (const f of L[k]) try { f(v); } catch (e) { console.error(e); } };
   const flush = () => {
     if (closed) return;
@@ -51,12 +56,25 @@ function localSession(type, mod, { opts = {}, players = [], me } = {}) {
     emit('view', game.view(myId));
     const o = game.over;
     if (o && !overSent) { overSent = true; emit('over', o); stop(); }
+    if (!o && game.aiRequest && !aiBusy) localAI();
   };
+  // the same AI hook the server referee has (server/match.mjs), through the browser's provider chain (window.__ai)
+  function localAI() {
+    const q = game.aiRequest(); if (!q) return;
+    aiBusy = true;
+    const ai = window.__ai;
+    const ask = ai && typeof ai.ask === 'function' ? Promise.race([ai.ask({ model: q.model || 'smart', maxTokens: q.maxTokens || 300, system: q.system, prompt: q.prompt }), new Promise(r => setTimeout(() => r(null), 15000))]) : Promise.resolve(null);
+    ask.then(r => (typeof r === 'string' ? r : (r && (r.text || r.content)) || null), () => null).then(t => {
+      aiBusy = false; if (closed) return;
+      try { game.aiResult(q.id, t && String(t).trim() && !/^(error|errore)\b/i.test(String(t).trim()) ? String(t) : null); } catch (e) { console.error(e); }
+      flush();
+    });
+  }
   const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
   if (hz > 0) {
     last = performance.now();
     timer = setInterval(() => {
-      const t = performance.now(), dt = Math.min(0.25, (t - last) / 1000); last = t;
+      const t = performance.now(), dt = Math.min(Math.max(0.25, 2 / hz), (t - last) / 1000); last = t; // slow ticks (2 Hz): don't halve the game time
       if (document.hidden && !(opts && opts.runHidden)) return;
       game.tick(dt); flush();
     }, 1000 / hz);
@@ -75,6 +93,7 @@ function localSession(type, mod, { opts = {}, players = [], me } = {}) {
 // ------------------------------------------------------------------ online (server referee)
 const sessions = new Map(); // match id -> session
 const pending = new Map();  // rid -> { res, rej, to }
+const inviteFns = [];
 let rid = 0, hooked = false;
 
 function request(net, msg, wantT) {
@@ -101,6 +120,7 @@ function hook(net) {
   net.onMsg('match:event', m => { const s = S(m.id); if (s) s._emit('event', m.e); });
   net.onMsg('match:players', m => { const s = S(m.id); if (s) s._players(m); });
   net.onMsg('match:over', m => { const s = S(m.id); if (s) s._over(m.r); });
+  net.onMsg('match:invite', m => { for (const f of inviteFns.slice()) try { f({ id: String(m.id || ''), type: m.type, name: m.name, from: m.from, fromId: m.fromId }); } catch (e) { console.error(e); } });
   net.onMsg('match:error', m => {
     if (m.rid && settle(m, false)) return;
     const s = m.id ? S(m.id) : null;
@@ -152,7 +172,7 @@ const transport = {
     else {
       if (net.games && net.games.length && !net.games.includes(type)) throw new Error('il server non conosce ' + type);
       const bots = (o.players || []).filter(p => p && p.bot).map(p => ({ id: p.id, name: p.name }));
-      reply = await request(net, { t: 'match:create', type, opts: o.opts || {}, bots, wait: !!o.wait, public: !!o.public, room: o.room !== false, fill: o.fill !== false });
+      reply = await request(net, { t: 'match:create', type, opts: o.opts || {}, bots, wait: !!o.wait, public: !!o.public, room: o.room !== false, fill: o.fill !== false, link: !!o.link, party: o.party || undefined });
     }
     return remoteSession(net, reply);
   },
@@ -184,6 +204,10 @@ const api = {
   async rules(type) { return loadRules(type); },
   types: () => Object.keys(GAMES),
   sessions: () => [...sessions.values()],
+  invite(id, to) { const net = window.__net; return !!(net && net.connected && net.connected() && net.send({ t: 'match:invite', id: String(id), to })); },
+  onInvite(fn) { inviteFns.push(fn); const net = window.__net; if (net && net.onMsg) hook(net); return () => { const i = inviteFns.indexOf(fn); if (i >= 0) inviteFns.splice(i, 1); }; },
+  hook() { const net = window.__net; if (net && net.onMsg) hook(net); },
 };
 window.__match = api;
 export default api;
+import './party.js'; // "Gioca insieme": parties of friends that launch the minigames together (window.__party)

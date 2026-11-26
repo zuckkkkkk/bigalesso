@@ -51,6 +51,23 @@ function sanitize(b) {
   return { model, system: GUARD + (system ? '\n\n' + system : ''), messages, max_tokens };
 }
 
+// server-side call for the match referee (server/match.mjs: e.g. the Processo judge). Same guard, models, caps and daily
+// budget as /api/ai; resolves with the text or null (no key, limit, error, timeout). The key is never logged or returned.
+export async function askAI({ model = 'smart', system = '', prompt = '', max_tokens = 300 } = {}) {
+  const key = process.env.ANTHROPIC_API_KEY; if (!key || !prompt) return null;
+  const today = new Date().toDateString(); if (today !== day) { day = today; dayCount = 0; }
+  if (dayCount >= DAILY) return null;
+  const q = sanitize({ model, system, messages: [{ role: 'user', content: String(prompt) }], max_tokens }); if (!q) return null;
+  dayCount++;
+  const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), TIMEOUT);
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: ctl.signal, headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' }, body: JSON.stringify(q) });
+    if (!r.ok) { failed++; return null; }
+    const j = await r.json(); served++;
+    return (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('').slice(0, 4000) || null;
+  } catch (e) { failed++; return null; } finally { clearTimeout(to); }
+}
+
 // returns true when the request was handled
 export function handleAI(req, res, log = () => { }) {
   let p = ''; try { p = new URL(req.url, 'http://x').pathname; } catch { return false; }

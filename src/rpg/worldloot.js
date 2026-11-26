@@ -2,9 +2,11 @@
 // rarity-coloured light beams, loot crates (cassette della frutta, frigo abbandonato, bauletto della Vespa) with respawn
 // timers, the "Banco dei pegni" stall in Via Petroni. Everything is built at start-up (InstancedMeshes with a hidden
 // instance until the gfx warm-up is done, then drawn only when used), no lights, no per-frame allocations.
+// Online (src/worldsync.js sets api.net): drops are shared with the room (same landing spot for everyone, the server
+// referees who picks them up first), crates open for everyone and respawn on the server clock. Solo: api.net is null.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { rarityOf, BASES } from './data.js';
+import { rarityOf, BASES, AMMO } from './data.js';
 import { PITCH } from '../quartiere/layout.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -196,7 +198,7 @@ export function createWorldLoot({ scene, level, hooks }) {
   const drops = []; // {kind:'item'|'money'|'ammo'|'quest', item, amount, ammo, pool, idx, beam, pos, vel, y, t, life, landed, spin, qid}
   const poolFor = d => d.kind === 'money' ? P.money : d.kind === 'ammo' ? P.ammo : d.kind === 'quest' ? P.quest
     : d.item.kind === 'weapon' ? P[d.item.base] || P.gadget : d.item.kind === 'gadget' ? P.gadget : P.consumable;
-  function spawn(pos, d, scatter = 1) {
+  function spawn(pos, d, scatter = 1, fromNet = false) {
     const pool = poolFor(d), idx = pool.alloc(); if (idx < 0) return null;
     d.pool = pool; d.idx = idx; d.pos = V(pos.x ?? pos[0], 0, pos.z ?? pos[2]); d.y = (pos.y ?? pos[1] ?? 0.5) + 0.6;
     const a = Math.random() * Math.PI * 2, sp = (0.8 + Math.random() * 1.4) * scatter;
@@ -206,7 +208,9 @@ export function createWorldLoot({ scene, level, hooks }) {
     pool.color(idx, _c.set(col));
     d.beam = -1;
     if (d.kind === 'item' || d.kind === 'quest') { d.beam = P.beam.alloc(); if (d.beam >= 0) P.beam.color(d.beam, _c.set(col)); d.beamH = d.kind === 'quest' ? 5 : 4 * rarityOf(d.item.rarity).beam; }
-    drops.push(d); return d;
+    drops.push(d);
+    if (!fromNet && api.net && d.kind !== 'quest') api.net.dropped(d); // online: everyone gets it (quest items stay mine)
+    return d;
   }
   function remove(d) { const i = drops.indexOf(d); if (i < 0) return; drops.splice(i, 1); d.pool.free(d.idx); if (d.beam >= 0) P.beam.free(d.beam); d.removed = true; }
   const api = {
@@ -218,6 +222,9 @@ export function createWorldLoot({ scene, level, hooks }) {
     removeQuest(qid) { for (const d of drops.slice()) if (d.kind === 'quest' && d.qid === qid) remove(d); },
     remove,
     near: [],
+    net: null, // src/worldsync.js (online)
+    _spawnNet(pos, d) { return spawn(pos, d, 0, true); },
+    _shutCrate(c, timer) { if (!c) return; c.open = 1; c.timer = timer; crateBeam(c, false); },
     warmDone() { for (const k in P) { P[k].warm = false; P[k].sync(); } },
   };
 
@@ -229,7 +236,7 @@ export function createWorldLoot({ scene, level, hooks }) {
     anchor: () => { const d = api.near[i]; return d && d.landed ? d.pos : FAR; },
     top: () => { const d = api.near[i]; return d ? _top.set(d.pos.x, d.y + 0.45, d.pos.z) : FAR; },
     range: 1.6,
-    act: () => { const d = api.near[i]; if (!d) return; if (d.kind === 'quest') { if (hooks.questPicked(d.qid, d)) remove(d); return; } if (hooks.pickItem(d.item, d)) remove(d); },
+    act: () => { const d = api.near[i]; if (!d) return; if (d.kind === 'quest') { if (hooks.questPicked(d.qid, d)) remove(d); return; } if (d.nid && api.net) { netPick(d); return; } if (hooks.pickItem(d.item, d)) remove(d); },
   });
   const _top = V();
   const CR_LABEL = { cassetta: 'Apri la cassetta della frutta', frigo: 'Apri il frigo abbandonato', bauletto: 'Apri il bauletto della Vespa' };
@@ -240,8 +247,9 @@ export function createWorldLoot({ scene, level, hooks }) {
   });
   if (shop) items.push({ id: 'rpg_shop', label: () => 'Banco dei pegni · compra e vendi', anchor: () => shop.pos, top: () => shop.top, range: 1.7, act: () => hooks.openShop() });
 
-  function openCrate(c) {
+  function openCrate(c, granted) {
     if (c.open) return;
+    if (!granted && api.net && api.net.crate(c, () => openCrate(c, true), CRATE[c.type].respawn)) return; // online: the server says who opened it first
     c.open = 1; c.timer = CRATE[c.type].respawn * (0.8 + Math.random() * 0.4); crateBeam(c, false);
     const front = V(Math.sin(c.yaw), 0, Math.cos(c.yaw)).multiplyScalar(0.6).add(c.pos); front.y = CRATE[c.type].h;
     for (const d of hooks.crateLoot(c.type)) {
@@ -250,6 +258,19 @@ export function createWorldLoot({ scene, level, hooks }) {
       else if (d.ammo) spawn(front, { kind: 'ammo', ammo: d.ammo, amount: d.amount }, 0.6);
     }
     hooks.crateOpened && hooks.crateOpened(c, CRATE[c.type].name);
+  }
+
+  // online pick-up: the server hands the drop to the first who asks (op take); a full bag / full ammo puts it back down
+  function netPick(d) {
+    if (d.claim || d.removed) return;
+    if (d.kind === 'ammo') { const R = window.__rpg, A = AMMO[d.ammo]; if (R && R.ammo && A && R.ammo.get(d.ammo) >= A.max) return; }
+    d.claim = true;
+    api.net.take(d).then(ok => {
+      d.claim = false; if (ok === null) return; // no answer: retry on the next touch
+      remove(d); if (!ok) return; // someone else was faster
+      const got = d.kind === 'money' ? hooks.addMoney(d.amount, d) : d.kind === 'ammo' ? hooks.addAmmo(d.ammo, d.amount, d) : hooks.pickItem(d.item, d);
+      if (!got) spawn({ x: d.pos.x, y: 0.4, z: d.pos.z }, d.kind === 'ammo' ? { kind: 'ammo', ammo: d.ammo, amount: d.amount } : { kind: 'item', item: d.item }, 0.2);
+    });
   }
 
   // ---------------------------------------------------------------- per frame
@@ -278,14 +299,14 @@ export function createWorldLoot({ scene, level, hooks }) {
       if (d.t > d.life) { remove(d); continue; }
       if (!d.landed) {
         d.vel.y -= 9.8 * dt; d.pos.x += d.vel.x * dt; d.pos.z += d.vel.z * dt; d.y += d.vel.y * dt;
-        if (level && level.isWalkable && !level.isWalkable(d.pos.x, d.pos.z, 0.05)) { d.pos.x -= d.vel.x * dt; d.pos.z -= d.vel.z * dt; d.vel.x *= -0.3; d.vel.z *= -0.3; }
-        if (d.y <= 0.3 && d.vel.y < 0) { d.y = 0.3; d.landed = true; }
+        if (!d.land && level && level.isWalkable && !level.isWalkable(d.pos.x, d.pos.z, 0.05)) { d.pos.x -= d.vel.x * dt; d.pos.z -= d.vel.z * dt; d.vel.x *= -0.3; d.vel.z *= -0.3; }
+        if (d.y <= 0.3 && d.vel.y < 0) { d.y = 0.3; d.landed = true; if (d.land) { d.pos.x = d.land[0]; d.pos.z = d.land[1]; } }
       }
       const yy = d.landed ? 0.32 + Math.sin(t * 2.4 + d.spin) * 0.05 : d.y;
       d.y = d.landed ? yy : d.y;
       if (player && d.landed && canAuto && (d.kind === 'money' || d.kind === 'ammo')) {
         const dx = player.x - d.pos.x, dz = player.z - d.pos.z, L = Math.hypot(dx, dz);
-        if (L < 0.8) { if (d.kind === 'money' ? hooks.addMoney(d.amount, d) : hooks.addAmmo(d.ammo, d.amount, d)) { remove(d); continue; } }
+        if (L < 0.8) { if (d.nid && api.net) netPick(d); else if (d.kind === 'money' ? hooks.addMoney(d.amount, d) : hooks.addAmmo(d.ammo, d.amount, d)) { remove(d); continue; } }
         else if (L < 3.2) { const k = Math.min(1, dt * (7 / L)); d.pos.x += dx * k; d.pos.z += dz * k; }
       }
       const blink = d.t > d.life - 10 && Math.sin(d.t * 18) > 0 ? 0.0001 : 1;

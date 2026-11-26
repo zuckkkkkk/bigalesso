@@ -3,6 +3,9 @@
 // with trash talk from the AI (or the persona's catchphrases offline).
 import * as THREE from 'three';
 import { V, rnd, pick, clamp, shuffle, persona, personas, catchphrase, ask, SAFE, clean, esc, createOverlay, unlock, record, getRec, phone, logEvent, anchor, cv, canvasTex, banter, banterPool } from './shared.js';
+import { registerSfida } from '../net/party.js';
+// Party: "🏁 Sfida a punti → 🎧 Compettina" (shared/sfida.mjs): the reflex duel for 2–6 friends; the referee decides when
+// and where the target appears, each client measures its own reaction from the moment it sees it, 5 rounds.
 
 const COMPE = ['zuck', 'ashish', 'lombu', 'cesco', 'asche', 'forla', 'seghino'];
 const FALLBACK_TALK = {
@@ -114,9 +117,9 @@ export function discordPlugin(M) {
   <div class="ch"><h3>Teletubbylandia certificata</h3><div class="c"># generale</div><div class="c on"># compettine</div><div class="c"># meme</div><div class="c" style="margin-top:12px;color:#f2f3f5">🔊 Compettina</div><div class="vc"></div></div>
   <div class="main"><div class="top"># compettine <small>duello di mira, al meglio di 5</small></div>
     <div class="arena"><div class="bgx"></div><div class="score"></div><div class="tg"></div><div class="big"></div><div class="btns"></div></div></div>
-  <div class="side"><h4>Chat vocale</h4><div class="msgs"></div></div></div>`, { input, onKey: e => { if ((e.code === 'Space' || e.code === 'Enter') && G) { e.preventDefault(); if (G.phase === 'menu' || G.phase === 'end') begin(); else shoot(null); } }, onClose: () => { leave(); } });
+  <div class="side"><h4>Chat vocale</h4><div class="msgs"></div></div></div>`, { input, onKey: e => { if ((e.code === 'Space' || e.code === 'Enter') && G) { e.preventDefault(); if (G.sfida) { if (SFD && SFD.v && SFD.v.ph === 'end') ov.close(); else sfShoot(60); return; } if (G.phase === 'menu' || G.phase === 'end') begin(); else shoot(null); } }, onClose: () => { leave(); } });
       { const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st); }
-      ov.$('.arena').addEventListener('mousedown', e => { if (!G) return; const tg = ov.$('.tg'); const onT = e.target === tg; if (G.phase === 'wait' || G.phase === 'live') shoot(onT ? e : 'miss'); });
+      ov.$('.arena').addEventListener('mousedown', e => { if (!G) return; const tg = ov.$('.tg'); const onT = e.target === tg; if (G.sfida) { sfShoot(onT ? 0 : -1); return; } if (G.phase === 'wait' || G.phase === 'live') shoot(onT ? e : 'miss'); });
       return ov;
     }
     const talkers = new Set();
@@ -201,6 +204,8 @@ export function discordPlugin(M) {
       ensureOverlay();
       const have = new Set(personas().map(p => p.id));
       const members = shuffle(COMPE.filter(id => have.has(id))).slice(0, 4);
+      if (SFD) { const X = SFD; SFD = null; try { X.s.leave(); } catch (e) { } }
+      ov.$('.top').innerHTML = '# compettine <small>duello di mira, al meglio di 5</small>';
       G = { members, opp: members[0], phase: 'menu', me: 0, op: 0, round: 0, times: [] };
       ov.$('.msgs').innerHTML = ''; ov.$('.btns').innerHTML = '<button class="go">Accetta la sfida (Invio)</button>';
       ov.$('.go').onclick = () => begin();
@@ -210,7 +215,58 @@ export function discordPlugin(M) {
       trash(G.opp, 'Sfida l\'amico appena entrato nel canale vocale a una compettina di riflessi.', 'start');
       return true;
     }
-    function leave() { if (G) { clearTimeout(G.timer); clearTimeout(G.oppTimer); } G = null; if (W.mode === 'mg_discord') setMode('standup'); }
+    function leave() { if (G) { clearTimeout(G.timer); clearTimeout(G.oppTimer); } G = null; if (SFD) { const X = SFD; SFD = null; try { X.s.leave(); } catch (e) { } } if (W.mode === 'mg_discord') setMode('standup'); }
+    // ---------------------------------------------------------------- party sfida (shared/sfida.mjs kind 'discord')
+    let SFD = null;
+    function sfidaOpen(s) {
+      ensureOverlay();
+      if (SFD && SFD.s !== s) { try { SFD.s.leave(); } catch (e) { } }
+      SFD = { s, v: null, round: 0, t0: 0, shot: false, rewarded: false, reward: '' };
+      G = { sfida: true, members: [], opp: null, phase: 'sfida', me: 0, op: 0, round: 0, times: [] };
+      ov.$('.msgs').innerHTML = ''; ov.$('.btns').innerHTML = ''; ov.$('.tg').style.display = 'none';
+      ov.$('.top').innerHTML = '# compettine <small>sfida online di riflessi · 5 round · arbitra il server</small>';
+      if (!ov.isOpen) ov.open();
+      s.on('view', v => { if (SFD && SFD.s === s) sfView(v); });
+      s.on('event', e => { if (!SFD || SFD.s !== s || !e) return; if (e.k === 'go') { try { audio.ctx && audio.tone('square', 1320, 0, 0.05, 0.04, audio.room); } catch (x) { } } });
+      s.on('over', r => { if (!SFD || SFD.s !== s || SFD.rewarded) return; SFD.rewarded = true; const me = s.me, won = !!(r && r.winners && r.winners.includes(me)), humans = SFD.v ? SFD.v.sc.filter(x => !x.bot).length : 1, xp = won ? 70 : 30, euro = won && humans > 1 ? 10 : 0;
+        try { const R = window.__rpg; if (R) { R.addXP && R.addXP(xp, 'Compettina online'); euro && R.money && R.money.add && R.money.add(euro); } } catch (x) { }
+        SFD.reward = `+${xp} XP${euro ? ' · +€ ' + euro : ''}`; unlock('discord_play', { title: 'Sono su discord', desc: 'Prima compettina alla postazione', icon: '🎧' });
+        if (won && humans > 1) unlock('discord_party_win', { title: 'Re della compettina', desc: 'Hai vinto una compettina online contro gli amici', icon: '🎯' });
+        logEvent('discord', `alla compettina online: ${r && r.summary ? r.summary : ''}`); if (SFD.v) sfView(SFD.v); });
+      s.on('error', e => { if (e && e.fatal && SFD && SFD.s === s) big('Connessione persa', 'la compettina è finita'); });
+      return true;
+    }
+    function sfView(v) {
+      SFD.v = v; const nm = id => { const p = v.sc.find(x => x.id === id); return p ? (id === v.me ? 'Tu' : p.name) : '?'; };
+      ov.$('.vc').innerHTML = v.sc.map(p => `<div class="vm"><span class="av" style="background:${p.id === v.me ? '#5865f2' : '#4e5058'}">${p.bot ? '🤖' : p.id === v.me ? '🕹️' : '🎮'}</span>${esc(p.id === v.me ? 'Tu' : p.name)} · ${p.pts}</div>`).join('');
+      ov.$('.score').textContent = `Round ${Math.max(1, v.round)}/${v.rounds} · ` + v.sc.slice().sort((a, b) => b.pts - a.pts).map(p => `${nm(p.id)} ${p.pts}`).join(' · ');
+      const tg = ov.$('.tg');
+      if (v.ph === 'ready') big('Compettina online', `si parte tra ${Math.ceil(v.left)} s · clicca il bersaglio appena appare`);
+      else if (v.ph === 'wait') { tg.style.display = 'none'; if (v.round !== SFD.round) { SFD.round = v.round; SFD.shot = false; SFD.t0 = 0; } if (!SFD.shot) big('Aspetta…'); }
+      else if (v.ph === 'go') {
+        if (v.round !== SFD.round) { SFD.round = v.round; SFD.shot = false; }
+        if (!SFD.t0 && !SFD.shot) { SFD.t0 = performance.now(); const [x, y, size] = v.tgt; tg.style.width = tg.style.height = size + 'px'; tg.style.margin = `-${size / 2}px 0 0 -${size / 2}px`; tg.style.left = x * 100 + '%'; tg.style.top = y * 100 + '%'; tg.style.display = 'block'; big(''); }
+      } else if (v.ph === 'res' && v.res) {
+        tg.style.display = 'none'; SFD.t0 = 0;
+        const parts = Object.entries(v.res.ms).sort((a, b) => a[1] - b[1]).map(([id, ms]) => `${nm(id)} ${ms >= 9000 ? 'troppo presto' : Math.round(ms) + ' ms'}`);
+        const mine = v.res.win.includes(v.me);
+        big(v.res.win.length ? (mine ? 'Round tuo!' : nm(v.res.win[0]) + ' vince il round') : 'Nessuno', parts.join(' · ') || 'nessuno ha sparato');
+        if (SFD.lastRes !== v.round) { SFD.lastRes = v.round; if (mine) audio.sfx && audio.sfx('dPerfect'); }
+      } else if (v.ph === 'end') {
+        tg.style.display = 'none';
+        big(v.over ? v.over.summary : 'Fine', SFD.reward || '');
+        if (!ov.$('.btns .bye')) { ov.$('.btns').innerHTML = '<button class="alt bye">Esci (Esc)</button>'; ov.$('.bye').onclick = () => ov.close(); }
+      }
+    }
+    function sfShoot(penalty) { // penalty -1 = missed the target (no shot), 60 = keyboard
+      const v = SFD && SFD.v; if (!v || SFD.shot) return;
+      if (v.ph === 'wait') { SFD.shot = true; SFD.s.act({ early: true }); big('Troppo presto!', 'round perso'); try { audio.ctx && audio.noise(0.05, 0.05, 3000, 900, audio.room); } catch (x) { } return; }
+      if (v.ph !== 'go' || !SFD.t0) return;
+      if (penalty < 0) { try { audio.ctx && audio.noise(0.05, 0.05, 3000, 900, audio.room); } catch (x) { } return; }
+      const ms = performance.now() - SFD.t0 + penalty; SFD.shot = true; SFD.s.act({ ms: Math.round(ms) });
+      ov.$('.tg').style.display = 'none'; big(`${Math.round(ms)} ms`, 'aspetta gli altri…');
+    }
+    registerSfida('discord', { name: 'Compettina Discord', label: 'Compettina (riflessi)', icon: '🎧', attach: s => sfidaOpen(s) });
     W.mgOpen = W.mgOpen || {}; W.mgOpen.discord = () => { if (W.mode === 'explore' && H.manPos().distanceTo(stand) < 3) { start(); return true; } return open(); }; // from the phone: Discord opens right away
     function start() { goTo(stand.clone(), yaw, () => { setMode('mg_discord'); }); }
     const items = [{

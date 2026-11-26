@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { FontLoader } from 'three/addons/loaders/FontLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import neonFont from './neonfont.js';
+import { DN } from './daynight.js'; // the shared day/night cycle drives the global lights (no more night toggle)
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[(Math.random() * a.length) | 0];
@@ -242,40 +243,66 @@ export function createFX(scene, camera, opts = {}) {
     const v = src * f; obj[key] = v; r[key] = { src, written: v };
   };
 
-  function setNight(on) { state.nightT = on ? 1 : 0; neon.userData.setOn(true); }
-  // outdoor factor (0 = arcade room, ~0.2 lounge, 1 = garden): brighter sky ambient, bluish hemisphere
-  state.out = 0;
+  // the light switch in the arcade: since the day/night cycle (daynight.js) it only turns the HOUSE lamp off
+  // (arcade + lounge, state.house); the sky, the sun and the street lamps follow the shared clock
+  function setNight(on) { state.lampOffT = on ? 1 : 0; neon.userData.setOn(true); }
+  // outdoor factor (0 = arcade room / interiors, ~0.2 lounge, 1 = garden + quartiere streets); house = 1 in the arcade/lounge
+  state.out = 0; state.house = 1; state.lampOff = 0; state.lampOffT = 0; state.snap = -1;
   const hemiBase = lights && lights.hemi ? { sky: lights.hemi.color.clone(), gnd: lights.hemi.groundColor.clone() } : null;
   // Bologna art direction (outdoors): a soft warm sky and a terracotta bounce from the ochre walls / portico floors;
-  // the sun turns golden (late afternoon). Indoors (o = 0) the original intro lighting is untouched.
-  const skyCol = new THREE.Color(0xdfe5f0), gndCol = new THREE.Color(0xb3835f), sunCol = new THREE.Color(0xffcf9a);
+  // the sun colour, the sky ambient and the bounce now come from the time of day (daynight.js ramps).
+  // Indoors (o = 0) the original intro lighting is kept by day; at night the rooms are lamp-lit (warmer, a bit dimmer).
+  const lampCol = new THREE.Color(0xffd2a0), lampSky = new THREE.Color(0xffe6cc);
   const keyCol = lights && lights.key ? lights.key.color.clone() : null;
-  function setOutdoor(k) { state.out = Math.max(0, Math.min(1, k)); }
+  const moonIn = new THREE.Vector3(-3.8, 3.1, 2.6).normalize(), moonD = new THREE.Vector3(), tmpC = new THREE.Color(), tmpC2 = new THREE.Color();
+  function setOutdoor(k, house) { state.out = Math.max(0, Math.min(1, k)); if (house !== undefined) state.house = Math.max(0, Math.min(1, house)); }
+  const mix = (a, b, k) => a + (b - a) * k;
 
   function update(dt) {
     dt = Math.min(dt, 0.05); t += dt;
     const h = renderer ? renderer.getDrawingBufferSize(new THREE.Vector2()).y : innerHeight * Math.min(devicePixelRatio, 1.75);
     scaleRef.value = h * camera.projectionMatrix.elements[5] * 0.5;
-    // night factor
-    state.night += (state.nightT - state.night) * Math.min(1, dt * 1.6);
+    // night factor: the shared clock (smoothed; a debug jump of the clock snaps)
+    const D = DN.update();
+    if (D.snap !== state.snap) { state.snap = D.snap; state.night = D.night; }
+    state.night += (D.night - state.night) * Math.min(1, dt * 1.6);
+    state.lampOff += (state.lampOffT - state.lampOff) * Math.min(1, dt * 5);
     const n = state.night;
     const o = state.out || 0;
-    if (lights && (n > 0.001 || state.nightT > 0 || o > 0.001 || state.outApplied)) {
-      state.outApplied = o > 0.001;
-      scaleProp(lights.key, 'intensity', (1 - 0.97 * n) * (1 + 0.2 * o));
-      scaleProp(lights.hemi, 'intensity', (1 - 0.93 * n) * (1 + 0.9 * o));
-      scaleProp(lights.fill, 'intensity', (1 - 0.95 * n) * (1 + 0.3 * o));
-      scaleProp(scene, 'environmentIntensity', (1 - 0.9 * n) * (1 + 0.5 * o));
-      if (hemiBase) { lights.hemi.color.copy(hemiBase.sky).lerp(skyCol, o * 0.7); lights.hemi.groundColor.copy(hemiBase.gnd).lerp(gndCol, o * 0.75); }
-      if (keyCol) lights.key.color.copy(keyCol).lerp(sunCol, o * 0.6);
+    const off = state.lampOff * state.house * (1 - o); // house lamp off (only where you are inside the house)
+    if (lights) {
+      // indoor (lamp on): unchanged by day, lamp-lit at night; lamp off: daylight through the windows only
+      // (the old "modalità sala giochi" at night: key 3 %, hemi 7 %, fill 5 %, env 10 %)
+      const kIn = mix(mix(1, 0.62, n), mix(0.85, 0.03, n), off), hIn = mix(mix(1, 0.8, n), mix(0.3, 0.07, n), off);
+      const fIn = mix(mix(1, 0.75, n), mix(0.28, 0.05, n), off), eIn = mix(mix(1, 0.8, n), mix(0.36, 0.1, n), off);
+      // outdoor: the sun (key), the sky (hemi / env / fill) from the time of day; at night the old art-directed levels
+      const kOut = D.sunK * 1.2 * (1 + 0.12 * D.golden), amb = D.dayK * (1 - 0.28 * D.golden); // golden hour: less sky, more sun
+      const hOut = mix(0.07, 1, amb) * 1.9, fOut = mix(0.05, 1, amb) * 1.3, eOut = mix(0.1, 1, amb) * 1.5;
+      scaleProp(lights.key, 'intensity', mix(kIn, kOut, o));
+      scaleProp(lights.hemi, 'intensity', mix(hIn, hOut, o));
+      scaleProp(lights.fill, 'intensity', mix(fIn, fOut, o));
+      scaleProp(scene, 'environmentIntensity', mix(eIn, eOut, o));
+      if (hemiBase) {
+        tmpC.copy(hemiBase.sky).lerp(lampSky, n * (1 - off) * 0.5).lerp(D.hemiSky, o * 0.85); lights.hemi.color.copy(tmpC);
+        tmpC.copy(hemiBase.gnd).lerp(D.hemiGnd, o * 0.8); lights.hemi.groundColor.copy(tmpC);
+      }
+      if (keyCol) {
+        // indoors the window light takes a little of the sun's colour (golden at sunset), lamp-warm at night
+        tmpC2.copy(keyCol).lerp(D.sunCol, 0.25 * (1 - n)).lerp(lampCol, n * (1 - off) * 0.6);
+        lights.key.color.copy(tmpC2).lerp(D.sunCol, o);
+      }
     }
-    if (cab) { if (n > 0.001) scaleProp(cab.marqueeMat, 'emissiveIntensity', 1 + 0.5 * n); if (cab.screenMat) cab.screenMat.uniforms.bright.value = 1.55 + 0.25 * n; }
-    moon.intensity = (0.28 + 0.32 * (state.out || 0)) * n; // cold, dim moonlight
+    const dark = Math.max(off * (0.6 + 0.4 * n), n * 0.4); // how dark the arcade room is: the neon and the marquee pop
+    if (cab) { if (dark > 0.001) scaleProp(cab.marqueeMat, 'emissiveIntensity', 1 + 0.5 * dark); if (cab.screenMat) cab.screenMat.uniforms.bright.value = 1.55 + 0.25 * dark; }
+    // cold, dim moonlight: through the arcade window indoors, from the moon's real direction outdoors
+    moon.intensity = mix(0.28 * n * mix(0.35, 1, off), 0.6 * D.moonK, o);
+    moonD.copy(moonIn).lerp(D.moonDir, o).normalize();
+    moon.position.copy(moon.target.position).addScaledVector(moonD, 5);
     // gfx: the moon stays in the light list (intensity 0 by day): toggling it changed the light count and
     // recompiled every lit shader at dusk; one unshadowed directional light is cheap
-    neon.userData._st.boost = n;
+    neon.userData._st.boost = dark;
     neon.userData.update(dt, t);
-    state.dustK += ((state.dust ? 1 : 0) * (1 - n * 0.85) - state.dustK) * Math.min(1, dt * 2);
+    state.dustK += ((state.dust ? 1 : 0) * (0.15 + 0.85 * D.sunK) - state.dustK) * Math.min(1, dt * 2); // the window shaft follows the sun
     shaft.material.uniforms.time.value = t; shaft.material.uniforms.strength.value = state.dustK;
     shaft.visible = state.dustK > 0.01;
     // keep dust alive
@@ -373,5 +400,5 @@ export function createFX(scene, camera, opts = {}) {
   }
   function dust(on) { state.dust = !!on && !low; }
 
-  return { root, update, confetti, hearts: hearts_, spray, sparkles, coin, dust, setNight, setOutdoor, neon, pulse, get night() { return state.nightT > 0; }, get nightAmount() { return state.night; } };
+  return { root, update, confetti, hearts: hearts_, spray, sparkles, coin, dust, setNight, setOutdoor, neon, pulse, get night() { return state.night > 0.5; }, get lampOff() { return state.lampOffT > 0; }, get nightAmount() { return state.night; } };
 }

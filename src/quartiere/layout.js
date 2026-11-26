@@ -7,7 +7,8 @@
 //   Via Teletubbylandia  x -36..40, z 20..33.6   (far side under porticoes z 29.4..33.6)
 //   Piazzetta            x 40..50,  z 20..33.6   (edicola, benches, trees)
 //   Via Petroni          x 40..48,  z 33.6..78   (porticoes both sides, nightlife, Bellazzi)
-//   Millennium           x 36..52,  z 78..92     (club, door on the south wall)
+//   Largo del Millennium x 30..62,  z 78..90     (small square closing Via Petroni: the club facade is seen whole)
+//   Millennium           x 36..52,  z 90..104    (club, door on the south wall; MIL_DZ = 12 m north of where it was)
 //   Checkpoint           x -46..-36, z 20..33.6  ("zona demilitarizzata")
 //   Teletubbylandia      x -96..-46, z 6..50     (meadow in a ring of hills)
 //   Celtic / Sushi / Casa di Ashish (Discord): far side, doors under the portico
@@ -19,13 +20,19 @@ import { NORD_OUTDOOR, VOLT } from './nord_layout.js'; // the northern districts
 export const GATE = { x0: 12.4, x1: 13.8, z: 20 }; // opening in the garden fence (world.js fenceRuns)
 
 // world.js flattens the distant hills and skips distant trees inside these rects (x0, z0, x1, z1)
-export const RESERVED = [[-142, -22, -30, 100], [-36, 4, 64, 100], [-48, 40, 40, 128]]; // 3rd: the northern districts (nord_layout.js)
+export const RESERVED = [[-142, -22, -30, 100], [-36, 4, 64, 112], [-48, 40, 40, 128]]; // 3rd: the northern districts (nord_layout.js)
 
 // world.js treats these zones as outdoor (sun/sky lighting like the garden)
 export const OUTDOOR_ZONES = new Set(['Via Teletubbylandia', 'Piazzetta', 'Via Petroni', 'Checkpoint', 'Teletubbylandia', ...NORD_OUTDOOR]);
 
-export const ST = { x0: -36, x1: 40, zNear: 20, curbNear: 22.6, curbFar: 29.4, colZ: 29.4, zFar: 33.6, portH: 4.4, bay: 3.6 };
-export const PET = { x0: 40, x1: 48, z0: 33.6, z1: 78, colW: 42.5, colE: 45.5, portH: 4.2 };
+// portico heights lowered in v8.2 (4.4 / 4.2 m read as a nave: you couldn't tell street from hall)
+export const ST = { x0: -36, x1: 40, zNear: 20, curbNear: 22.6, curbFar: 29.4, colZ: 29.4, zFar: 33.6, portH: 3.7, bay: 3.6 };
+export const PET = { x0: 40, x1: 48, z0: 33.6, z1: 78, colW: 42.5, colE: 45.5, portH: 3.6 };
+// round arch of a portico bay: springing height so the crown sits just under the vault
+export const archSpring = (h, bay, c) => Math.max(1.6, h - (bay - 2 * c) / 2 - 0.14);
+// the Millennium stands MIL_DZ metres north of the end of Via Petroni; the square in between is LARGO
+export const MIL_DZ = 12;
+export const LARGO = { x0: 36, x1: 52, z0: 78, z1: 78 + MIL_DZ };
 export const MEADOW = { x0: -96, z0: 6, x1: -46, z1: 50 };
 export const CHECK = { x0: -46, z0: 20, x1: -36, z1: 33.6 };
 export const PIAZZA = { x0: 40, z0: 20, x1: 50, z1: 33.6 };
@@ -69,8 +76,11 @@ export const BUILDINGS = [
   { id: 'pe1', rect: [45.5, 33.6, 62, 46], h: 13, col: '#e2b884', face: 'w', portico: true, door: 40, shop: 'PIZZA' },
   { id: 'pe2', rect: [45.5, 46, 62, 58], h: 15, col: '#c97a50', face: 'w', portico: true, door: 52, shop: 'PUB', bar: true },
   { id: 'pe3', rect: [45.5, 58, 62, 78], h: 12, col: '#dca56a', face: 'w', portico: true, door: 68, shop: 'COCKTAIL BAR', bar: true },
-  // Millennium (club) closing Via Petroni
-  { id: 'mil', rect: [36, 78, 52, 92], h: 9, col: '#1a1a22', face: 's', door: 44, interior: 'millennium', club: true },
+  // Largo del Millennium: side blocks framing the square (facades on the square)
+  { id: 'mw', rect: [30, 78, 36, 78 + MIL_DZ + 14], h: 14, col: '#d9a46a', face: 'e', door: 83, shop: 'PIADINERIA' },
+  { id: 'me', rect: [52, 78, 62, 78 + MIL_DZ + 14], h: 15, col: '#c8764c', face: 'w', door: 84, shop: 'TATTOO' },
+  // Millennium (club) at the back of the square
+  { id: 'mil', rect: [36, 78 + MIL_DZ, 52, 92 + MIL_DZ], h: 9, col: '#1a1a22', face: 's', door: 44, interior: 'millennium', club: true },
 ];
 
 // walkable interiors: rect (x0,z0,x1,z1), ceiling height, the building they live in, door gap on its front wall
@@ -79,7 +89,7 @@ export const INTERIORS = {
   sushi: { name: 'Sushi', rect: [18.3, 33.9, 27.7, 43.7], ceil: 3.4, b: 'f7', door: [22.2, 23.8], zone: [18.3, 33.6, 27.7, 43.7] },
   ashish: { name: 'Casa di Ashish', rect: [-25.7, 33.9, -18.3, 41.7], ceil: 3.0, b: 'f2', door: [-22.6, -21.4], zone: [-25.7, 33.6, -18.3, 41.7] },
   seghino: { name: 'Casa di Seghino', rect: [-15.7, 6.3, -8.3, 19.7], ceil: 3.0, b: 'w4', door: [-12.6, -11.4], zone: [-15.7, 6.3, -8.3, 20] },
-  millennium: { name: 'Millennium', rect: [36.3, 78.3, 51.7, 91.7], ceil: 6.5, b: 'mil', door: [42.4, 45.6], zone: [36.3, 78, 51.7, 91.7] },
+  millennium: { name: 'Millennium', rect: [36.3, 78.3 + MIL_DZ, 51.7, 91.7 + MIL_DZ], ceil: 6.5, b: 'mil', door: [42.4, 45.6], zone: [36.3, 78 + MIL_DZ, 51.7, 91.7 + MIL_DZ] },
 };
 
 export const ZONES = [
@@ -87,6 +97,7 @@ export const ZONES = [
   { name: 'Via Teletubbylandia', rect: [ST.x0, ST.zNear, ST.x1, ST.zFar] },
   { name: 'Piazzetta', rect: [PIAZZA.x0, PIAZZA.z0, PIAZZA.x1, PIAZZA.z1] },
   { name: 'Via Petroni', rect: [PET.x0, PET.z0, PET.x1, PET.z1] },
+  { name: 'Via Petroni', rect: [LARGO.x0, LARGO.z0, LARGO.x1, LARGO.z1] }, // the Largo counts as Petroni (nightlife, boss, cars)
   { name: 'Checkpoint', rect: [CHECK.x0, CHECK.z0, CHECK.x1, CHECK.z1] },
   { name: 'Teletubbylandia', rect: [MEADOW.x0, MEADOW.z0, MEADOW.x1, MEADOW.z1] },
 ];
@@ -105,14 +116,14 @@ export const ANCHORS = {
   sushi: [23, 35.0, 0], sushi_conveyor: [23, 37.15, 0], sushi_door: [23, 32.6, 0],
   discord: [-18.75, 38.2, PI / 2], ashish_room: [-22, 36.5, 0],
   zombata: [-13.6, 6.62, 0], seghino_room: [-12, 17.5, PI],
-  millennium: [44, 79.6, 0], millennium_floor: [44, 84.2, 0], millennium_dj: [44, 90.5, PI], millennium_door: [44, 76.8, 0],
+  millennium: [44, 79.6 + MIL_DZ, 0], millennium_floor: [44, 84.2 + MIL_DZ, 0], millennium_dj: [44, 90.5 + MIL_DZ, PI], millennium_door: [44, 76.8 + MIL_DZ, 0],
   bellazzi: [41.4, 61, -PI / 2],
   checkpoint: [-41, 26.5, -PI / 2], teletubby: [-71, 28, 0],
   zombie_spawn_1: [-90, 12, PI / 4], zombie_spawn_2: [-90, 44, 3 * PI / 4], zombie_spawn_3: [-52, 46, -3 * PI / 4], zombie_spawn_4: [-60, 10, -PI / 4],
   npc_street_1: [-28, 21.5, PI / 2], npc_street_2: [-8, 31.4, -PI / 2], npc_street_3: [6, 21.4, PI / 2], npc_street_4: [16, 31.6, PI / 2],
   npc_street_5: [30, 21.5, -PI / 2], npc_street_6: [-20, 31.6, PI / 2], npc_piazzetta_1: [47, 24.5, -PI / 2], npc_piazzetta_2: [42.5, 30.5, PI],
   npc_petroni_1: [41.4, 52, PI / 2], npc_petroni_2: [46.6, 58.5, -PI / 2], npc_petroni_3: [41.4, 64, PI / 2], npc_petroni_4: [46.7, 70, -PI / 2],
-  npc_celtic_1: [5.6, 41.3, 0], npc_celtic_2: [0.8, 36.4, PI / 2], npc_sushi_1: [25, 37.15, 0], npc_millennium_1: [42.6, 85, 0.4], npc_millennium_2: [45.4, 83.4, -0.6],
+  npc_celtic_1: [5.6, 41.3, 0], npc_celtic_2: [0.8, 36.4, PI / 2], npc_sushi_1: [25, 37.15, 0], npc_millennium_1: [42.6, 85 + MIL_DZ, 0.4], npc_millennium_2: [45.4, 83.4 + MIL_DZ, -0.6],
   npc_teletubby_1: [-66, 24, PI], npc_teletubby_2: [-78, 34, PI / 2],
 };
 for (const b of BUILDINGS) if (b.house) {

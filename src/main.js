@@ -17,6 +17,7 @@ import { DirectorGame } from './director.js';
 import { buildDirectorCabinet } from './directorcab.js';
 import { Audio, TRACKS } from './audio.js';
 import { createFX } from './fx3d.js';
+import { dayNightFrame } from './daynight.js'; // shared day/night cycle (server clock): sun, sky, street lamps, zombies at night, HUD clock
 import { createInput, createWorld } from './explore.js';
 import { installNet } from './net.js';
 import { createEggs } from './eggs.js';
@@ -44,12 +45,14 @@ import { installNPCs } from './npcs.js'; // the friends of the group as NPCs (E 
 import { createInteractions } from './interact/index.js'; // emote wheel (B), friend actions, world props (interact/)
 import { installSport } from './sport/index.js'; // calcetto cage in Teletubbylandia: ball, 3v3 with the friends, rigori, tiri liberi
 import { installPhone } from './phone.js'; // in-game phone (T): group chat, contacts, photos, map, Claude settings
+import { installTutorial } from './tutorial.js'; // first-run tutorial, "Cose da fare" guide (Esc → Tutorial e guida, phone → Guida), contextual tips
 import { installRP } from './rp/index.js'; // v8 roleplay: lavori (rider, barista, buttafuori, vigile), documenti, casa, /me /do /dado (rp/)
 import { installRTS } from './rts/index.js'; // v8 RTS "Assedio al quartiere": command table in the garden / phone, rules in shared/siege.mjs (local or server)
 import { installCards } from './cards/index.js'; // v8 carte: briscola e scopa al Celtic, figurine degli amici + duello, album/bustine/scambio (cards/)
 import { installMotor } from './motor/index.js'; // v8 motori: your 500 + the friends' (E), Officina tuning, races on 3 tracks (shared/race.mjs), Vespa nitro
 import { installRPG } from './rpg/index.js'; // v7 looter + RPG: loot/crates/Euro, Zaino (I), XP/livelli/talenti, missioni dagli amici (J), Banco dei pegni
 import { installCombat } from './combat/index.js'; // v7: first/third person, comic weapons, health, open-world enemies (combat/)
+import { installWorldSync } from './worldsync.js'; // online shared world: owner-streamed enemies, server-kept crates/drops/boss
 import { installBR } from './br/index.js'; // v8 battle royale "Ultimo in piedi a Bologna": bus stop / phone, rules in shared/br.mjs (server referee or local bots)
 import { installGulagRun } from './gulag/index.js'; // v8 roguelike "Il Gulag profondo": iron door in the basement / phone, rules in shared/gulag.mjs
 
@@ -344,7 +347,7 @@ async function main() {
     world.setMode('explore'); document.body.dataset.mode = 'explore';
     audio.setHum && audio.setHum(1);
     refreshHint();
-    if (!S.welcomed) { S.welcomed = true; setTimeout(() => world.toast(ui.coarse ? 'Pollice sinistro per camminare · tasto verde per interagire' : 'WASD per muoverti · E per interagire · Esc per il menu'), 400); }
+    if (!S.welcomed) { S.welcomed = true; if (!(window.__tutorial && window.__tutorial.firstRun())) setTimeout(() => world.toast(ui.coarse ? 'Pollice sinistro per camminare · tasto verde per interagire' : 'WASD per muoverti · E per interagire · Esc per il menu'), 400); }
   }
   function skipIntro() {
     if (S.phase !== 'intro') return;
@@ -474,10 +477,12 @@ async function main() {
   // online multiplayer (net.js): must be installed before the man's first update (clones his bind pose)
   const net = installNet({ scene, gltf, anims, Man, man, dog, cab, game, world, S, CONFIG, audio, ui });
   const phone = installPhone({ ui, audio, level, S, getFX, man, npcs }); // in-game phone (phone.js): T / P
+  installTutorial({ ui, S, input, level, man, camera, audio, getWorld: () => world }); // tutorial.js: onboarding after the intro (startWorld → firstRun), guide, tips
   gulag.attach(world);
   eggs.attach({ world, man, dog, cab, game, audio, ui, getFX, input, S, camera, CONFIG, TRACKS, playMusic, musicBack: () => playMusic(game.state === 'attract' ? 'title' : (game.boss ? 'boss' : 'game')) });
   // combat (combat/): after eggs.attach (chains world.extPose); its enemy pools join window.__preloadP before installGfx
   const CB = installCombat({ scene, camera, man, dog, ui, audio, level, input, S, getWorld: () => world, getFX, npcs });
+  installWorldSync({ man, level, ui }); // worldsync.js: online, enemies/boss/loot/crates/vehicles are the same for everyone (solo: off)
 
   // footsteps from the real foot bones: works for walk, run, turning and every clip; surface from the zone
   const _fv = new THREE.Vector3(), _lastRoot = new THREE.Vector3(); let _rootSpd = 0, _rootInit = false;
@@ -656,6 +661,7 @@ async function main() {
   function tickBody() {
     const dt = Math.min(clock.getDelta(), 0.05); t += dt; frame++;
     PROF.start();
+    dayNightFrame(S.phase); // time of day for this frame (every module reads daynight.js / fx.nightAmount)
     // the opening / pre-game menu cover the whole screen: draw only 1 frame in 8 behind them (uploads and warm-up keep going,
     // the GPU rests); once everything is warmed up the intro plays with no 3D rendering at all behind it
     if ((S.phase === 'ready' || S.phase === 'loading') && (document.body.dataset.opening || ui.menuOpen) && (frame % 8 || (document.body.dataset.opening && window.__gfx && window.__gfx.ready))) { ui.update(dt); input.endFrame(); return; }

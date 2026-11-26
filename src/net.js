@@ -4,7 +4,8 @@
 // Public API (also on window.__net):
 //   create(name), join(code, name), joinWorld(name) (public shard, up to 24, presence only for players nearby),
 //   leave(), chat(text), setName(name), inviteLink()
-//   on(evt, fn) -> unsubscribe; evt: 'status' | 'players' | 'chat' | 'error' | 'seats' | 'ev' | 'extra' | 'socket'
+//   on(evt, fn) -> unsubscribe; evt: 'status' | 'players' | 'chat' | 'error' | 'seats' | 'ev' | 'extra' | 'socket' | 'ws' | 'msg'
+//   to(id, d): direct message to one player (received as net.on('msg', {from, d}))
 //   fields: status ('offline'|'connecting'|'online' = in a room), code, id, role, players, transport, world (bool), games
 //   connected() -> the WebSocket to our server is open (also without a room: server matches, see src/net/match.js)
 //   socket() -> Promise<bool>: opens the WebSocket if needed (no room joined)
@@ -13,6 +14,12 @@
 //     change and kept by the server for players who join later; value null removes the key.
 //     Others get net.on('extra', ({ id, key, value })) and players' extras in net.players.get(id).extra
 //   extras: my current extras object
+//   serverNow() -> ms on the server clock (offset estimated from ping round trips; Date.now() offline); clockSynced()
+//   emitNear(e, r?): like emit, but in public shards only players within ~90 m get it (enemy snapshots)
+//   ws: shared world state of the room {key: value} (server-kept, sent to newcomers; src/worldsync.js)
+//   wset(k, v, {op:'set'|'new'|'take'|'cas', if, mine, ttl}) -> Promise<{ok, v, by}>: atomic change, the server referees
+//     (new = only if absent, take = only if present, cas = only if equal to `if`; mine = deleted when I leave; ttl s).
+//     Changes arrive as net.on('ws', {k, v, by}) (also mine); net.on('ws', {reset:true}) after joining a room
 import * as THREE from 'three';
 import { Avatar, makeTemplate, palmIndex, TAG_COLORS } from './avatars.js';
 
@@ -97,6 +104,12 @@ export function installNet(ctx) {
   let holds = 0; // server matches keep the socket open when leaving a room
   net.hold = d => { holds = Math.max(0, holds + d); if (!holds && tr && tr.kind === 'ws' && net.status === 'offline') { tr.close(); tr = null; net.transport = null; fire('socket', false); } };
   window.__net = net;
+  // server clock: offset = server Date.now() - local Date.now(), from the ping with the lowest round trip of the last 8
+  // (half of it each way). Shared world seeds/timers and the day/night cycle read it; offline it is Date.now().
+  let clockOff = 0, clockOk = false; const clockS = [];
+  function clockSample(st, rtt) { clockS.push({ off: st + rtt / 2 - Date.now(), rtt }); if (clockS.length > 8) clockS.shift(); let b = clockS[0]; for (const x of clockS) if (x.rtt < b.rtt) b = x; clockOff = b.off; clockOk = true; }
+  net.serverNow = () => clockOk ? Date.now() + clockOff : Date.now();
+  net.clockSynced = () => clockS.length > 0;
   net._p2 = () => localP2;
   net._dbg = () => ({ snapAge: hostSnap ? Math.round(performance.now() - hostSnapAt) : null, snapState: hostSnap && hostSnap.st, remoteIn: [...remoteIn.keys()], ping: net.ping, p2: localP2 ? [r2(localP2.root.position.x), r2(localP2.root.position.z), !!localP2.script, !!localP2.leaving] : null });
 
@@ -119,16 +132,17 @@ export function installNet(ctx) {
   function onMsg(m) {
     if (m.t && m.t.startsWith('match:')) { fireRaw(m); return; }
     switch (m.t) {
-      case 'hi': net.games = Array.isArray(m.games) ? m.games : []; net.serverV = m.v || 1; net.id = m.id; break;
+      case 'hi': net.games = Array.isArray(m.games) ? m.games : []; net.serverV = m.v || 1; net.id = m.id; if (m.st && !clockS.length) { clockOff = m.st - Date.now(); clockOk = true; } break; // rough until the first pong
       case 'welcome':
-        net.id = m.id; net.code = m.code; net.host = m.host; net.world = !!m.world; clearPlayers();
+        net.id = m.id; net.code = m.code; net.host = m.host; net.world = !!m.world; clearPlayers(); net.ws = m.ws && typeof m.ws === 'object' ? m.ws : {};
         for (const p of m.players) addPlayer(p);
         for (const id in (m.states || {})) onState(+id, m.states[id]);
         if (!net.world) try { history.replaceState(null, '', location.pathname + '?room=' + m.code + location.hash); } catch { }
         setStatus('online');
         if (net.world) toast('Sei nel quartiere pubblico (' + m.code + ') · ' + net.players.size + ' giocatori', 'gold');
         else toast(net.role === 'host' ? 'Stanza ' + m.code + ' creata: invita gli amici col codice!' : 'Sei nella stanza ' + m.code, 'gold');
-        sendState(true); break;
+        sendState(true); fire('ws', { reset: true }); break;
+      case 'ws': onWs(m); break;
       case 'far': for (const id of m.ids || []) { const P = net.players.get(id); if (P) { P.far = true; if (P.avatar) P.avatar.root.visible = false; } } break;
       case 'extra': { const P = net.players.get(m.id); if (P) { P.extra = { ...(P.extra || {}) }; if (m.v === null) delete P.extra[m.k]; else P.extra[m.k] = m.v; } fire('extra', { id: m.id, key: m.k, value: m.v }); break; }
       case 'bye': if (m.reason === 'idle') { toast('Sei uscito dal quartiere pubblico (inattivo)'); roomGone(); } break;
@@ -140,14 +154,14 @@ export function installNet(ctx) {
       case 'msg': onDirect(m.from, m.d); break;
       case 'game': if (net.role === 'guest') { hostSnap = m.d; hostSnapAt = performance.now(); } break;
       case 'chat': onChat(m.id, m.name, m.text); break;
-      case 'pong': net.ping = Math.round(performance.now() - m.ts); updatePanel(); break;
+      case 'pong': net.ping = Math.round(performance.now() - m.ts); if (m.st) clockSample(m.st, performance.now() - m.ts); updatePanel(); break;
       case 'err': toast(m.msg || 'Errore', 'warn'); fire('error', m); if (net.status === 'connecting') setStatus('offline'); break;
       default: fireRaw(m);
     }
   }
   function onClose() { const was = net.status !== 'offline'; tr = null; net.transport = null; fire('socket', false); if (was) { toast('Connessione persa', 'warn'); cleanup(); } }
   const token = () => { try { return localStorage.getItem('bgl_token') || undefined; } catch { return undefined; } };
-  const hello = t => { t.send({ t: 'hello', name: net.name, v: 2, token: token() }); for (const k in net.extras) t.send({ t: 'extra', k, v: net.extras[k] }); };
+  const hello = t => { t.send({ t: 'hello', name: net.name, v: 2, token: token() }); for (const k in net.extras) t.send({ t: 'extra', k, v: net.extras[k] }); t.send({ t: 'ping', ts: performance.now() }); };
   async function connect() {
     if (tr && tr.kind === 'ws' && tr.ws && tr.ws.readyState === 1) return tr; // reuse the open socket (matches, world)
     const url = wsURL();
@@ -176,7 +190,7 @@ export function installNet(ctx) {
     return true;
   };
   const leaveRoomOnly = () => { if (tr && net.status !== 'offline') { tr.send({ t: 'leave' }); roomGone(); } };
-  function roomGone() { clearPlayers(); net.code = null; net.host = null; net.world = false; net.seats = { p1: null, p2: null }; hostSnap = null; net.remoteGame = false; setStatus('offline'); try { history.replaceState(null, '', location.pathname + location.hash); } catch { } }
+  function roomGone() { clearPlayers(); net.ws = {}; for (const [, p] of wsWait) p({ ok: false, gone: true }); wsWait.clear(); net.code = null; net.host = null; net.world = false; net.seats = { p1: null, p2: null }; hostSnap = null; net.remoteGame = false; setStatus('offline'); try { history.replaceState(null, '', location.pathname + location.hash); } catch { } }
   net.joinWorld = async (name) => {
     if (net.status !== 'offline' && net.world) return true;
     if (tr && tr.kind === 'ws' && net.status !== 'offline') leaveRoomOnly(); else if (net.status !== 'offline') net.leave();
@@ -216,6 +230,21 @@ export function installNet(ctx) {
   net.inviteLink = () => net.code ? location.origin + location.pathname + '?room=' + net.code : null;
   const ev = e => { if (tr && net.online) tr.send({ t: 'ev', e }); };
   net.emit = e => ev(e); // broadcast a small event to the room (combat/ shots); received as net.on('ev', {from, e})
+  net.to = (id, d) => !!(tr && net.online && net.transport === 'ws' && tr.send({ t: 'to', id, d }));
+  net.emitNear = (e, r) => { if (tr && net.online) tr.send(r ? { t: 'nev', e, r } : { t: 'nev', e }); };
+  // shared world state (server/server.mjs wsOp): mirror + atomic changes with a reply
+  net.ws = {}; const wsWait = new Map(); let wsRid = 0;
+  net.wset = (k, v, o = {}) => new Promise(res => {
+    if (!net.online || net.transport !== 'ws' || !tr) return res({ ok: false, offline: true });
+    const rid = ++wsRid; wsWait.set(rid, res); setTimeout(() => { if (wsWait.has(rid)) { wsWait.delete(rid); res({ ok: false, timeout: true }); } }, 5000);
+    tr.send({ t: 'ws', k, v: v === undefined ? null : v, op: o.op, if: o.if, mine: o.mine ? 1 : undefined, ttl: o.ttl, rid });
+  });
+  function onWs(m) {
+    if (!m.fail) { if (m.v === null || m.v === undefined) delete net.ws[m.k]; else net.ws[m.k] = m.v; }
+    else if (m.v === null || m.v === undefined) delete net.ws[m.k]; else net.ws[m.k] = m.v; // the server's current value
+    if (m.rid && (m.fail || m.by === net.id) && wsWait.has(m.rid)) { const r = wsWait.get(m.rid); wsWait.delete(m.rid); r({ ok: !m.fail, v: m.v, by: m.by }); }
+    fire('ws', { k: m.k, v: m.v === undefined ? null : m.v, by: m.by, fail: !!m.fail, took: !!m.took });
+  }
 
   // ---------------- players / avatars ----------------
   const list = () => [...net.players.values()].map(p => ({ id: p.id, name: p.name, color: p.color, host: p.id === net.host, you: p.id === net.id }));
@@ -276,6 +305,7 @@ export function installNet(ctx) {
   }
   function onDirect(from, d) {
     if (!d) return;
+    if (d.k !== 'in') fire('msg', { from, d }); // other modules: net.on('msg', {from, d}) (worldsync: hits, kill credit)
     if (d.k === 'in' && net.role === 'host') remoteIn.set(from, { bits: d.b | 0, at: performance.now() });
   }
 
@@ -442,7 +472,7 @@ export function installNet(ctx) {
       localP2.update(dt, now, av => (av.script ? null : seatFor(av)));
       if ((game.state === 'attract' || game.players.length < 2) && !localP2.leaving && !localP2.script) dropLocalP2();
     }
-    if (net.online && net.transport === 'ws' && now - pingT > 4000) { pingT = now; tr.send({ t: 'ping', ts: now }); }
+    if (net.connected() && now - pingT > (clockS.length < 4 ? 1000 : 4000)) { pingT = now; tr.send({ t: 'ping', ts: now }); } // also feeds serverNow
   };
 
   // ---------------- UI: use ui.js lobby when present, else a small built-in panel ----------------

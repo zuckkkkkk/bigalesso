@@ -310,7 +310,7 @@ export function installCombat(ctx) {
       const hit = raycast(_o, _d, range, { skip });
       mz = muzzleWorld(_m);
       if (B.kind === 'hitscan') {
-        fx.beam(mz, hit.point, color, 0.018 + Math.random() * 0.008, 0.08);
+        fx.beam(mz, hit.point, color, 0.018 + Math.random() * 0.008, 0.08); fx.tracer(mz, hit.point, color);
         if (hit.kind !== 'none') impact(hit, it, B, stt, _d, false, null);
         else fx.burst(hit.point, color, 1, { size: 0.12, speed: 0.6, life: 0.4, grav: 3 });
       } else {
@@ -322,8 +322,7 @@ export function installCombat(ctx) {
       }
     }
     // feedback
-    fx.flash(mz, color, B.rocket ? 0.6 : 0.22, B.rocket ? 0.12 : 0.05);
-    if (B.rocket) fx.burst(mz, '#ffffff', 4, { size: 0.35, speed: 0.6, life: 0.6 });
+    fx.muzzle(mz, _d, it.base); fx.casing(mz, _d, it.base, man.root.position.y); // particles.js: flash, flame/spray, smoke, casing / bottle cap
     fx.sfx(B.element, null, 1);
     ST.kick = Math.min(1, ST.kick + (B.rocket ? 1 : B.kind === 'hitscan' ? 0.18 : 0.45));
     ST.recoil = Math.min(1, ST.recoil + (B.rocket ? 1 : B.kind === 'hitscan' ? 0.12 : 0.35));
@@ -376,17 +375,17 @@ export function installCombat(ctx) {
       hud.hitMarker(hit.e.dead); fx.sfx(hit.e.dead ? 'kill' : head ? 'head' : 'hit', null, 1);
       if (perks.includes('vampiro')) heal(dealt * 0.08);
       emit('hit', { enemy: hit.e, amount: dealt, head, weapon: it });
-      fx.burst(hit.point, color, B.kind === 'hitscan' ? 3 : 6, { size: B.kind === 'hitscan' ? 0.16 : 0.3, speed: 1.4, life: 0.5, grav: 3 });
+      fx.hit(hit.point, dir, { element: stt.element, head, crit, kill: hit.e.dead, color }); // comic, blood-less: POW + confetti (+ tortellino / drops)
     } else if (hit.kind === 'npc') { npcReact(hit.npc, stt.element); fx.burst(hit.point, color, 4, { size: 0.2, speed: 1.2, life: 0.5, grav: 3 }); }
     else if (hit.kind === 'dog') { dogReact(); fx.burst(hit.point, color, 4, { size: 0.18, speed: 1.2, life: 0.5, grav: 3 }); }
     else if (hit.kind === 'player') { fx.burst(hit.point, color, 5, { size: 0.22, speed: 1.2, life: 0.5, grav: 3 }); }
     else if (hit.kind === 'target') {
       if (dmg > 0 && TG.hit) { try { TG.hit({ id: hit.tid, amount: dmg * (hit.head ? (B.headMult || 1.6) : 1), head: hit.head, base: it ? it.base : 'pistola', item: it, splash: false, k: 1 }); } catch (e) { console.warn(e); } hud.hitMarker(false); fx.sfx(hit.head ? 'head' : 'hit', null, 1); }
-      fx.burst(hit.point, color, 5, { size: 0.22, speed: 1.2, life: 0.5, grav: 3 });
+      fx.hit(hit.point, dir, { element: stt.element, head: hit.head, color });
     }
     else if (hit.kind === 'wall' || hit.kind === 'ground') {
-      fx.splat(hit.point, hit.normal, color, B.rocket ? 2.2 : stt.splashRadius ? 0.75 : B.kind === 'hitscan' ? 0.32 : 0.28, B.rocket ? 14 : 10);
-      fx.burst(hit.point, color, B.kind === 'hitscan' ? 2 : 5, { size: 0.16, speed: 1.1, life: 0.45, grav: 3, vel: _b.copy(hit.normal).multiplyScalar(1.2) });
+      if (!B.rocket) fx.splat(hit.point, hit.normal, color, stt.splashRadius ? 0.75 : B.kind === 'hitscan' ? 0.32 : 0.28, 10); // the bazooka leaves its own scorch + stain (explode)
+      fx.impact(hit.point, hit.normal, stt.element || B.element); // droplets / sauce / foam / sparks + dust
       if (B.kind === 'hitscan' && Math.random() < 0.3) fx.sfx('drip', hit.point, 0.5);
     }
     const R = (stt.splashRadius || 0) + (perks.includes('esplosivo') ? 1.2 : 0);
@@ -395,10 +394,9 @@ export function installCombat(ctx) {
   }
   function explode(p, R, dmg, knock, color, B, it, skipE, skipT = null) {
     const big = B.rocket;
-    fx.flash(p, big ? '#ffb040' : color, big ? 2.4 : 0.9, big ? 0.18 : 0.1);
-    fx.burst(p, color, big ? 16 : 8, { size: big ? 0.9 : 0.45, speed: big ? 4 : 2.2, life: big ? 1.0 : 0.6, grav: 2, up: 1.2 });
-    if (big) { fx.burst(p, '#ffffff', 8, { size: 1.1, speed: 2, life: 1.3, up: 1 }); fx.stars(p.clone().add(V(0, 0.4, 0)), 4, { color: '#ffd21f' }); }
-    fx.splat(_b.set(p.x, 0, p.z), UP, color, R * (big ? 1.2 : 0.9), 14);
+    // particles.js: flash, fireball, smoke, sparks, debris, shockwave, scorch, shake (spritz: Aperol, orange slices, ice)
+    fx.explode(p, { radius: R, kind: big ? 'spritz' : (B.element || 'sugo'), ground: 0 });
+    if (!big) fx.splat(_b.set(p.x, 0, p.z), UP, color, R * 0.9, 14);
     fx.sfx(big ? 'boom' : 'splat', p, big ? 1.2 : 1);
     if (big && ui.settings && ui.settings.cameraShake) { const d = man.root.position.distanceTo(p); S.shake = Math.max(S.shake || 0, 0.06 * Math.max(0, 1 - d / 18)); }
     let kills = 0;
@@ -501,12 +499,13 @@ export function installCombat(ctx) {
     }
     for (const k in PIM) { const im = PIM[k]; if (cnt[k] || im.count) { im.count = cnt[k]; im.instanceMatrix.needsUpdate = true; } }
   }
-  function bossThrow(e) {
-    const p = man.root.position, from = V(e.pos.x, 2.1, e.pos.z);
+  function bossThrow(e, tgt) { // tgt: the remote player it aims at (online, src/worldsync.js), else me
+    const p = tgt || man.root.position, from = V(e.pos.x, 2.1, e.pos.z);
     const to = V(p.x, 1.2, p.z); const d = to.clone().sub(from); const dist = d.length(); d.normalize();
     const sp = 11, g = 4; const vel = d.multiplyScalar(sp); vel.y += 0.5 * g * dist / sp;
     spawnProj('multa', from, vel, { hostile: true, g, dmg: 8 + e.level, max: 4 });
     fx.sfx('whistle', e.pos, 0.8);
+    if (E.ctx.sync) E.ctx.sync.multa(from, vel, g, 8 + e.level); // the others fly the same multa: it hurts whoever it hits
   }
 
   // ---------------------------------------------------------------- player health
@@ -564,6 +563,7 @@ export function installCombat(ctx) {
       stats.bosses++; unlock('cb_boss'); statInc('cb_bosses');
       toast('👮 Il Vigile Urbano Zombie è stato steso. Multa annullata!', 'gold');
       const f = getFX && getFX(); try { f && f.confetti && f.confetti(V(e.pos.x, 2.2, e.pos.z), 160); } catch (x) { }
+      fx.bossDeath(V(e.pos.x, 1.2, e.pos.z)); // particles.js: big blast, parking tickets raining, police lights
       phoneEvent('ha steso il Vigile Urbano Zombie in Via Petroni e ha vinto', true);
     } else if (stats.kills % 25 === 0) phoneEvent('ha già steso ' + stats.kills + ' zombi nel quartiere (primo della classe)', true);
   }
@@ -741,10 +741,12 @@ export function installCombat(ctx) {
 
   // ---------------------------------------------------------------- network (cosmetic shots of the other players)
   // a shot drawn for someone else (other players online, battle-royale bots): no damage, just beam/projectile + sound
+  const _cs = V();
   function cosmeticShot(base, o, t) {
     const B = BASES[base]; if (!B || !o || !t || o.distanceTo(t) > 120) return;
     const color = ELEMENTS[B.element];
-    if (B.kind === 'hitscan') { fx.beam(o, t, color, 0.02, 0.09); fx.burst(t, color, 3, { size: 0.16, speed: 1.2, life: 0.45, grav: 3 }); fx.sfx(B.element, o, 0.7); }
+    if (B.kind !== 'melee') { _cs.copy(t).sub(o).normalize(); fx.muzzle(o, _cs, base); } // remote shots look like ours (particles.js)
+    if (B.kind === 'hitscan') { fx.beam(o, t, color, 0.02, 0.09); fx.tracer(o, t, color); fx.impact(t, _cs.negate(), B.element); fx.sfx(B.element, o, 0.7); }
     else if (B.kind === 'projectile') { const d = t.clone().sub(o), dist = d.length(); d.normalize(); const sp = B.stats.projectileSpeed, g = B.gravity || 0; const vel = d.multiplyScalar(sp); vel.y += 0.5 * g * dist / sp; spawnProj(base, o, vel, { cosmetic: true, g, B, st: B.stats }); fx.sfx(B.element, o, 0.7); }
     else if (B.kind === 'melee') { fx.stars(t.clone().add(V(0, 0.4, 0)), 3, { size: 0.15 }); fx.sfx('bonk', t, 0.7); }
   }
@@ -794,6 +796,15 @@ export function installCombat(ctx) {
     setTargets(list, onHit) { TG.list = typeof list === 'function' ? list : null; TG.hit = typeof onHit === 'function' ? onHit : null; },
     hurtFx(k = 0.2) { hud.hurt(clamp(k, 0, 1)); fx.sfx('hurt'); if (ui.settings && ui.settings.cameraShake) S.shake = Math.max(S.shake || 0, 0.012 + 0.03 * clamp(k, 0, 1)); },
     fxShot(base, o, t) { cosmeticShot(base, o && o.isVector3 ? o : V(...(o || [0, 0, 0])), t && t.isVector3 ? t : V(...(t || [0, 0, 0]))); },
+    // online shared world (src/worldsync.js): a multa thrown by a boss someone else simulates; kill credit for my last hit
+    // on someone else's enemy (assist: only XP + the boss achievement)
+    _throw(o, v, g, dmg) { spawnProj('multa', V(+o[0] || 0, +o[1] || 0, +o[2] || 0), V(+v[0] || 0, +v[1] || 0, +v[2] || 0), { hostile: true, g: +g || 4, dmg: clamp(+dmg || 8, 0, 80), max: 4 }); fx.sfx('whistle', V(+o[0] || 0, 0, +o[2] || 0), 0.8); },
+    _credit(info, assist) {
+      const e = { type: info.type, level: info.level, pos: V(info.x, 0, info.z) };
+      if (!assist) { onKill(e, { head: !!info.head }); hud.hitMarker(true); return; }
+      try { const R = window.__rpg; R && R.addXP && R.addXP(Math.round(12 * (1 + 0.25 * (Math.max(1, e.level) - 1)) * (e.type === 'boss' ? 12 : 1) * 0.4), 'assist'); } catch (x) { }
+      if (e.type === 'boss') { stats.bosses++; unlock('cb_boss'); statInc('cb_bosses'); toast('👮 Il Vigile Urbano Zombie è stato steso: multa annullata anche per te!', 'gold'); }
+    },
   };
   window.__combat = api;
   return { pre, camera: camera_, post, afterCamera, api };

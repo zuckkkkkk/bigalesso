@@ -1,22 +1,10 @@
 // "Chi l'ha detto?" core: rounds built from the filtered group quotes (assets/chat/quotes.json).
 // 9 "who said it?" questions + a bonus "which one is fake?" (fake lines from the AI in the persona's style, or offline ones).
 import { quotes, personas, persona, shuffle, pick, ask, SAFE, clean } from './shared.js';
+import { FAKES as SHARED_FAKES } from '../../shared/quiz.mjs';
 
-// offline fake lines (written for the game, in the group's tone; never real messages)
-const FAKES = [
-  { who: 'asche', text: 'Raga ho prenotato il Millennium per martedì mattina' },
-  { who: 'seghino', text: 'Stasera niente zombata, gioco a Tetris da solo' },
-  { who: 'zuck', text: 'Compettina? No grazie, stasera leggo un libro' },
-  { who: 'parme', text: 'Soccmel che bello andare a correre alle 6' },
-  { who: 'ciccio', text: 'Il Corriere chiude, nessuna precisazione' },
-  { who: 'lombu', text: 'Arrivo in anticipo di mezz\'ora' },
-  { who: 'forla', text: 'Ho comprato un monitor più piccolo' },
-  { who: 'ashish', text: 'Sushi? Mai sentito, cos\'è?' },
-  { who: 'cesco', text: 'Il lunedì al Bellazzi costa il doppio, meglio' },
-  { who: 'ricky', text: 'Ok ciao' },
-  { who: 'jacopo', text: 'Basta viaggi, resto a casa per sempre' },
-  { who: 'mirco', text: 'Tortellino Man non mi interessa più' },
-];
+// offline fake lines (written for the game, in the group's tone; never real messages): shared with the online battle
+const FAKES = SHARED_FAKES.map(([who, text]) => ({ who, text }));
 export function rankOf(correct, n = 10) {
   const k = correct / n;
   return k >= 1 ? 'Membro certificato' : k >= 0.7 ? 'Teletubby DOC' : k >= 0.4 ? 'Utente medio del gruppo' : k >= 0.2 ? 'Appena entrato' : 'Zona demilitarizzata';

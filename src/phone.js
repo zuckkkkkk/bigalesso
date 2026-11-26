@@ -58,6 +58,8 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
           <button data-go="rpdocs"><i style="--b:#5a7fd8">🪪</i><span>Documenti</span></button>
           <button data-go="rpcasa"><i style="--b:#c88a4a">🛋️</i><span>Casa</span></button>
           <button data-go="motor"><i style="--b:#e8452c">🏁</i><span>Motori</span></button>
+          <button data-go="party"><i style="--b:#c8f03c">🎉</i><span>Party</span></button>
+          <button data-go="guide"><i style="--b:#ff8a3c">🧭</i><span>Guida</span></button>
         </div>
         <div class="ph-dock">T / Esc per chiudere</div>
       </section>
@@ -95,6 +97,7 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
           <button data-mg="br"><b>🚌 Ultimo in piedi</b><small>battle royale nel quartiere (anche online)</small></button>
           <button data-mg="gulag"><b>⛓️ Gulag profondo</b><small>roguelike: stanze a caso, il Secondino in fondo</small></button>
           <button data-rts="1"><b>🗺️ Assedio al quartiere</b><small>RTS: comanda gli amici contro le orde · anche online</small></button>
+          <button data-go="party"><b>🎉 Gioca insieme (party)</b><small>quiz, calcetto, Gulag co-op, processo… con gli amici online</small></button>
         </div>
       </section>
       <section data-app="cards">
@@ -116,6 +119,14 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
       <section data-app="rpcasa">
         <header><button class="ph-back" data-go="home">‹</button><div class="ph-gt"><b>Casa</b><small>arredamento</small></div></header>
         <div class="rp-app"></div>
+      </section>
+      <section data-app="guide">
+        <header><button class="ph-back" data-go="home">‹</button><div class="ph-gt"><b>Guida</b><small>cose da fare · tutorial</small></div></header>
+        <div class="tu-app"></div>
+      </section>
+      <section data-app="party">
+        <header><button class="ph-back" data-go="home">‹</button><div class="ph-gt"><b>Party</b><small>gioca insieme agli amici · O</small></div></header>
+        <div class="pt-app"></div>
       </section>
       <section data-app="motor">
         <header><button class="ph-back" data-go="home">‹</button><div class="ph-gt"><b>Motori</b><small>gare, officina, la tua 500</small></div></header>
@@ -194,6 +205,8 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
     if (a === 'map') drawMap();
     if (a === 'cards') { try { const el = $('.ph-cards'); if (el && window.__cards) el.innerHTML = window.__cards.phoneHTML(); } catch (e) { console.warn('cards', e); } } // cards/: app Carte
     if (a === 'quests') { try { window.__rpg && window.__rpg.renderQuests($('.ph-quests')); } catch (e) { console.warn('quests', e); } } // rpg/ui.js
+    if (a === 'party') { try { window.__party && window.__party.renderApp(root.querySelector('section[data-app="party"] .pt-app')); } catch (e) { console.warn('party', e); } } // net/party.js
+    if (a === 'guide') { try { window.__tutorial && window.__tutorial.renderApp(root.querySelector('section[data-app="guide"] .tu-app')); } catch (e) { console.warn('guide', e); } } // tutorial.js
     if (a === 'motor') { try { window.__motor && window.__motor.renderApp(root.querySelector('section[data-app="motor"] .mt-app')); } catch (e) { console.warn('motor', e); } } // motor/index.js
     if (a === 'rpjobs' || a === 'rpdocs' || a === 'rpcasa') { try { window.__rp && window.__rp.renderApp(a, root.querySelector(`section[data-app="${a}"] .rp-app`)); } catch (e) { console.warn('rp', e); } } // rp/index.js
     updateBadges();
@@ -271,7 +284,7 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
     const mp = man.root.position;
     const zone = (level && level.zoneAt && level.zoneAt(mp.x, mp.z)) || 'casa';
     const night = ((getFX && getFX() && getFX().nightAmount) || 0) > 0.5;
-    return `Adesso Zuck è in "${zone}", è ${night ? 'sera' : 'giorno'}.`;
+    return `Adesso Zuck è in "${zone}", è ${night ? 'sera' : 'giorno'}${window.__daynight ? ' (ore ' + window.__daynight.clock() + ')' : ''}.`;
   }
 
   // ---------------------------------------------------------------- reactions to game events + ambient chatter
@@ -471,7 +484,7 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
   function update(dt) {
     if (!S || S.phase !== 'world') { pill.hidden = true; return; }
     const sec = Math.floor(Date.now() / 1000);
-    if (sec !== update._s) { update._s = sec; const d = new Date(); const hm = d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }); $('.ph-clock').textContent = hm; $('.ph-big').textContent = hm; $('.ph-date').textContent = d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }); }
+    if (sec !== update._s) { update._s = sec; const d = new Date(); const hm = window.__daynight ? window.__daynight.clock(1) : d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }); /* game time (daynight.js, shared clock) */ $('.ph-clock').textContent = hm; $('.ph-big').textContent = hm; $('.ph-date').textContent = d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }); }
     // zone + night changes -> events
     const mp = man.root.position;
     const zone = (level && level.zoneAt && level.zoneAt(mp.x, mp.z)) || null;

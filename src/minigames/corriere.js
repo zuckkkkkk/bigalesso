@@ -5,6 +5,9 @@
 import * as THREE from 'three';
 import { loadStatic, fitModel } from './zmodel.js';
 import { requestWarmup, V, pick, clamp, persona, ask, SAFE, clean, esc, createOverlay, unlock, getRec, myAchievements, sessionLog, logEvent, anchor, cv, canvasTex, banterPool } from './shared.js';
+import { registerPartyGame } from '../net/party.js';
+// Party: "📰 Corriere del party" (rules shared/corriere.mjs): every member sends the facts of his evening and votes the
+// tone, the referee asks the AI newsroom once and everyone gets the same front page (drawn here with renderFront).
 
 const LS = 'bigalesso_corriere_speciale';
 const W0 = 1000, H0 = 1414;
@@ -169,11 +172,11 @@ export function corrierePlugin(M) {
         <div class="s" style="color:#e8dcc0;font-weight:600">Taglio del pezzo</div><div class="tones">${TONES.map(([k, n]) => `<button class="mg-b" data-t="${k}">${n}</button>`).join('')}</div>
         <button class="mg-b go">🗞️ Stampa l'edizione speciale</button><a class="dl" download="corriere-edizione-speciale.jpg" style="display:none">⬇ Scarica la prima pagina</a>
         <div class="s" style="margin-top:auto">Clic sulla pagina per ingrandire · <kbd>Esc</kbd> esci</div></div><div class="r"><div class="msg">La rotativa è pronta.</div></div></div>`, {
-        input, onKey: e => { if (e.code === 'Enter' && !busy) { e.preventDefault(); print(); } }, onClose: () => { if (W.mode === 'mg_corriere') setMode('standup'); },
+        input, onKey: e => { if (e.code === 'Enter' && !busy && !PC) { e.preventDefault(); print(); } }, onClose: () => { if (PC) { const X = PC; PC = null; try { X.s.leave(); } catch (x) { } } if (W.mode === 'mg_corriere') setMode('standup'); },
       });
       const s = document.createElement('style'); s.textContent = CSS; document.head.appendChild(s);
-      ov.$$('.tones button').forEach(b => b.onclick = () => { tone = b.dataset.t; ov.$$('.tones button').forEach(x => x.classList.toggle('sel', x === b)); });
-      ov.$('.go').onclick = () => print();
+      ov.$$('.tones button').forEach(b => b.onclick = () => { tone = b.dataset.t; ov.$$('.tones button').forEach(x => x.classList.toggle('sel', x === b)); if (PC) PC.s.act({ tone }); });
+      ov.$('.go').onclick = () => { if (!PC) print(); };
       return ov;
     }
     function events() { return sessionLog().events.filter(e => e.kind !== 'corriere'); }
@@ -225,7 +228,7 @@ export function corrierePlugin(M) {
       busy = false;
     }
     function open() {
-      ensure(); ov.open();
+      ensure(); ov.open(); if (!PC) ov.$('.go').style.display = '';
       const ev = events();
       ov.$('.ev').innerHTML = ev.length ? ev.slice(-12).reverse().map(e => `<div>• ${esc(e.text)}</div>`).join('') : '<div style="color:#9a8a70">Ancora niente: gioca ai cabinati, al sushi, su Discord o nel Gulag e torna qui. Si può stampare lo stesso.</div>';
       ov.$$('.tones button').forEach(x => x.classList.toggle('sel', x.dataset.t === tone));
@@ -233,6 +236,39 @@ export function corrierePlugin(M) {
       return true;
     }
     W.mgOpen = W.mgOpen || {}; W.mgOpen.corriere = () => open();
+    // ---------------------------------------------------------------- party edition (shared/corriere.mjs)
+    let PC = null;
+    function partyPrint(s) {
+      if (PC && PC.s !== s) { try { PC.s.leave(); } catch (e) { } }
+      PC = { s, v: null, printed: false, rewarded: false };
+      open(); PC.s = s;
+      ov.$('.go').style.display = 'none';
+      ov.$('.r').innerHTML = '<div class="msg">Edizione del party: la redazione raccoglie i fatti di tutti…</div>';
+      s.act({ facts: events().slice(-8).map(e => e.text) }); s.act({ tone });
+      s.on('view', v => { if (!PC || PC.s !== s) return; PC.v = v; partyView(v); });
+      s.on('error', e => { if (e && e.fatal && PC && PC.s === s) ov.$('.r').innerHTML = '<div class="msg">Collegamento con la redazione perso.</div>'; });
+      return true;
+    }
+    function partyView(v) {
+      ov.$('.ev').innerHTML = v.members.map(m => `<div>${m.bot ? '🤖' : '🗞️'} <b>${esc(m.name)}</b>${m.id === v.me ? ' (tu)' : ''} · ${m.sent ? m.n + ' fatti' : 'sta scrivendo…'}${m.tone ? ' · ' + esc(m.tone) : ''}</div>`).join('') + `<div style="color:#e2c271">Taglio scelto: ${esc(v.tone)}</div>`;
+      if (v.ph === 'collect') ov.$('.r').innerHTML = `<div class="msg">La rotativa aspetta i fatti di tutti… ${v.left} s<br><small>scegli il taglio a sinistra</small></div>`;
+      else if (v.ph === 'print' && !PC.printing) { PC.printing = true; printT = 25; ov.$('.r').innerHTML = '<div class="msg">La rotativa gira… <span class="mg-dots"><span>●</span><span>●</span><span>●</span></span></div>'; try { audio.ctx && audio.sfx('carriage'); } catch (e) { } }
+      else if (v.ph === 'end' && v.ed && !PC.printed) {
+        PC.printed = true; printT = 0;
+        const now = new Date(), d = { ...v.ed };
+        const num = 314 + (+(localStorage.getItem('bigalesso_corriere_n') || 0)); try { localStorage.setItem('bigalesso_corriere_n', String(num - 313)); } catch (e) { }
+        d.date = now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase());
+        d.num = num; d.records = records(); d.ach = myAchievements().length;
+        const url = renderFront(d).toDataURL('image/jpeg', 0.84);
+        try { localStorage.setItem(LS, url); } catch (e) { }
+        setStackTex(url); showPage(url);
+        try { audio.ctx && audio.sfx('paper'); } catch (e) { }
+        try { window.__rpg && window.__rpg.addXP && window.__rpg.addXP(20, 'Corriere del party'); } catch (e) { }
+        unlock('corriere_party', { title: 'Prima pagina di gruppo', desc: 'Un\'edizione speciale del Corriere su tutto il party', icon: '📰' });
+        logEvent('corriere', 'è finito in prima pagina con il party: ' + d.titolo);
+      }
+    }
+    registerPartyGame('corriere', { name: 'Corriere del party', icon: '📰', desc: 'una prima pagina sulla serata di tutto il party (scrive l\'AI)', min: 1, max: 8, bots: 1, attach: s => partyPrint(s), detach: s => { if (PC && PC.s === s) { PC = null; ov && ov.close(); } } });
     return {
       items: [{ id: 'mg-corriere', label: () => 'Stampa un\'edizione speciale del Corriere', anchor: () => stand, top: () => g.localToWorld(V(-0.2, 1.15, 0)), range: 1.0,
         act: () => { if (W.carry) { toast('Prima posa l\'estintore'); return; } goTo(stand.clone(), yaw, () => setMode('mg_corriere')); } }],

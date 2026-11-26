@@ -31,6 +31,15 @@ export function create({ players, opts, seed }) {
 }
 ```
 
+Opzionali: `meta.viewHz` (simulazione a `tickHz`, viste al massimo `viewHz` al secondo: calcetto 30/15, Gulag co-op
+15/10); `aiRequest()` → `{ id, model, system, prompt, maxTokens }` una volta, e `aiResult(id, testo|null)`: l'arbitro chiede
+il testo all'AI (server: `server/ai.mjs`, chiave solo sul server; offline: `window.__ai`) — usato dal giudice del Processo.
+
+Party ("Gioca insieme", `shared/party.mjs` + `src/net/party.js`): il party è una partita drop-in senza fine il cui id è il
+codice d'invito (`match:create { link:true }`); il capo apre la lobby del minigioco con `{ party: <id party>, wait:true }`
+(i membri la vedono da qualsiasi stanza) e la annuncia con `{ launch }`. Inviti nella stanza: `match:invite { id, to }`.
+Modalità di gruppo: `quiz` (Chi l'ha detto? Sfida), `calcetto`, `gulag_coop`, `processo`, `sfida` (sushi / compettina).
+
 Regole d'oro: deterministico dato il seed (solo `rng`, mai `Math.random`/`Date.now`), stato serializzabile in JSON,
 nessuna allocazione pesante per tick, `act` valida tutto (online il client può barare: il server no).
 I bot (amici controllati dal computer) stanno dentro il modulo, così offline e online si comportano uguale.

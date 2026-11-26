@@ -339,7 +339,7 @@ export function installBR({ scene, camera, man, ui, audio, level, S, gltf, Man, 
     } else if (e.k === 'elim') {
       const meK = e.kid === st.me, meV = e.vid === st.me;
       feed(e.killer ? `<b>${esc(e.killer)}</b> <i>${ICON[e.base] || '💥'}</i> ${esc(e.victim)}` : `${esc(e.victim)} <i>${e.base === 'zona' ? '🌩️ zona' : '🏳️'}</i>`);
-      const A = avById.get(e.vid); if (A) { const fx = c && c._debug && c._debug.fx; if (fx) { const p = A.a.root.position.clone().add(V(0, 0.9, 0)); fx.burst(p, '#f4f0ff', 12, { size: 0.6, speed: 1.6, life: 0.8, up: 0.8 }); fx.stars(p.add(V(0, 0.5, 0)), 5); } }
+      const A = avById.get(e.vid); if (A) { const fx = c && c._debug && c._debug.fx; if (fx) { const p = A.a.root.position.clone().add(V(0, 0.9, 0)); fx.burst(p, '#f4f0ff', 12, { size: 0.6, speed: 1.6, life: 0.8, up: 0.8 }); if (fx.poof) fx.poof(p, 1); fx.stars(p.add(V(0, 0.5, 0)), 5); } }
       if (meK) { st.kills++; banner_('Eliminato!', esc(e.victim), 1.6); sfx('kill'); if (st.kills === 3) try { window.__save && window.__save.unlock('br_kill3', { title: 'Tris al Celtic', desc: '3 eliminazioni in una battle royale', icon: '🎯' }); } catch (x) { } }
       if (meV) { banner_('Sei fuori', `${e.place}° posto${e.killer ? ' · ti ha fatto nero ' + esc(e.killer) : ''}`, 3); sfx('ko'); }
     } else if (e.k === 'zone' && e.shrinking) { banner_('La zona si stringe', 'torna dentro il cerchio bianco', 2); sfx('whistle'); }

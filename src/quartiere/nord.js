@@ -15,7 +15,7 @@ import { Batch, V, instances, neonTex, signMesh, fitText } from './kit.js';
 import { canvas, rng } from '../util.js';
 import { streetMats } from './street.js';
 import { BUILDINGS, ST } from './layout.js';
-import { NORD, ZAM, VERDI, RIZ, MAGG, VOLT, NETTUNO, CRESC, NB, NORD_PROPS, END_BLOCKS, groundRectN, columnsOf, groundSlots } from './nord_layout.js';
+import { NORD, ZAM, VERDI, RIZ, MAGG, VOLT, NETTUNO, CRESC, NB, NORD_PROPS, END_BLOCKS, groundRectN, columnsOf, groundSlots, PORT_DEEP_H } from './nord_layout.js';
 
 const PI = Math.PI;
 
@@ -130,7 +130,7 @@ export function buildNord(root, { low = false, SH = null } = {}) {
   for (const b of NB) {
     const [x0, z0, x1, z1] = b.rect; const B = Bz((z0 + z1) / 2);
     const wall = b.brick ? brickR : plaster; const col = b.brick ? undefined : b.col; const wuv = b.brick ? 0.9 : 0.5;
-    const g = groundRectN(b); const P = b.portico; const PH = P ? (P.depth > 3.5 ? 4.8 : ZAM.portH) : 0;
+    const g = groundRectN(b); const P = b.portico; const PH = P ? (P.depth > 3.5 ? PORT_DEEP_H : ZAM.portH) : 0;
     // mass: ground floor (behind the arcade) + upper floors over the whole footprint
     if (P) { B.box(wall, g[0], 0, g[1], g[2], PH, g[3], { color: col, uv: wuv }); B.box(wall, x0, PH, z0, x1, b.h, z1, { color: col, uv: wuv }); }
     else B.box(wall, x0, 0, z0, x1, b.h, z1, { color: col, uv: wuv });
@@ -256,6 +256,17 @@ export function buildNord(root, { low = false, SH = null } = {}) {
     for (let i = 0; i <= 6; i++) { const x = x0 + 0.6 + i * (W - 1.2) / 6; if (portals.some(([px, pw]) => Math.abs(x - px) < pw / 2 + 1.2)) continue; B.box(marble, x - 0.45, 0, z - 0.95, x + 0.45, 10.4, z - 0.45, { uv: 0.6 }); }
     B.box(marble, x0 - 0.3, 10, z - 1.0, x1 + 0.3, 10.6, z - 0.3, { uv: 0.6 });
     B.box(marbleP, x0 - 0.2, 6.9, z - 0.56, x1 + 0.2, 7.25, z - 0.5, { uv: 0.6 }); // rose marble string course
+    // rose and white marble inlays between the pilasters (the real lower facade's panels): plain boxes, materials already in use
+    { const step = (W - 1.2) / 6;
+      for (let i = 0; i < 6; i++) {
+        const xa = x0 + 0.6 + i * step + 0.75, xb = x0 + 0.6 + (i + 1) * step - 0.75, xm = (xa + xb) / 2;
+        // the portals take most of the bays: a rose plinth beside the doors and a band of panels under the string course
+        for (const [ua, ub] of [[xa - 0.3, xb + 0.3]].flatMap(([p, q]) => { let segs = [[p, q]]; for (const [px, pw] of portals) segs = segs.flatMap(([u, v]) => { const d0 = px - pw / 2 - 0.9, d1 = px + pw / 2 + 0.9; if (v <= d0 || u >= d1) return [[u, v]]; return [[u, Math.min(v, d0)], [Math.max(u, d1), v]].filter(([e, f]) => f - e > 0.4); }); return segs; }))
+          B.box(marbleP, ua, 0.2, z - 0.62, ub, 0.95, z - 0.5, { uv: 0.6 });
+        B.box(marble, xa - 0.1, 6.05, z - 0.6, xb + 0.1, 6.8, z - 0.5, { uv: 0.6 }); B.box(marbleP, xa + 0.1, 6.15, z - 0.64, xb - 0.1, 6.7, z - 0.6, { uv: 0.6 });
+        if (Math.abs(xm - cx) > 3.9) B.box(marbleP, xa + 0.2, 7.6, z - 0.6, xb - 0.2, 9.5, z - 0.5, { uv: 0.6 }); // frieze over the string course (the plaque keeps the middle)
+      }
+    }
     for (const [px, pw, ph] of portals) {
       B.box(dark, px - pw / 2, 0, z - 0.52, px + pw / 2, ph, z - 0.5);
       const ag = archGeo(pw + 1.2, ph + 1.6, 0.6, ph, 0.25); ag.translate(-(pw + 1.2) / 2, 0, 0); B.put(m.trim, ag, px, 0, z - 0.75, PI, {}); // frame proud of the marble base
@@ -322,7 +333,7 @@ export function buildNord(root, { low = false, SH = null } = {}) {
   // bikes chained along the università arcade (Bologna)
   { const bikes = []; const colX = NB.flatMap(b => columnsOf(b).filter(c => Math.abs(c.z - ZAM.colZ - 0.3) < 0.01).map(c => c.x));
     for (const [x0, x1, z] of NORD_PROPS.bikes) for (let x = x0 + 0.3; x < x1 - 0.2; x += 0.62) { if (colX.some(c => Math.abs(c - x) < 0.45)) continue; bikes.push({ x, y: 0, z, ry: 0.08 * (R() - 0.5), color: ['#2a2a2a', '#7a1e1e', '#2f4a6a', '#c8c0b0', '#3a5a3a'][(R() * 5) | 0] }); }
-    root.add(instances(bikeGeo(), m.iron, bikes, { name: 'n:bikes' })); hooks.bikes = bikes; }
+    const bim = instances(bikeGeo(), m.iron, bikes, { name: 'n:bikes' }); root.add(bim); hooks.bikes = bikes; hooks.bikeIm = bim; } // quartiere.js swaps in the bicycle model
   // café tables + chairs outside the Cantina and the Gelateria (instanced; tops and legs in two meshes)
   {
     const t = NORD_PROPS.tables.map(([x, z]) => ({ x, y: 0, z, ry: R() * 6 }));
@@ -347,7 +358,7 @@ export function buildNord(root, { low = false, SH = null } = {}) {
     add(gClosed, m.shutter, win.closed, { cast: false, name: 'n:shuttersClosed' });
     hooks.windows = win;
     const archMat = streetMats().plaster.clone(); archMat.vertexColors = false; archMat.name = 'n:arch';
-    const ag = archGeo(3.6, ZAM.portH, 0.3, 2.85, 0.55); ag.translate(-3.6, 0, 0); // local x -3.6..0: the bay ends at the instance origin
+    const ag = archGeo(3.6, ZAM.portH, 0.3, ZAM.portH - 1.5 - 0.14, 0.55); ag.translate(-3.6, 0, 0); // local x -3.6..0: the bay ends at the instance origin
     const im = instances(ag, archMat, arches, { name: 'n:arches' }); if (im) root.add(im);
   }
 

@@ -7,7 +7,7 @@ import { qmat } from './textures.js';
 import { rng, canvas, clamp } from '../util.js';
 import * as BGU from 'three/addons/utils/BufferGeometryUtils.js';
 import { Batch, V, instances, plaqueTex, neonTex, signMesh, glowTex, signTex } from './kit.js';
-import { BUILDINGS, INTERIORS, ST, PET, PIAZZA, GATE } from './layout.js';
+import { BUILDINGS, INTERIORS, ST, PET, PIAZZA, GATE, MIL_DZ, LARGO, archSpring } from './layout.js';
 
 const PI = Math.PI;
 
@@ -187,7 +187,7 @@ export function buildStreet(root, { low = false, quality = 'high', interiorDoors
       const pg = prismGeo(len, dep, hh); if (!along) pg.rotateY(PI / 2); pg.translate((x0 + x1) / 2, b.h, (z0 + z1) / 2);
       BB.add(m.roof, pg, { uv: 0.8 });
       // chimneys
-      for (let i = 0; i < 2; i++) { const cx = x0 + 1 + R() * (x1 - x0 - 2), cz = z0 + 1 + R() * (z1 - z0 - 2); BB.box(m.brick, cx - 0.3, b.h, cz - 0.3, cx + 0.3, b.h + hh + 0.9, cz + 0.3, { uv: 1 }); BB.box(m.trim, cx - 0.4, b.h + hh + 0.9, cz - 0.4, cx + 0.4, b.h + hh + 1.0, cz + 0.4); }
+      for (let i = 0; i < 2; i++) { const cx = x0 + 1 + R() * (x1 - x0 - 2), cz = z0 + 1 + R() * (z1 - z0 - 2); BB.box(m.brick, cx - 0.3, b.h, cz - 0.3, cx + 0.3, b.h + hh + 0.9, cz + 0.3, { uv: 1 }); BB.box(m.trim, cx - 0.4, b.h + hh + 0.9, cz - 0.4, cx + 0.4, b.h + hh + 1.0, cz + 0.4); (window.__chimneys = window.__chimneys || []).push(cx, b.h + hh + 1.0, cz); } // chimney tops: smoke in particles.js
     }
     // windows on the upper floors
     const base = b.portico ? ph : 3.6; const floors = Math.max(0, Math.floor((b.h - base - 0.7) / 3.1));
@@ -254,7 +254,7 @@ export function buildStreet(root, { low = false, quality = 'high', interiorDoors
   const porticoes = [];
   { // far side of Via Teletubbylandia: front face at z = 29.4, facing -z
     const n = Math.round((ST.x1 - ST.x0) / ST.bay), bay = (ST.x1 - ST.x0) / n;
-    const geo = archGeo(bay, ST.portH, 0.28, 2.75, 0.55);
+    const geo = archGeo(bay, ST.portH, 0.28, archSpring(ST.portH, bay, 0.28), 0.55);
     const list = []; for (let i = 0; i < n; i++) list.push({ x: ST.x0 + (i + 1) * bay, y: 0, z: ST.colZ, ry: PI }); // rotated PI: local x runs -x
     porticoes.push({ geo, list, run: 'far', bay, n });
     B.box(m.vault, ST.x0, ST.portH - 0.12, ST.colZ, ST.x1, ST.portH, ST.zFar, { color: '#efe4d2' });
@@ -263,7 +263,7 @@ export function buildStreet(root, { low = false, quality = 'high', interiorDoors
   { // Via Petroni, west (front face x=42.5 facing +x) and east (front face x=45.5 facing -x)
     const runs = [{ z0: 46, z1: PET.z1, x: PET.colW, yaw: PI / 2, side: 'w' }, { z0: PET.z0, z1: PET.z1, x: PET.colE, yaw: -PI / 2, side: 'e' }];
     for (const r of runs) {
-      const n = Math.round((r.z1 - r.z0) / 3.2), bay = (r.z1 - r.z0) / n; const geo = archGeo(bay, PET.portH, 0.26, 2.55, 0.5);
+      const n = Math.round((r.z1 - r.z0) / 3.2), bay = (r.z1 - r.z0) / n; const geo = archGeo(bay, PET.portH, 0.26, archSpring(PET.portH, bay, 0.26), 0.5);
       const list = []; for (let i = 0; i < n; i++) list.push(r.yaw > 0 ? { x: r.x, y: 0, z: r.z0 + (i + 1) * bay, ry: r.yaw } : { x: r.x, y: 0, z: r.z0 + i * bay, ry: r.yaw });
       porticoes.push({ geo, list, run: r.side, bay, n });
       const xa = r.side === 'w' ? PET.x0 : PET.colE, xb = r.side === 'w' ? PET.colW : PET.x1;
@@ -291,6 +291,8 @@ export function buildStreet(root, { low = false, quality = 'high', interiorDoors
   B.box(m.cobble, PIAZZA.x0, -0.005, PIAZZA.z0, PIAZZA.x1, 0.01, PIAZZA.z1, { uv: 0.8 });
   B.box(m.cobble, PET.colW, -0.005, PET.z0, PET.colE, 0.01, PET.z1, { uv: 0.8 });
   B.box(m.portFloor, PET.x0, 0, PET.z0, PET.colW, 0.012, 46, { uv: 0.75 }); // corner strip under f9
+  B.box(m.cobble, LARGO.x0, -0.005, LARGO.z0, LARGO.x1, 0.01, LARGO.z1, { uv: 0.8 }); // Largo del Millennium
+  B.box(m.sidewalk, LARGO.x0, 0, LARGO.z1 - 1.6, LARGO.x1, 0.03, LARGO.z1, { uv: 0.7 }); // the club's doorstep
   // road markings: centre dashes + a zebra crossing in front of the garden gate
   const dash = []; for (let x = -44; x < ST.x1 - 1; x += 4.5) if (Math.abs(x - 13) > 3.2) dash.push({ x, y: 0.006, z: 26, sx: 2.2, sz: 0.14 });
   const zebra = []; for (let i = 0; i < 7; i++) zebra.push({ x: 13.1, y: 0.006, z: ST.curbNear + 0.5 + i * 0.92, sx: 3.0, sz: 0.5 });
@@ -326,6 +328,7 @@ export function buildStreet(root, { low = false, quality = 'high', interiorDoors
   {
     const lamps = []; for (const x of [-31, -20, -9, 2, 23, 34]) lamps.push({ x, z: ST.curbNear - 0.45, ry: 0 });
     lamps.push({ x: 41, z: 21.2, ry: PI / 4 }, { x: 49, z: 32.6, ry: -3 * PI / 4 });
+    lamps.push({ x: 36.6, z: 80.2, ry: PI / 2 }, { x: 51.4, z: 80.2, ry: -PI / 2 }); // Largo del Millennium
     const lg = lampGeo(); const poles = instances(lg, m.iron, lamps.map(o => ({ x: o.x, y: 0, z: o.z, ry: o.ry })), { name: 'lamps' }); root.add(poles);
     const head = new THREE.CylinderGeometry(0.17, 0.11, 0.36, 6); head.translate(0, 4.5, 0.9);
     const heads = instances(head, m.lampHead, lamps.map(o => ({ x: o.x, y: 0, z: o.z, ry: o.ry })), { cast: false, name: 'lampHeads' }); root.add(heads);
@@ -370,12 +373,13 @@ export function buildStreet(root, { low = false, quality = 'high', interiorDoors
     // benches (piazzetta)
     const bp = []; for (let i = 0; i < 4; i++) { const g = new THREE.BoxGeometry(1.7, 0.05, 0.1); g.translate(0, 0.46, -0.2 + i * 0.13); bp.push(g); } for (let i = 0; i < 2; i++) { const g = new THREE.BoxGeometry(1.7, 0.1, 0.04); g.translate(0, 0.64 + i * 0.16, 0.3); bp.push(g); }
     const bl = []; for (const s of [-0.75, 0.75]) { const g = new THREE.BoxGeometry(0.06, 0.46, 0.55); g.translate(s, 0.23, 0); bl.push(g); const h = new THREE.BoxGeometry(0.06, 0.4, 0.05); h.translate(s, 0.72, 0.3); bl.push(h); }
-    const benches = [{ x: 42.3, z: 25.0, ry: PI / 2 }, { x: 47.8, z: 30.8, ry: -PI / 2 + 0.3 }, { x: 46.0, z: 21.0, ry: PI }].map(o => ({ ...o, y: 0 }));
+    const benches = [{ x: 42.3, z: 25.0, ry: PI / 2 }, { x: 47.8, z: 30.8, ry: -PI / 2 + 0.3 }, { x: 46.0, z: 21.0, ry: PI },
+      { x: 37.0, z: 85.6, ry: PI / 2 }, { x: 51.0, z: 85.6, ry: -PI / 2 }].map(o => ({ ...o, y: 0 })); // + Largo del Millennium
     const bw = instances(merge(bp), m.wood, benches, { name: 'benches' }); const bi = instances(merge(bl), m.iron, benches, { name: 'benchLegs' }); root.add(bw, bi);
     hooks.tripo.push({ name: 'park_bench', ims: [bw, bi], size: 1.8, fit: 'width' });
     hooks.benchSpots = benches; hooks.benchIms = [bw, bi];
     // plane trees (piazzetta) — instanced trunk + canopy
-    const tg = treeGeo(5); const trees = [{ x: 44.5, z: 29.2 }, { x: 48.4, z: 24.5 }, { x: 41.4, z: 30.8 }].map(o => ({ ...o, y: 0, ry: R() * 6, s: 0.85 + R() * 0.25 }));
+    const tg = treeGeo(5); const trees = [{ x: 44.5, z: 29.2 }, { x: 48.4, z: 24.5 }, { x: 41.4, z: 30.8 }, { x: 37.6, z: 82.6 }, { x: 50.4, z: 82.6 }].map(o => ({ ...o, y: 0, ry: R() * 6, s: 0.85 + R() * 0.25 }));
     const tt = instances(tg.trunk, m.bark, trees, { name: 'treeTrunks' }); const tc = instances(tg.canopy, m.leaves, trees.map(t => ({ ...t, color: '#ffffff' })), { name: 'treeCanopy' }); root.add(tt, tc);
     hooks.tripo.push({ name: 'tree_plane', ims: [tt, tc], size: 8.5 });
     hooks.trees = trees; hooks.treeIms = [tt, tc];
@@ -441,13 +445,13 @@ export function buildStreet(root, { low = false, quality = 'high', interiorDoors
     // crowd: capsule people outside the bars, more at night
     const body = new THREE.CapsuleGeometry(0.21, 0.95, 4, 8); body.translate(0, 0.72, 0); const headG = new THREE.SphereGeometry(0.13, 10, 8); headG.translate(0, 1.62, 0);
     const ppl = []; const shirt = ['#2a2a3a', '#7a2a2a', '#d8d0c0', '#2f5a8a', '#3a6a3a', '#c88a2a', '#5a3a6a', '#1a1a1a'];
-    const spots = [[41.3, 61], [46.7, 52], [46.7, 68], [41.3, 72], [44, 76.4]];
+    const spots = [[41.3, 61], [46.7, 52], [46.7, 68], [41.3, 72], [44, 76.4 + MIL_DZ]];
     for (const [sx, sz] of spots) for (let i = 0; i < 4; i++) { const a = R() * 6.28, r = 0.6 + R() * 0.7; ppl.push({ x: clamp(sx + Math.cos(a) * r, PET.x0 + 0.4, PET.x1 - 0.4), y: 0, z: sz + Math.sin(a) * r, ry: R() * 6.28, s: 0.92 + R() * 0.14, color: shirt[(R() * shirt.length) | 0], night: i > 1 }); }
     const crowdMat = m.person.clone(); crowdMat.name = 'q:crowd';
     crowdMat.onBeforeCompile = sh => { sh.uniforms.uTime = hooks.uTime; sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n#ifdef USE_INSTANCING\n float ph = instanceMatrix[3].x * 3.1 + instanceMatrix[3].z * 1.7;\n transformed.y += max(0.0, sin(uTime * 2.4 + ph)) * 0.035 * smoothstep(0.3, 1.6, position.y);\n transformed.x += sin(uTime * 1.3 + ph) * 0.03 * smoothstep(0.6, 1.7, position.y);\n#endif'); };
     hooks.uTime = { value: 0 };
     const pb = instances(body, crowdMat, ppl, { name: 'crowd' }), ph = instances(headG, m.person, ppl.map(p => ({ ...p, color: '#d9b08c' })), { name: 'crowdHeads' });
-    root.add(pb, ph);
+    root.add(pb, ph); pb.count = ph.count = 0; pb.visible = ph.visible = false;
     const dayCount = ppl.filter(p => !p.night).length;
     // order: day people first so .count can hide the night ones
     const order = ppl.map((p, i) => [p.night ? 1 : 0, i]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
@@ -455,7 +459,8 @@ export function buildStreet(root, { low = false, quality = 'high', interiorDoors
     const cTmp = order.map(i => { const c = new THREE.Color(); pb.getColorAt(i, c); return c; });
     tmpB.forEach((mm, i) => { pb.setMatrixAt(i, mm); pb.setColorAt(i, cTmp[i]); ph.setMatrixAt(i, tmpH[i]); });
     // placeholders only after dark (the real NPCs are PERSONAGGI's); by day the street belongs to them
-    hooks.night.push(k => { const n = k > 0.4 ? ppl.length : 0; pb.count = n; ph.count = n; pb.visible = ph.visible = n > 0; void dayCount; });
+    // capsule placeholders stay hidden: next to the real characters they read as mannequins (quality pass, v8.2)
+    hooks.night.push(() => { pb.count = 0; ph.count = 0; pb.visible = ph.visible = false; void dayCount; });
     hooks.crowd = ppl;
   }
 
@@ -463,15 +468,15 @@ export function buildStreet(root, { low = false, quality = 'high', interiorDoors
   // ---------- Millennium facade: neon sign, door glow, stanchions ----------
   {
     const t = neonTex('MILLENNIUM', '#c04cff', { sub: 'DISCO CLUB · SABATO' });
-    const s = signMesh(t, 9.0, 2.25, { basic: true, transparent: true }); s.position.set(44, 6.4, 77.96); s.rotation.y = PI; root.add(s); hooks.milSign = s;
+    const s = signMesh(t, 9.0, 2.25, { basic: true, transparent: true }); const MZ = 78 + MIL_DZ; s.position.set(44, 6.4, MZ - 0.04); s.rotation.y = PI; root.add(s); hooks.milSign = s;
     const nm = mat('neon', { color: 0xff3cac, intensity: 2.4 }).clone(); nm.name = 'q:milNeon';
     const nb = new Batch();
-    for (const [x0, y0, x1, y1] of [[42.0, 0, 42.12, 3.4], [45.88, 0, 46.0, 3.4], [42.0, 3.3, 46.0, 3.42]]) nb.box(nm, x0, y0, 77.85, x1, y1, 77.95);
-    for (const [x0, y0, x1, y1] of [[36.4, 8.5, 51.6, 8.62], [36.4, 0.25, 36.52, 8.6], [51.48, 0.25, 51.6, 8.6]]) nb.box(nm, x0, y0, 77.88, x1, y1, 77.96);
+    for (const [x0, y0, x1, y1] of [[42.0, 0, 42.12, 3.4], [45.88, 0, 46.0, 3.4], [42.0, 3.3, 46.0, 3.42]]) nb.box(nm, x0, y0, MZ - 0.15, x1, y1, MZ - 0.05);
+    for (const [x0, y0, x1, y1] of [[36.4, 8.5, 51.6, 8.62], [36.4, 0.25, 36.52, 8.6], [51.48, 0.25, 51.6, 8.6]]) nb.box(nm, x0, y0, MZ - 0.12, x1, y1, MZ - 0.04);
     hooks.milFront = nb.flush(root, { cast: false, name: 'milNeon' });
-    const st = []; for (const x of [41.0, 42.0, 46.0, 47.0]) { const g = new THREE.CylinderGeometry(0.04, 0.04, 0.9, 8); g.translate(x, 0.45, 76.6); st.push(g); const k = new THREE.SphereGeometry(0.06, 8, 6); k.translate(x, 0.92, 76.6); st.push(k); }
+    const st = []; for (const x of [41.0, 42.0, 46.0, 47.0]) { const g = new THREE.CylinderGeometry(0.04, 0.04, 0.9, 8); g.translate(x, 0.45, MZ - 1.4); st.push(g); const k = new THREE.SphereGeometry(0.06, 8, 6); k.translate(x, 0.92, MZ - 1.4); st.push(k); }
     const stm = new THREE.Mesh(merge(st), m.chrome); root.add(stm); hooks.milFront.push(stm);
-    const rope = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([V(41.0, 0.85, 76.6), V(41.5, 0.68, 76.6), V(42.0, 0.85, 76.6)]), 10, 0.025, 6), new THREE.MeshStandardMaterial({ color: 0x8a1022, roughness: 0.6 }));
+    const rope = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([V(41.0, 0.85, MZ - 1.4), V(41.5, 0.68, MZ - 1.4), V(42.0, 0.85, MZ - 1.4)]), 10, 0.025, 6), new THREE.MeshStandardMaterial({ color: 0x8a1022, roughness: 0.6 }));
     root.add(rope); const r2 = rope.clone(); r2.position.x = 5; root.add(r2); hooks.milFront.push(rope, r2);
     hooks.night.push(k => { s.material.opacity = 0.7 + k * 0.3; nm.emissiveIntensity = 1.2 + k * 2.4; });
     hooks.anim.push((dt, t) => { const f = 0.85 + 0.15 * Math.sin(t * 9.0) * (Math.sin(t * 0.7) > 0.8 ? 1 : 0.1); s.material.color.setScalar(f); });
@@ -497,7 +502,7 @@ export function buildStreet(root, { low = false, quality = 'high', interiorDoors
     for (let i = 0; i < 70; i++) {
       const side = i % 3; let x, z;
       if (side === 0) { x = -30 + R2() * 110; z = 98 + R2() * 22; } else if (side === 1) { x = 66 + R2() * 20; z = 20 + R2() * 90; } else { x = -28 + R2() * 56; z = 50 + R2() * 44; }
-      if (x > 28 && x < 64 && z > 44 && z < 96) continue; // keep Petroni/Millennium clear
+      if (x > 28 && x < 64 && z > 44 && z < 110) continue; // keep Petroni/Largo/Millennium clear
       if ((x > -48 && x < 40 && z > 40 && z < 106) || (x > -40 && x < 4 && z > 100 && z < 130)) continue; // the northern districts (nord.js) stand there now
       const w = 6 + R2() * 10, d = 6 + R2() * 10, h = 8 + R2() * 14;
       sky.push({ x, y: h / 2, z, sx: w, sy: h, sz: d, color: ['#b98a6a', '#c9a07a', '#a87058', '#d0b08a'][(R2() * 4) | 0] });

@@ -5,6 +5,9 @@
 import * as THREE from 'three';
 import { requestWarmup, V, rnd, smooth, shuffle, persona, personas, catchphrase, ask, SAFE, clean, esc, overlayCSS, unlock, record, phone, logEvent, anchor, cv, canvasTex, signTex, banter, banterPool } from './shared.js';
 import { loadStatic, fitModel } from './zmodel.js';
+import { registerSfida } from '../net/party.js';
+// Party: "🏁 Sfida a punti → 🍣 Sushi" (shared/sfida.mjs): every friend eats at his own belt for the same 60 s, the
+// referee counts the points (≤ 3 per plate, rate capped) and shows the live scoreboard; no NPC rivals at your belt.
 
 const DUR = 60;
 const TYPES = {
@@ -256,18 +259,19 @@ export function sushiPlugin(M) {
     overlayCSS(CSS);
     const hud = document.createElement('div'); hud.id = 'mg-sushi'; document.body.appendChild(hud);
     const res = document.createElement('div'); res.id = 'mg-sushi-res'; document.body.appendChild(res);
-    let G = null;
+    let G = null, SF = null; // SF: party sfida { s, v, rewarded }
     function drawHud() {
       if (!G) { hud.classList.remove('on'); return; }
       hud.classList.add('on');
+      if (G.sfida && SF && SF.v) { const sc = SF.v.sc.slice().sort((a, b) => b.pts - a.pts); hud.innerHTML = `<div class="c">⏱<b>${Math.ceil(Math.max(0, DUR - G.t))}</b></div>` + sc.map(p => `<div class="c${p.id === SF.v.me ? ' me' : ''}${p.id === SF.v.me && G.burn > 0 ? ' burn' : ''}">${p.id === SF.v.me ? '🫵 Tu' : (p.bot ? '🤖 ' : '') + esc(p.name)}<b>${p.pts}</b>${p.n} piatti${p.done && p.id !== SF.v.me ? ' ✔' : ''}</div>`).join('') + `<div class="c" style="min-width:150px;font-weight:500"><kbd>E</kbd> / <kbd>Spazio</kbd> prendi<br><small style="color:#aaa">sfida online · oro = 3</small></div>`; return; }
       hud.innerHTML = `<div class="c">⏱<b>${Math.ceil(Math.max(0, DUR - G.t))}</b></div>` + G.eaters.map((e, i) => `<div class="c${i ? '' : ' me'}${!i && G.burn > 0 ? ' burn' : ''}">${i ? esc((persona(e.id).emoji || '') + ' ' + persona(e.id).name) : '🫵 Tu'}<b>${e.pts}</b>${e.n} piatti</div>`).join('') + `<div class="c" style="min-width:150px;font-weight:500"><kbd>E</kbd> / <kbd>Spazio</kbd> prendi<br><small style="color:#aaa">oro = 3 · verde = wasabi!</small></div>`;
     }
     function begin() {
       checkGlb();
       if (Bt.ready && !Bt.ready()) { toast('Il nastro del sushi non è ancora pronto'); return; }
       const have = new Set(personas().map(p => p.id));
-      const opp = shuffle(['ashish', 'parme', 'asche', 'lombu', 'forla'].filter(id => have.has(id))).slice(0, 3);
-      G = { t: 0, burn: 0, cd: 0, eaters: [{ id: 'me', n: 0, pts: 0 }, ...opp.map(id => ({ id, n: 0, pts: 0, cd: rnd(1, 3), skill: rnd(0.55, 0.85) }))], over: false };
+      const opp = SF ? [] : shuffle(['ashish', 'parme', 'asche', 'lombu', 'forla'].filter(id => have.has(id))).slice(0, 3);
+      G = { t: SF && SF.v ? Math.max(0, DUR - SF.v.left) : 0, burn: 0, cd: 0, eaters: [{ id: 'me', n: 0, pts: 0 }, ...opp.map(id => ({ id, n: 0, pts: 0, cd: rnd(1, 3), skill: rnd(0.55, 0.85) }))], over: false, sfida: !!SF };
       Bt.restart();
       G.eaters.forEach((e, i) => { setStack(i, 0); if (i) setTag(i, e.id, 0); });
       const zp = Bt.seat(0); zone.position.set(zp.x, Bt.y + 0.012, zp.z); zone.visible = true;
@@ -280,11 +284,12 @@ export function sushiPlugin(M) {
       Bt.take(i);
       flyers.push({ from, to: Bt.stackAt(ei), t: 0, ei, col: t.plate });
       if (t.id === 'wasabi') { if (!ei) { G.burn = 2; toast('🌶️ BRUCIA! Wasabi bomb'); try { audio.ctx && audio.noise(0.6, 0.12, 5000, 900, audio.room, 0, 1, 'highpass'); } catch (x) { } } else e.cd += 2; }
-      else { e.n++; e.pts += t.pts; setStack(ei, e.n); if (ei) setTag(ei, e.id, e.n); }
+      else { e.n++; e.pts += t.pts; setStack(ei, e.n); if (ei) setTag(ei, e.id, e.n); if (!ei && G.sfida && SF) SF.s.act({ pt: t.pts }); }
       if (!ei) { try { audio.ctx && audio.sfx('pickup'); if (t.pts >= 3) audio.sfx('coin'); } catch (x) { } }
       drawHud();
     }
     function finish() {
+      if (G.sfida) return sfidaFinish();
       G.over = true; hud.classList.remove('on'); zone.visible = false; Bt.end();
       const rank = G.eaters.map((e, i) => ({ ...e, i })).sort((a, b) => b.pts - a.pts || b.n - a.n);
       const me = G.eaters[0], win = rank[0].i === 0;
@@ -303,7 +308,39 @@ export function sushiPlugin(M) {
       if (isRec && me.n > 5) phone(who, `${me.n} piatti?? ${Math.random() < 0.5 ? 'Socmel, ti esplode lo stomaco' : catchphrase(who)}`);
       try { audio.ctx && audio.sfx(win ? 'clear' : 'gameover'); } catch (x) { }
     }
-    function stop() { if (G && !G.over) Bt.end(); G = null; hud.classList.remove('on'); res.classList.remove('on'); zone.visible = false; for (let i = 0; i < 4; i++) { stacks[i].visible = false; if (tags[i]) tags[i].sp.visible = false; } }
+    function sfidaFinish() {
+      G.over = true; zone.visible = false; Bt.end(); hud.classList.remove('on');
+      if (SF) SF.s.act({ done: true });
+      sfidaResults();
+      try { audio.ctx && audio.sfx('clear'); } catch (x) { }
+    }
+    function sfidaResults() {
+      const v = SF && SF.v; if (!v) return;
+      const rank = v.sc.slice().sort((a, b) => b.pts - a.pts || b.n - a.n), done = !!v.over, me = v.me;
+      res.innerHTML = `<div class="box"><h2>${done ? (v.over.winners.includes(me) ? '🏆 Hai vinto la sfida del sushi!' : '🍣 Sfida del sushi finita') : '🍣 Hai finito: aspetta gli altri…'}</h2>${rank.map((e, k) => `<div class="row"><span>${k + 1}. ${e.id === me ? '🫵 Tu' : (e.bot ? '🤖 ' : '') + esc(e.name)}${!done && !e.done && e.id !== me ? ' <small>(mangia ancora)</small>' : ''}</span><span>${e.pts} punti · ${e.n} piatti</span></div>`).join('')}<div class="q">${esc(SF.reward || (done ? v.over.summary : ''))}</div><div class="h"><kbd>Esc</kbd> alzati</div></div>`;
+      res.classList.add('on');
+    }
+    function sfidaAttach(s) {
+      if (SF && SF.s !== s) { try { SF.s.leave(); } catch (e) { } }
+      SF = { s, v: null, rewarded: false, reward: '' };
+      s.on('view', v => { if (!SF || SF.s !== s) return; SF.v = v; if (G && G.sfida) { if (!G.over) { G.t = Math.max(G.t, DUR - v.left); drawHud(); } else sfidaResults(); } });
+      s.on('over', r => {
+        if (!SF || SF.s !== s || SF.rewarded) return; SF.rewarded = true;
+        const me = s.me, won = !!(r && r.winners && r.winners.includes(me)), humans = SF.v ? SF.v.sc.filter(x => !x.bot).length : 1, xp = won ? 70 : 30, euro = won && humans > 1 ? 10 : 0;
+        try { const R = window.__rpg; if (R) { R.addXP && R.addXP(xp, 'Sfida del sushi'); euro && R.money && R.money.add && R.money.add(euro); } } catch (e) { }
+        SF.reward = (r && r.summary ? r.summary + ' · ' : '') + `+${xp} XP${euro ? ' · +€ ' + euro : ''}`;
+        unlock('sushi_play', { title: 'All you can eat', desc: 'Prima sfida al sushi', icon: '🍣' });
+        if (won && humans > 1) unlock('sushi_party_win', { title: 'Re del sushi (online)', desc: 'Hai mangiato più degli amici in una sfida online', icon: '👑' });
+        logEvent('sushi', `alla sfida online del sushi: ${r && r.summary ? r.summary : ''}`);
+        if (G && G.over) sfidaResults();
+      });
+      s.on('error', e => { if (e && e.fatal) { toast('Sfida del sushi: connessione persa'); SF = null; } });
+      if (W.mode !== 'mg_sushi') W.mgOpen.sushi();
+      return true;
+    }
+    registerSfida('sushi', { name: 'Sushi all you can eat', label: 'Sushi (60 s)', icon: '🍣', attach: s => sfidaAttach(s),
+      busy: () => (W.mode !== 'explore' && W.mode !== 'goto' && W.mode !== 'mg_sushi') ? 'Torna a piedi prima di andare al sushi' : null });
+    function stop() { if (SF) { const X = SF; SF = null; try { X.s.leave(); } catch (e) { } } if (G && !G.over) Bt.end(); G = null; hud.classList.remove('on'); res.classList.remove('on'); zone.visible = false; for (let i = 0; i < 4; i++) { stacks[i].visible = false; if (tags[i]) tags[i].sp.visible = false; } }
     function start() { goTo(Bt.stand.clone(), Bt.yaw, () => { setMode('mg_sushi'); }); }
     W.mgOpen = W.mgOpen || {}; W.mgOpen.sushi = () => { if (W.mode === 'explore' && H.manPos().distanceTo(Bt.stand) < 4) { start(); return true; } travel(); return true; };
     // from the phone / menu: fade to black, "Mezz'ora dopo, al sushi…", reappear at the belt and sit down
@@ -338,6 +375,7 @@ export function sushiPlugin(M) {
       items,
       owns: m => m === 'mg_sushi',
       update(mode, dt, I, keys) {
+        if (SF && !G) { const ph = SF.v && SF.v.ph; if (ph === 'play') begin(); else if (ph === 'end') { stop(); setMode('standup'); return {}; } if (!G) { if (keys.backP) { stop(); setMode('standup'); return {}; } if (!W.m.waitT || W.t - W.m.waitT > 1) { W.m.waitT = W.t; hud.classList.add('on'); hud.innerHTML = `<div class="c">🍣 Sfida del sushi<b>${SF.v ? Math.ceil(SF.v.left) : '…'}</b>si parte tra poco</div>` + (SF.v ? SF.v.sc.map(p => `<div class="c">${p.id === SF.v.me ? '🫵 Tu' : esc(p.name)}<b>0</b></div>`).join('') : ''); } return { crouchT: 0.6 }; } }
         if (!G && W.t > 0.4 && !W.m.tried) { W.m.tried = true; begin(); if (!G) setMode('standup'); }
         if (!G) return { crouchT: 0.6 };
         if (keys.backP) { stop(); setMode('standup'); return {}; }
@@ -351,7 +389,7 @@ export function sushiPlugin(M) {
           npcs(dt);
           if (Math.floor(G.t * 4) !== Math.floor((G.t - dt) * 4)) drawHud();
           if (G.t >= DUR) finish();
-        } else if (keys.actP || I.pressed('Space')) begin();
+        } else if ((keys.actP || I.pressed('Space')) && !G.sfida) begin();
         const fl = flyers.find(f => f.ei === 0);
         return { crouchT: 0.6, leanT: 0.15, lookW: 1, lookAt: Bt.seat(0), rR: fl ? { pos: Bt.seat(0).add(V(0, 0.06, 0)), w: 1 - Math.abs(fl.t - 0.5) * 2, palm: 'down', grip: 0.6 } : undefined };
       },

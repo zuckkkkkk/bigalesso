@@ -79,6 +79,12 @@ export function createInput(el) {
     I.drag.dx += (e.movementX || 0) * k; I.drag.dy += (e.movementY || 0) * k; I.drag.last = performance.now();
   });
   addEventListener('mouseup', e => { if (e.button === 0) I.mouseHeld = false; });
+  // Pointer Events send no pointerdown for a button pressed while another is already held (right = aim,
+  // then left = fire): mousedown still fires for every button, so the chord registers here.
+  el.addEventListener('mousedown', e => {
+    if (e.button !== 0 || !(e.buttons & ~1)) return;
+    I.mouseHeld = true; if (LK.locked || I.lookFree()) I.drag.click = true;
+  });
   // EDGE-TURN fallback (pointer lock refused, e.g. inside a sandboxed iframe): the cursor can't go past the
   // screen edge, so keeping it in the outer ~8% of the scene keeps the camera turning (top/bottom = pitch).
   const CUR = I.cursor = { x: 0.5, y: 0.5, inside: false };

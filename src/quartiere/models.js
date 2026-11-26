@@ -73,7 +73,7 @@ export function instancedFrom(sc, list, parent, { size, fit, cast = true } = {})
     if (!o.isMesh || o.isSkinnedMesh) return;
     const geo = bakeGeometry(o.geometry, new THREE.Matrix4().multiplyMatrices(norm, o.matrixWorld));
     const im = new THREE.InstancedMesh(geo, o.material, list.length);
-    list.forEach((t, i) => { m4.compose(p.set(t.x, t.y || 0, t.z), q.setFromEuler(e.set(0, t.ry || 0, 0)), s.setScalar(t.s || 1)); im.setMatrixAt(i, m4); });
+    list.forEach((t, i) => { const k = t.s || 1; m4.compose(p.set(t.x, t.y || 0, t.z), q.setFromEuler(e.set(0, t.ry || 0, 0)), s.set(k, t.sy || k, k)); im.setMatrixAt(i, m4); }); // t.sy: separate height scale
     im.castShadow = cast; im.receiveShadow = true; im.computeBoundingSphere(); parent.add(im); out.push(im);
   });
   return out;

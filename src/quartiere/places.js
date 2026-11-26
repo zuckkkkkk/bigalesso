@@ -7,7 +7,7 @@ import { qmat } from './textures.js';
 import { rng, canvas, clamp } from '../util.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Batch, V, instances, plaqueTex, neonTex, signMesh, signTex, fitText, glowTex } from './kit.js';
-import { INTERIORS } from './layout.js';
+import { INTERIORS, MIL_DZ } from './layout.js';
 
 const PI = Math.PI;
 const IN = INTERIORS;
@@ -18,7 +18,7 @@ const P = {
   sushi: { arms: [[20.2, 37.6, 25.8, 38.4], [20.2, 38.4, 21.0, 41.8], [25.0, 38.4, 25.8, 41.8]], kitchen: [19.0, 42.8, 27.0, 43.7], tables: [[19.3, 35.3], [26.7, 35.3]] },
   ashish: { desk: [-19.0, 37.0, -18.3, 39.4], sofa: [-25.7, 35.2, -24.8, 38.4], tower: [-18.95, 39.6, -18.35, 40.2], shelf: [-25.7, 40.0, -24.9, 41.7] },
   seghino: { sofa: [-12.9, 13.2, -9.9, 14.1], tv: [-12.6, 18.9, -9.8, 19.7], table: [-12.0, 15.0, -10.8, 15.9], fridge: [-15.7, 17.8, -15.0, 18.6], kitchen: [-15.7, 8.6, -15.0, 12.6] },
-  millennium: { booth: [42.0, 89.2, 46.0, 89.9], bar: [36.3, 80.5, 37.5, 88.0], loungeA: [50.8, 80.0, 51.7, 85.0], loungeB: [50.8, 86.5, 51.7, 90.5] },
+  millennium: { booth: [42.0, 89.2 + MIL_DZ, 46.0, 89.9 + MIL_DZ], bar: [36.3, 80.5 + MIL_DZ, 37.5, 88.0 + MIL_DZ], loungeA: [50.8, 80.0 + MIL_DZ, 51.7, 85.0 + MIL_DZ], loungeB: [50.8, 86.5 + MIL_DZ, 51.7, 90.5 + MIL_DZ] },
 };
 export function placeColliders() {
   const c = []; const box = r => c.push({ type: 'box', min: [r[0], r[1]], max: [r[2], r[3]] }); const circ = (x, z, r) => c.push({ type: 'circle', c: [x, z], r });
@@ -248,9 +248,9 @@ function buildMillennium(root, { low }) {
   const I = IN.millennium, [x0, z0, x1, z1] = I.rect;
   // trusses
   const truss = new THREE.MeshStandardMaterial({ color: 0x2a2a30, metalness: 0.8, roughness: 0.4 });
-  for (const z of [81, 85, 89]) B.box(truss, x0, 5.6, z - 0.12, x1, 5.84, z + 0.12);
+  for (const z of [81 + MIL_DZ, 85 + MIL_DZ, 89 + MIL_DZ]) B.box(truss, x0, 5.6, z - 0.12, x1, 5.84, z + 0.12);
   // dance floor (unlit instanced tiles, colours animated)
-  const tiles = []; for (let i = 0; i < 7; i++) for (let j = 0; j < 6; j++) tiles.push({ x: 40.5 + 0.5 + i, y: 0.02, z: 81.5 + 0.5 + j, i, j });
+  const tiles = []; for (let i = 0; i < 7; i++) for (let j = 0; j < 6; j++) tiles.push({ x: 40.5 + 0.5 + i, y: 0.02, z: 81.5 + MIL_DZ + 0.5 + j, i, j });
   const tg = new THREE.BoxGeometry(0.96, 0.03, 0.96);
   const tileM = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
   const floor = instances(tg, tileM, tiles.map(t => ({ ...t, color: '#000000' })), { cast: false, name: 'danceFloor' }); g.add(floor);
@@ -285,21 +285,21 @@ function buildMillennium(root, { low }) {
   // lounge sofas (velvet)
   const velvet = qmat('fabric', { color: 0x5a1a4a }); for (const r of [P.millennium.loungeA, P.millennium.loungeB]) { B.box(velvet, r[0], 0, r[1], r[2], 0.45, r[3]); B.box(velvet, r[2] - 0.25, 0.45, r[1], r[2], 1.0, r[3]); }
   // neon tubes on the walls
-  const neon2 = mat('neon', { color: 0xff3cac, intensity: 2.4 }); for (const z of [80, 84, 88]) B.box(neon2, x1 - 0.06, 0.4, z, x1 - 0.03, 3.4, z + 0.06);
+  const neon2 = mat('neon', { color: 0xff3cac, intensity: 2.4 }); for (const z of [80 + MIL_DZ, 84 + MIL_DZ, 88 + MIL_DZ]) B.box(neon2, x1 - 0.06, 0.4, z, x1 - 0.03, 3.4, z + 0.06);
   const neon3 = mat('neon', { color: 0x7a5cff, intensity: 2.4 }); B.box(neon3, x0 + 0.03, 4.2, z0 + 0.5, x0 + 0.06, 4.26, z1 - 0.5); B.box(neon3, x1 - 0.06, 4.2, z0 + 0.5, x1 - 0.03, 4.26, z1 - 0.5);
   // light beams (additive cones hanging from the trusses) + mirror ball
   const beamM = []; const beams = [];
   for (let i = 0; i < (low ? 4 : 8); i++) { const col = new THREE.Color().setHSL(i / 8, 1, 0.55); const m = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.13, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }); beamM.push(m);
-    const cone = new THREE.ConeGeometry(0.9, 5.4, 18, 1, true); cone.translate(0, -2.7, 0); const piv = new THREE.Group(); piv.position.set(39 + (i % 4) * 3.4, 5.5, i < 4 ? 81 : 89); const mm = new THREE.Mesh(cone, m); piv.add(mm); g.add(piv); beams.push({ piv, ph: R() * 6, sp: 0.6 + R() * 0.8 }); }
-  const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 2), new THREE.MeshStandardMaterial({ color: 0xe8e8f0, metalness: 1, roughness: 0.08, flatShading: true })); ball.position.set(44, 5.2, 84.5); g.add(ball);
-  const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 1.2, 4), truss); cord.position.set(44, 5.9, 84.5); g.add(cord);
+    const cone = new THREE.ConeGeometry(0.9, 5.4, 18, 1, true); cone.translate(0, -2.7, 0); const piv = new THREE.Group(); piv.position.set(39 + (i % 4) * 3.4, 5.5, (i < 4 ? 81 : 89) + MIL_DZ); const mm = new THREE.Mesh(cone, m); piv.add(mm); g.add(piv); beams.push({ piv, ph: R() * 6, sp: 0.6 + R() * 0.8 }); }
+  const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 2), new THREE.MeshStandardMaterial({ color: 0xe8e8f0, metalness: 1, roughness: 0.08, flatShading: true })); ball.position.set(44, 5.2, 84.5 + MIL_DZ); g.add(ball);
+  const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 1.2, 4), truss); cord.position.set(44, 5.9, 84.5 + MIL_DZ); g.add(cord);
   // sparkles of the mirror ball on the walls (additive points, rotating)
   let sparks = null;
   if (!low) { const N = 260, pos = new Float32Array(N * 3); for (let i = 0; i < N; i++) { const a = R() * 6.28, h = 0.5 + R() * 5.5; const rr = 7.5; pos[i * 3] = Math.cos(a) * rr; pos[i * 3 + 1] = h; pos[i * 3 + 2] = Math.sin(a) * rr * 0.85; }
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    sparks = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 0.09, map: glowTex(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false })); sparks.position.set(44, 0, 85); g.add(sparks); }
+    sparks = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 0.09, map: glowTex(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false })); sparks.position.set(44, 0, 85 + MIL_DZ); g.add(sparks); }
   B.flush(g, { name: 'millennium' });
-  const lights = [pointLight(g, 0xff3cac, 30, 16, 41, 4.5, 84.5), pointLight(g, 0x3cf0ff, 30, 16, 47, 4.5, 84.5)];
+  const lights = [pointLight(g, 0xff3cac, 30, 16, 41, 4.5, 84.5 + MIL_DZ), pointLight(g, 0x3cf0ff, 30, 16, 47, 4.5, 84.5 + MIL_DZ)];
   const state = { mode: 0, beat: 0 };
   const c = new THREE.Color();
   function update(dt, t) {
@@ -318,7 +318,7 @@ function buildMillennium(root, { low }) {
     lights[0].color.setHSL((t * 0.07) % 1, 1, 0.55); lights[1].color.setHSL((t * 0.07 + 0.5) % 1, 1, 0.55);
     lights[0].intensity = lights[0].userData.base * (0.6 + pulse * 0.6); lights[1].intensity = lights[1].userData.base * (0.6 + (1 - pulse) * 0.5);
   }
-  return { group: g, lights, door: V(44, 0, 78), state, led, booth: boothG, update };
+  return { group: g, lights, door: V(44, 0, 78 + MIL_DZ), state, led, booth: boothG, update };
 }
 
 export const PLACE_BUILDERS = { celtic: buildCeltic, sushi: buildSushi, ashish: buildAshish, seghino: buildSeghino, millennium: buildMillennium };

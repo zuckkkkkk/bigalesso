@@ -2,7 +2,9 @@
 // Serve la build statica (dist/) e un WebSocket su /ws con:
 //   - stanze private a codice di 4 lettere (max 8) e il "Quartiere pubblico" a shard da 24 con interest management;
 //   - partite arbitrate dal server (server/match.mjs: regole in shared/*.mjs);
-//   - salvataggi dei giocatori, classifiche e seme del giorno (server/api.mjs + server/store.mjs, DATA_DIR=/data).
+//   - salvataggi dei giocatori, classifiche e seme del giorno (server/api.mjs + server/store.mjs, DATA_DIR=/data);
+//   - mondo condiviso (src/worldsync.js): 'ws' = piccolo stato chiave/valore per stanza con operazioni atomiche (casse,
+//     drop, boss unico, veicoli parcheggiati), mandato a chi entra nel 'welcome'; 'nev' = evento solo ai vicini (nemici).
 // Avvio: PORT=8080 node server/server.mjs
 import http from 'node:http';
 import fs from 'node:fs';
@@ -27,6 +29,8 @@ const MAX_EXTRA = 512;                // bytes, presence extras (car look, job t
 const TOKEN_RE = /^[A-HJ-NP-Z2-9]{16,32}$/;
 const MAX_MSG = 128 * 1024;          // bytes, any message
 const MAX_STATE = 2048;               // bytes, presence state
+const WS_KEYS = 4096, WS_BYTES = 512 * 1024, WS_VAL = 1536; // shared world state per room: keys, total bytes, bytes per value
+const NEAR_R = WORLD_RADIUS + 20;     // metres: 'nev' (near events: enemy snapshots) in shards
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I/O
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 const store = await openStore(log);                     // profiles + leaderboards (DATA_DIR, default /data)
@@ -118,6 +122,33 @@ function send(c, msg) { if (c.ws.readyState === 1) { try { c.ws.send(typeof msg 
 function broadcast(room, msg, except) { const s = JSON.stringify(msg); for (const c of room.clients.values()) if (c !== except) send(c, s); }
 const pub = c => ({ id: c.id, name: c.name, color: c.color, ...(c.extra && Object.keys(c.extra).length ? { extra: c.extra } : {}) });
 
+// ---------------------------------------------------------------- shared world state (per room, see src/worldsync.js)
+// room.ws: key -> { v, j (JSON length), by (owner id for 'mine' keys, else 0), e (expiry ms, 0 = never) }.
+// ops: set (default; v null deletes) · new (only if absent) · take (only if present: deletes it) · cas (only if the
+// current value equals m.if). The server is the referee of who opened a crate or picked a drop first; success is
+// broadcast to the whole room (sender included, with its rid), failure goes back to the sender with the current value.
+const WS_KEY_RE = /^[\w:.\-]{1,40}$/;
+function wsDel(room, k) { const x = room.ws.get(k); if (x) { room.wsBytes -= x.j + k.length; room.ws.delete(k); } }
+function wsLive(room, k, now = Date.now()) { const x = room.ws && room.ws.get(k); if (x && x.e && x.e < now) { wsDel(room, k); return null; } return x || null; }
+function wsDump(room) { const o = {}, now = Date.now(); if (room.ws) for (const k of [...room.ws.keys()]) { const x = wsLive(room, k, now); if (x) o[k] = x.v; } return o; }
+function wsOp(c, room, m) {
+  const k = String(m.k || ''); if (!WS_KEY_RE.test(k)) return;
+  if (!room.ws) { room.ws = new Map(); room.wsBytes = 0; }
+  const op = m.op || 'set', cur = wsLive(room, k), v = m.v === undefined ? null : m.v;
+  const j = v === null ? 0 : JSON.stringify(v).length;
+  const fail = () => send(c, { t: 'ws', k, v: cur ? cur.v : null, by: cur ? cur.by : 0, fail: 1, rid: m.rid });
+  if (j > WS_VAL) return fail();
+  if (op === 'new' && cur) return fail();
+  if (op === 'take' && !cur) return fail();
+  if (op === 'cas' && JSON.stringify(cur ? cur.v : null) !== JSON.stringify(m.if === undefined ? null : m.if)) return fail();
+  if (op === 'take' || v === null) wsDel(room, k);
+  else {
+    if (!cur && (room.ws.size >= WS_KEYS || room.wsBytes + j + k.length > WS_BYTES)) return fail();
+    wsDel(room, k); room.ws.set(k, { v, j, by: m.mine ? c.id : 0, e: m.ttl > 0 ? Date.now() + Math.min(+m.ttl, 3600) * 1000 : 0 }); room.wsBytes += j + k.length;
+  }
+  broadcast(room, { t: 'ws', k, v: op === 'take' ? null : v, by: c.id, rid: m.rid, ...(op === 'take' ? { took: 1 } : {}) });
+}
+
 function joinRoom(c, room) {
   const cap = room.cap || MAX_PLAYERS;
   if (room.clients.size >= cap) return send(c, { t: 'err', code: 'full', msg: 'Stanza piena (max ' + cap + ')' });
@@ -130,7 +161,7 @@ function joinRoom(c, room) {
   // shards: only the states of players nearby (interest management); private rooms: everyone
   const near = x => !room.world || !x.state || !c.state || x === c;
   const states = Object.fromEntries([...room.clients.values()].filter(x => x.state && near(x)).map(x => [x.id, x.state]));
-  send(c, { t: 'welcome', id: c.id, code: room.code, host: room.host, world: !!room.world, cap, players: [...room.clients.values()].map(pub), states });
+  send(c, { t: 'welcome', id: c.id, code: room.code, host: room.host, world: !!room.world, cap, players: [...room.clients.values()].map(pub), states, ws: wsDump(room), st: Date.now() });
   broadcast(room, { t: 'joined', p: pub(c) }, c);
   log('join', room.code, c.id, c.name, room.clients.size + '/' + cap);
 }
@@ -138,6 +169,7 @@ function leaveRoom(c) {
   const room = c.room; if (!room) return;
   room.clients.delete(c.id); c.room = null; c.state = null; c.dirty = false; c.seen = null;
   broadcast(room, { t: 'left', id: c.id });
+  if (room.ws) for (const [k, x] of room.ws) if (x.by === c.id) { wsDel(room, k); broadcast(room, { t: 'ws', k, v: null, by: 0 }); } // 'mine' keys (a boss, a borrowed car) go with their owner
   for (const o of room.clients.values()) if (o.seen) o.seen.delete(c.id);
   if (room.clients.size === 0) { rooms.delete(room.code); log('room closed', room.code); return; }
   if (room.host === c.id) { room.host = room.clients.keys().next().value; broadcast(room, { t: 'host', id: room.host }); log('host ->', room.host, 'in', room.code); }
@@ -213,6 +245,14 @@ function onMessage(c, data, isBinary) {
       if (JSON.stringify(m.e).length > 4096) return;
       broadcast(room, { t: 'ev', from: c.id, e: m.e }, c); break;
     }
+    case 'nev': { // like 'ev', but in shards only to the players near the sender (enemy snapshots: src/worldsync.js)
+      if (!room || !m.e || typeof m.e !== 'object') return;
+      const s = JSON.stringify({ t: 'ev', from: c.id, e: m.e }); if (s.length > 4200) return;
+      const R = Math.min(200, +m.r || NEAR_R), me = c.state;
+      for (const o of room.clients.values()) if (o !== c && (!room.world || !me || !o.state || (o.state.x - me.x) ** 2 + (o.state.z - me.z) ** 2 <= R * R)) send(o, s);
+      break;
+    }
+    case 'ws': if (room) wsOp(c, room, m); break;
     case 'to': { // direct message to one peer (e.g. guest input -> host)
       if (!room) return; const dst = room.clients.get(+m.id); if (!dst) return;
       send(dst, { t: 'msg', from: c.id, d: m.d }); break;
@@ -226,7 +266,7 @@ function onMessage(c, data, isBinary) {
       if (!allow(c, 20)) return; // max ~7 chat msgs/s
       broadcast(room, { t: 'chat', id: c.id, name: c.name, text }); break;
     }
-    case 'ping': send(c, { t: 'pong', ts: m.ts, n: room ? room.clients.size : 0 }); break;
+    case 'ping': send(c, { t: 'pong', ts: m.ts, st: Date.now(), n: room ? room.clients.size : 0 }); break; // st: server clock (net.serverNow)
   }
 }
 
@@ -271,6 +311,7 @@ setInterval(() => {
   for (const room of rooms.values()) if (room.world) for (const c of [...room.clients.values()]) {
     if (now - (c.lastStateAt || 0) > WORLD_IDLE_MS) { leaveRoom(c); send(c, { t: 'bye', reason: 'idle' }); }
   }
+  for (const room of rooms.values()) if (room.ws) for (const k of [...room.ws.keys()]) wsLive(room, k, now); // expired drops
 }, 15000).unref();
 
 // ---------------------------------------------------------------- http + ws
@@ -301,7 +342,7 @@ wss.on('connection', ws => {
   ws.on('message', (d, bin) => onMessage(c, d, bin));
   ws.on('close', () => { matches.onClose(c); leaveRoom(c); });
   ws.on('error', () => { });
-  send(c, { t: 'hi', id: c.id, max: MAX_PLAYERS, world: WORLD_CAP, games: matches.typesNow(), v: 2 });
+  send(c, { t: 'hi', id: c.id, max: MAX_PLAYERS, world: WORLD_CAP, games: matches.typesNow(), v: 2, st: Date.now() });
 });
 // heartbeat: drop dead sockets (no pong within one interval)
 const hb = setInterval(() => {

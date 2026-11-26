@@ -1,142 +1,77 @@
-// combat/fx.js — pooled visual effects (instanced, built at start-up so the loading warm-up compiles them) and the
-// synthesized weapon sounds (WebAudio through audio.js, no files).
-//   splats (decals on walls/floor, fade), puffs (clouds / droplets / smoke, camera-facing), stars, beams (water jets),
-//   flashes (muzzle / explosion, additive). Each pool is one InstancedMesh: one draw call when active, none when empty.
+// combat/fx.js — combat visual effects on the GPU particle engine (src/particles.js: pooled ring buffers, one draw
+// call per family, simulated in the vertex shader, one program compiled at install) + the synthesized weapon sounds
+// (WebAudio through audio.js, no files).
+// Legacy API (unchanged signatures): splat (decals on walls/floor, fade), puff / burst (clouds, droplets, smoke),
+//   stars (comic stars, bounce or orbit), flash (muzzle / explosion, additive), beam (water jets), update, clear, sfx.
+// New: explode(pos, opts), impact(pos, normal, kind), hit(pos, dir, opts), muzzle(pos, dir, base), casing, tracer,
+//   poof, feathers, zombieSpawn, bossEntrance, bossDeath, police — the same functions as window.__particles.
 import * as THREE from 'three';
+import { installParticles, SH, MODE } from '../particles.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
-const Z = V(0, 0, 1);
-
-function canvasTex(draw, n = 128) {
-  const c = document.createElement('canvas'); c.width = c.height = n; const g = c.getContext('2d'); draw(g, n);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 2; return t;
-}
-const splatTex = () => canvasTex((g, n) => {
-  g.fillStyle = '#fff'; const c = n / 2;
-  g.beginPath(); for (let i = 0; i <= 24; i++) { const a = i / 24 * Math.PI * 2, r = n * (0.26 + Math.random() * 0.1); g.lineTo(c + Math.cos(a) * r, c + Math.sin(a) * r); } g.fill();
-  for (let i = 0; i < 9; i++) { const a = Math.random() * Math.PI * 2, d = n * (0.3 + Math.random() * 0.14), r = n * (0.03 + Math.random() * 0.05); g.beginPath(); g.arc(c + Math.cos(a) * d, c + Math.sin(a) * d, r, 0, 7); g.fill(); }
-  g.globalCompositeOperation = 'destination-out'; g.fillStyle = 'rgba(0,0,0,.18)'; for (let i = 0; i < 6; i++) { g.beginPath(); g.arc(c + (Math.random() - 0.5) * n * 0.3, c + (Math.random() - 0.5) * n * 0.3, n * 0.06, 0, 7); g.fill(); }
-});
-const cloudTex = () => canvasTex((g, n) => {
-  for (let i = 0; i < 7; i++) {
-    const x = n * (0.3 + Math.random() * 0.4), y = n * (0.3 + Math.random() * 0.4), r = n * (0.16 + Math.random() * 0.14);
-    const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.7, 'rgba(255,255,255,.85)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
-  }
-});
-const starTex = () => canvasTex((g, n) => {
-  const c = n / 2; g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.55)'; g.lineWidth = n * 0.04; g.beginPath();
-  for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? n * 0.18 : n * 0.44; g.lineTo(c + Math.cos(a) * r, c + Math.sin(a) * r); }
-  g.closePath(); g.fill(); g.stroke();
-});
-const flashTex = () => canvasTex((g, n) => {
-  const c = n / 2, gr = g.createRadialGradient(c, c, 0, c, c, c); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,.7)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = gr; g.fillRect(0, 0, n, n);
-  g.fillStyle = 'rgba(255,255,255,.9)'; for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; g.beginPath(); g.moveTo(c, c); g.lineTo(c + Math.cos(a - 0.12) * c * 0.95, c + Math.sin(a - 0.12) * c * 0.95); g.lineTo(c + Math.cos(a + 0.12) * c * 0.95, c + Math.sin(a + 0.12) * c * 0.95); g.fill(); }
-}, 64);
-
-// one pool = one InstancedMesh; items are plain objects, compacted into the first `count` instances every frame
-class Pool {
-  constructor(scene, geo, mat, n, mode) {
-    const im = new THREE.InstancedMesh(geo, mat, n); im.frustumCulled = false; im.count = 0; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    im.castShadow = false; im.receiveShadow = false; im.renderOrder = mode === 'splat' ? 1 : 3;
-    im.setColorAt(0, new THREE.Color(1, 1, 1)); im.instanceColor.setUsage(THREE.DynamicDrawUsage);
-    scene.add(im); this.im = im; this.mode = mode; this.n = n; this.next = 0;
-    this.items = Array.from({ length: n }, () => ({ alive: false, pos: V(), vel: V(), q: new THREE.Quaternion(), s: 1, s1: 1, sy: 1, life: 0, max: 1, col: new THREE.Color(), rot: 0, spin: 0, grav: 0, drag: 0, len: 1 }));
-  }
-  spawn() { // free slot, else recycle the oldest-in-ring
-    for (let k = 0; k < this.n; k++) { const i = (this.next + k) % this.n; if (!this.items[i].alive) { this.next = (i + 1) % this.n; return this.items[i]; } }
-    const it = this.items[this.next]; this.next = (this.next + 1) % this.n; return it;
-  }
-}
-const _m = new THREE.Matrix4(), _s = V(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _p = V();
+const _c = new THREE.Color();
+const rgbOf = c => { if (c && c.isColor) return c; try { _c.set(c == null ? '#ffffff' : c); } catch (e) { _c.setRGB(1, 1, 1); } return _c; };
 
 export function createCombatFX({ scene, camera, audio }) {
-  const tex = { splat: splatTex(), cloud: cloudTex(), star: starTex(), flash: flashTex() };
-  const plane = new THREE.PlaneGeometry(1, 1);
-  // decals: lit (night makes them darker), polygon offset against the surface
-  const splatMat = new THREE.MeshStandardMaterial({ map: tex.splat, transparent: true, depthWrite: false, roughness: 0.25, metalness: 0, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
-  const puffMat = new THREE.MeshBasicMaterial({ map: tex.cloud, transparent: true, depthWrite: false, fog: true });
-  const starMat = new THREE.MeshBasicMaterial({ map: tex.star, transparent: true, depthWrite: false, toneMapped: false });
-  const flashMat = new THREE.MeshBasicMaterial({ map: tex.flash, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
-  const beamGeo = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true); beamGeo.rotateX(Math.PI / 2); beamGeo.translate(0, 0, 0.5); // unit length along +z
-  const beamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.62, depthWrite: false, toneMapped: false });
-  const P = {
-    splat: new Pool(scene, plane, splatMat, 140, 'splat'),
-    puff: new Pool(scene, plane, puffMat, 90, 'bill'),
-    star: new Pool(scene, plane, starMat, 36, 'bill'),
-    flash: new Pool(scene, plane, flashMat, 10, 'bill'),
-    beam: new Pool(scene, beamGeo, beamMat, 10, 'beam'),
-  };
-  for (const k in P) P[k].im.name = 'combat-fx-' + k;
-  let night = 0;
+  const P = installParticles({ scene, camera });
+  const S = P.spec(); // the engine's reusable spawn spec (filled, then P.emit(system, S))
 
+  // decal on a surface (normal), grows in ~0.08 s, fades at the end; lit (darker at night)
   function splat(pos, normal, color, size = 0.5, life = 10) {
-    const it = P.splat.spawn(); it.alive = true; it.pos.copy(pos).addScaledVector(normal, 0.012);
-    it.q.setFromUnitVectors(Z, normal); _q2.setFromAxisAngle(Z, Math.random() * 6.28); it.q.multiply(_q2);
-    it.s1 = size * (0.8 + Math.random() * 0.45); it.s = it.s1 * 0.4; it.life = 0; it.max = life; it.col.set(color);
+    if (!pos) return;
+    P.spec(); const c = rgbOf(color), n = normal || UP;
+    S.x = pos.x; S.y = pos.y; S.z = pos.z; S.vx = n.x; S.vy = n.y; S.vz = n.z; S.mode = MODE.plane; S.shape = SH.splat;
+    S.s1 = size * (0.8 + Math.random() * 0.45); S.s0 = S.s1 * 0.4; S.sc = Math.max(4, life / 0.08 * 0.6); S.life = life;
+    S.r0 = S.r1 = c.r; S.g0 = S.g1 = c.g; S.b0 = S.b1 = c.b; S.a0 = S.a1 = 0.92; S.lit = 2; S.add = 0; // lit 2: as dark as the wall at night
+    P.emit('decal', S);
   }
+  // camera-facing cloud; o: { speed, up, vel, size, grow, life, grav (down +), drag, lit }
   function puff(pos, color, o = {}) {
-    const it = P.puff.spawn(); it.alive = true; it.pos.copy(pos);
-    const sp = o.speed ?? 0.8; it.vel.set((Math.random() - 0.5) * sp, (o.up ?? 0.4) + Math.random() * sp * 0.6, (Math.random() - 0.5) * sp);
-    if (o.vel) it.vel.add(o.vel);
-    it.s = (o.size ?? 0.4) * (0.7 + Math.random() * 0.6); it.s1 = it.s * (o.grow ?? 1.9); it.life = 0; it.max = (o.life ?? 0.7) * (0.75 + Math.random() * 0.5);
-    it.col.set(color); it.rot = Math.random() * 6.28; it.spin = (Math.random() - 0.5) * 2; it.grav = o.grav ?? -0.2; it.drag = o.drag ?? 1.8; it.lit = o.lit !== false;
+    if (!pos) return;
+    P.spec(); const c = rgbOf(color), sp = o.speed ?? 0.8;
+    S.x = pos.x; S.y = pos.y; S.z = pos.z;
+    S.vx = (Math.random() - 0.5) * sp; S.vy = (o.up ?? 0.4) + Math.random() * sp * 0.6; S.vz = (Math.random() - 0.5) * sp;
+    if (o.vel) { S.vx += o.vel.x; S.vy += o.vel.y; S.vz += o.vel.z; }
+    S.s0 = (o.size ?? 0.4) * (0.7 + Math.random() * 0.6); S.s1 = S.s0 * (o.grow ?? 1.9); S.sc = 2;
+    S.life = (o.life ?? 0.7) * (0.75 + Math.random() * 0.5); S.g = o.grav ?? -0.2; S.k = o.drag ?? 1.8;
+    S.r0 = S.r1 = c.r; S.g0 = S.g1 = c.g; S.b0 = S.b1 = c.b; S.a0 = 0.95; S.a1 = 0; S.cc = 2.2;
+    S.spin = (Math.random() - 0.5) * 2; S.lit = o.lit === false ? 0 : 1; S.add = 0; S.shape = SH.smoke; S.fadeIn = 0.02;
+    P.emit('smoke', S);
   }
   function burst(pos, color, n = 8, o = {}) { for (let i = 0; i < n; i++) puff(pos, color, o); }
+  // comic stars: fly up, fall, bounce; o.orbit = circle around pos (K.O.)
   function stars(pos, n = 5, o = {}) {
+    if (!pos) return;
+    const c = rgbOf(o.color || '#ffe23a'), r = c.r * 1.3, g = c.g * 1.3, b = c.b * 1.3;
     for (let i = 0; i < n; i++) {
-      const it = P.star.spawn(); it.alive = true; it.pos.copy(pos);
-      const a = Math.random() * 6.28; it.vel.set(Math.cos(a) * 1.6, 1.4 + Math.random() * 1.6, Math.sin(a) * 1.6);
-      it.s = it.s1 = (o.size ?? 0.22) * (0.8 + Math.random() * 0.5); it.life = 0; it.max = o.life ?? 1.1; it.col.set(o.color || '#ffe23a');
-      it.rot = Math.random() * 6.28; it.spin = (Math.random() - 0.5) * 8; it.grav = 5.5; it.drag = 0.8; it.lit = false; it.orbit = o.orbit ? { c: pos.clone(), a, r: 0.32, h: pos.y } : null;
+      P.spec(); const a = Math.random() * 6.283;
+      S.x = pos.x; S.y = pos.y; S.z = pos.z; S.shape = SH.star; S.s0 = S.s1 = (o.size ?? 0.22) * (0.8 + Math.random() * 0.5);
+      S.life = o.life ?? 1.1; S.r0 = S.r1 = r; S.g0 = S.g1 = g; S.b0 = S.b1 = b; S.a0 = S.a1 = 1; S.add = 0.15; S.spin = (Math.random() - 0.5) * 8;
+      if (o.orbit) { S.mode = MODE.orbit; S.vx = 0.32; S.vy = 5; S.vz = a + i * 6.283 / n; S.spin = 3; }
+      else { S.vx = Math.cos(a) * 1.6; S.vy = 1.4 + Math.random() * 1.6; S.vz = Math.sin(a) * 1.6; S.g = 5.5; S.k = 0.8; S.G = 0.02; S.rest = 0.4; }
+      P.emit('glow', S);
     }
   }
+  // additive flash (grows x2 over its life)
   function flash(pos, color, size = 0.25, life = 0.06) {
-    const it = P.flash.spawn(); it.alive = true; it.pos.copy(pos); it.s = it.s1 = size; it.life = 0; it.max = life; it.col.set(color); it.rot = Math.random() * 6.28; it.spin = 0; it.vel.set(0, 0, 0); it.grav = 0; it.drag = 0; it.lit = false;
+    if (!pos) return;
+    const c = rgbOf(color), r = c.r, g = c.g, b = c.b;
+    P.spec(); S.x = pos.x; S.y = pos.y; S.z = pos.z; S.shape = SH.glow; S.s0 = size * 1.1; S.s1 = size * 2.3; S.life = life;
+    S.r0 = r * 3.2; S.g0 = g * 3.2; S.b0 = b * 3.2; S.a0 = 1; S.r1 = r * 2; S.g1 = g * 2; S.b1 = b * 2; S.a1 = 0; P.emit('glow', S);
+    P.spec(); S.x = pos.x; S.y = pos.y; S.z = pos.z; S.shape = SH.burst; S.s0 = size * 0.8; S.s1 = size * 1.7; S.life = life * 0.9;
+    S.r0 = r * 2.4; S.g0 = g * 2.4; S.b0 = b * 2.4; S.a0 = 1; S.r1 = r; S.g1 = g; S.b1 = b; S.a1 = 0; S.add = 0.9; P.emit('glow', S);
   }
+  // water jet / beam from a to b (camera-facing ribbon, thins out)
   function beam(a, b, color, width = 0.022, life = 0.09) {
-    const it = P.beam.spawn(); it.alive = true; it.pos.copy(a); _p.copy(b).sub(a); it.len = Math.max(0.01, _p.length());
-    it.q.setFromUnitVectors(Z, _p.normalize()); it.s = it.s1 = width; it.life = 0; it.max = life; it.col.set(color);
+    if (!a || !b) return;
+    const c = rgbOf(color);
+    P.spec(); S.x = a.x; S.y = a.y; S.z = a.z; S.vx = b.x - a.x; S.vy = b.y - a.y; S.vz = b.z - a.z; S.mode = MODE.segment; S.shape = SH.glow;
+    S.s0 = width * 3.2; S.s1 = width * 1.3; S.life = life; S.r0 = c.r * 1.8; S.g0 = c.g * 1.8; S.b0 = c.b * 1.8; S.a0 = 0.9; S.r1 = c.r * 1.4; S.g1 = c.g * 1.4; S.b1 = c.b * 1.4; S.a1 = 0.2; S.add = 0.55;
+    P.emit('glow', S);
   }
-
-  const camQ = new THREE.Quaternion();
-  function update(dt, nightAmount = 0) {
-    night = nightAmount;
-    camera.getWorldQuaternion(camQ);
-    const lit = 1 - 0.62 * night;
-    for (const key in P) {
-      const pool = P[key], im = pool.im; let n = 0;
-      for (const it of pool.items) {
-        if (!it.alive) continue;
-        it.life += dt; if (it.life >= it.max) { it.alive = false; continue; }
-        const u = it.life / it.max;
-        if (pool.mode === 'splat') {
-          const grow = Math.min(1, it.life / 0.08), fade = u > 0.8 ? 1 - (u - 0.8) / 0.2 : 1;
-          const s = it.s1 * (0.4 + 0.6 * grow) * fade; _s.set(s, s, s);
-          _m.compose(it.pos, it.q, _s);
-        } else if (pool.mode === 'beam') {
-          const w = it.s1 * (1 - u * 0.6); _s.set(w, w, it.len); _m.compose(it.pos, it.q, _s);
-        } else {
-          if (it.orbit) { it.orbit.a += dt * 5; it.pos.set(it.orbit.c.x + Math.cos(it.orbit.a) * it.orbit.r, it.orbit.h + Math.sin(it.life * 6) * 0.03, it.orbit.c.z + Math.sin(it.orbit.a) * it.orbit.r); }
-          else {
-            it.vel.multiplyScalar(Math.exp(-it.drag * dt)); it.vel.y -= it.grav * dt; it.pos.addScaledVector(it.vel, dt);
-            if (it.pos.y < 0.02 && key === 'star') { it.pos.y = 0.02; it.vel.y = Math.abs(it.vel.y) * 0.4; }
-          }
-          it.rot += it.spin * dt;
-          const s = key === 'flash' ? it.s1 * (1 + u) : key === 'star' ? it.s1 * (u > 0.75 ? 1 - (u - 0.75) / 0.25 : 1) : it.s + (it.s1 - it.s) * (1 - (1 - u) * (1 - u));
-          const sc = key === 'puff' ? s * (u > 0.6 ? 1 - (u - 0.6) / 0.4 * 0.7 : 1) : s; _s.set(sc, sc, sc);
-          _q2.setFromAxisAngle(Z, it.rot); _q.copy(camQ).multiply(_q2); _m.compose(it.pos, _q, _s);
-        }
-        im.setMatrixAt(n, _m);
-        if (pool.mode === 'bill' && key === 'puff' && it.lit) { _c.copy(it.col).multiplyScalar(lit); im.setColorAt(n, _c); } else im.setColorAt(n, it.col);
-        n++;
-      }
-      if (n || im.count) { im.count = n; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
-    }
-  }
-  const _c = new THREE.Color();
-  function clear() { for (const k in P) { for (const it of P[k].items) it.alive = false; P[k].im.count = 0; } }
+  const UP = V(0, 1, 0);
+  function update(dt, nightAmount = 0) { P.update(dt, nightAmount); }
+  function clear() { P.clear(); }
 
   // ------------------------------------------------------------ sounds (synth; distance attenuated)
   const camPos = V();
@@ -177,5 +112,9 @@ export function createCombatFX({ scene, camera, audio }) {
       }
     } catch (e) { }
   }
-  return { splat, puff, burst, stars, flash, beam, update, clear, sfx, pools: P };
+  return {
+    splat, puff, burst, stars, flash, beam, update, clear, sfx, pools: P.systems,
+    explode: P.explode, impact: P.impact, hit: P.hit, muzzle: P.muzzle, casing: P.casing, tracer: P.tracer, poof: P.poof, feathers: P.feathers,
+    zombieSpawn: P.zombieSpawn, bossEntrance: P.bossEntrance, bossDeath: P.bossDeath, police: P.police, crash: P.crash, particles: P,
+  };
 }
