@@ -277,7 +277,8 @@ export function createFX(scene, camera, opts = {}) {
       const fIn = mix(mix(1, 0.75, n), mix(0.28, 0.05, n), off), eIn = mix(mix(1, 0.8, n), mix(0.36, 0.1, n), off);
       // outdoor: the sun (key), the sky (hemi / env / fill) from the time of day; at night the old art-directed levels
       const kOut = D.sunK * 1.2 * (1 + 0.12 * D.golden), amb = D.dayK * (1 - 0.28 * D.golden); // golden hour: less sky, more sun
-      const hOut = mix(0.07, 1, amb) * 1.9, fOut = mix(0.05, 1, amb) * 1.3, eOut = mix(0.1, 1, amb) * 1.5;
+      // (night floor a touch above the old switch's 7 % / 5 % / 10 %: zombies walk at night, they must stay readable)
+      const hOut = mix(0.1, 1, amb) * 1.9, fOut = mix(0.075, 1, amb) * 1.3, eOut = mix(0.13, 1, amb) * 1.5;
       scaleProp(lights.key, 'intensity', mix(kIn, kOut, o));
       scaleProp(lights.hemi, 'intensity', mix(hIn, hOut, o));
       scaleProp(lights.fill, 'intensity', mix(fIn, fOut, o));
@@ -295,7 +296,7 @@ export function createFX(scene, camera, opts = {}) {
     const dark = Math.max(off * (0.6 + 0.4 * n), n * 0.4); // how dark the arcade room is: the neon and the marquee pop
     if (cab) { if (dark > 0.001) scaleProp(cab.marqueeMat, 'emissiveIntensity', 1 + 0.5 * dark); if (cab.screenMat) cab.screenMat.uniforms.bright.value = 1.55 + 0.25 * dark; }
     // cold, dim moonlight: through the arcade window indoors, from the moon's real direction outdoors
-    moon.intensity = mix(0.28 * n * mix(0.35, 1, off), 0.6 * D.moonK, o);
+    moon.intensity = mix(0.28 * n * mix(0.35, 1, off), 0.78 * D.moonK, o);
     moonD.copy(moonIn).lerp(D.moonDir, o).normalize();
     moon.position.copy(moon.target.position).addScaledVector(moonD, 5);
     // gfx: the moon stays in the light list (intensity 0 by day): toggling it changed the light count and

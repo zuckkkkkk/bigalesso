@@ -323,7 +323,13 @@ export function installParticles({ scene, camera, renderer = null, low = null } 
     mesh.castShadow = false; mesh.receiveShadow = false; mesh.matrixAutoUpdate = false; mesh.raycast = () => { };
     mesh.userData.noWarm = true; mesh.userData.noBatch = true; // gfx.js warm-up / batch.js: leave alone (compiled + uploaded by prewarm)
     root.add(mesh);
-    return { name, cap, arr, ib, geo, mesh, head: 0, used: 0, wrapped: false, lastDeath: -1, dStart: -1, dCount: 0, r0: { start: 0, count: 0 }, r1: { start: 0, count: 0 }, spawned: 0 };
+    const S = { name, cap, arr, ib, geo, mesh, head: 0, used: 0, wrapped: false, lastDeath: -1, pStart: 0, pCount: 0, fCount: 0, dirty: false, r0: { start: 0, count: 0 }, r1: { start: 0, count: 0 }, spawned: 0 };
+    // slots written since the last CONFIRMED upload stay pending (several flushes may happen before a render)
+    ib.onUpload(() => {
+      if (S.pCount >= S.cap && S.fCount < S.cap) { S.fCount = 0; S.dirty = true; return; } // saturated after a partial flush: next one uploads everything
+      const f = Math.min(S.fCount, S.pCount); S.pStart = (S.pStart + f) % S.cap; S.pCount -= f; S.fCount = 0; if (S.pCount > 0) S.dirty = true;
+    });
+    return S;
   }
   const CAP = mobile ? { glow: 1024, smoke: 768, decal: 40 } : { glow: 3072, smoke: 2048, decal: 112 };
   const SYS = { decal: makeSystem('decal', CAP.decal, 1, true), smoke: makeSystem('smoke', CAP.smoke, 2, false), glow: makeSystem('glow', CAP.glow, 3, false) };
@@ -365,8 +371,9 @@ export function installParticles({ scene, camera, renderer = null, low = null } 
     a[o + 20] = SP.g; a[o + 21] = SP.k; a[o + 22] = SP.G; a[o + 23] = SP.rest;
     a[o + 24] = SP.shape; a[o + 25] = SP.mode; a[o + 26] = SP.add; a[o + 27] = SP.lit;
     a[o + 28] = SP.stretch; a[o + 29] = SP.fadeIn; a[o + 30] = SP.sc; a[o + 31] = SP.cc;
-    if (S.dCount === 0) S.dStart = i;
-    if (S.dCount < S.cap) S.dCount++;
+    if (S.pCount === 0) S.pStart = i;
+    if (S.pCount < S.cap) S.pCount++;
+    S.dirty = true;
     S.head = i + 1; if (S.head >= S.cap) { S.head = 0; S.wrapped = true; }
     if (S.used < i + 1) S.used = i + 1;
     if (t0 + life > S.lastDeath) S.lastDeath = t0 + life;
@@ -376,14 +383,14 @@ export function installParticles({ scene, camera, renderer = null, low = null } 
     const t = performance.now();
     for (let j = 0; j < LIST.length; j++) {
       const S = LIST[j];
-      if (S.dCount > 0) {
+      if (S.dirty) { // the pending slots are contiguous in ring order (pStart, pCount): one or two ranges, or all
         const ur = S.ib.updateRanges; ur.length = 0;
-        if (S.dCount < S.cap) {
-          const s = S.dStart, e = s + S.dCount;
-          if (e <= S.cap) { S.r0.start = s * STRIDE; S.r0.count = S.dCount * STRIDE; ur.push(S.r0); }
+        if (S.pCount < S.cap) {
+          const s = S.pStart, e = s + S.pCount;
+          if (e <= S.cap) { S.r0.start = s * STRIDE; S.r0.count = S.pCount * STRIDE; ur.push(S.r0); }
           else { S.r0.start = s * STRIDE; S.r0.count = (S.cap - s) * STRIDE; S.r1.start = 0; S.r1.count = (e - S.cap) * STRIDE; ur.push(S.r0, S.r1); }
         }
-        S.ib.needsUpdate = true; S.dCount = 0; S.dStart = -1;
+        S.ib.needsUpdate = true; S.dirty = false; S.fCount = S.pCount;
         S.geo.instanceCount = S.wrapped ? S.cap : S.used;
       }
       const vis = T < S.lastDeath; if (S.mesh.visible !== vis) S.mesh.visible = vis;
@@ -395,7 +402,7 @@ export function installParticles({ scene, camera, renderer = null, low = null } 
 
   function rebase() { // keep the shader clock small (float precision)
     const sh = 3000; T -= sh; U.uTime.value = T; U.uClear.value -= sh;
-    for (const S of LIST) { for (let i = 0; i < S.cap; i++) S.arr[i * STRIDE + 3] -= sh; S.lastDeath -= sh; S.dCount = S.cap; S.dStart = 0; S.ib.updateRanges.length = 0; }
+    for (const S of LIST) { for (let i = 0; i < S.cap; i++) S.arr[i * STRIDE + 3] -= sh; S.lastDeath -= sh; S.pCount = S.cap; S.pStart = 0; S.fCount = 0; S.dirty = true; }
   }
 
   // ---------------------------------------------------------------- quality / LOD
@@ -666,12 +673,13 @@ export function installParticles({ scene, camera, renderer = null, low = null } 
     if (!p) return;
     const L = lod(p); if (!L) return; stats.calls++;
     const s = o.scale || 1, G = o.ground ?? 0, dur = o.dur ?? 1.0;
-    reset(); SP.x = p.x; SP.y = G; SP.z = p.z; SP.mode = MODE.ground; SP.shape = SH.crack; SP.s0 = 0.5 * s; SP.s1 = 1.9 * s; SP.sc = 5; SP.life = rnd(7, 9); rgb0(0.05, 0.04, 0.03, 0.85); rgb1(0.05, 0.04, 0.03, 0.85); SP.add = 0; emit(SYS.decal);
+    reset(); SP.x = p.x; SP.y = G; SP.z = p.z; SP.mode = MODE.ground; SP.shape = SH.crack; SP.s0 = 0.6 * s; SP.s1 = 2.1 * s; SP.sc = 25; SP.life = rnd(7, 9); rgb0(0.05, 0.04, 0.03, 0.85); rgb1(0.05, 0.04, 0.03, 0.85); SP.add = 0; emit(SYS.decal);
     reset(); SP.x = p.x; SP.y = G; SP.z = p.z; SP.mode = MODE.ground; SP.shape = SH.ring; SP.s0 = 0.3 * s; SP.s1 = 2.4 * s; SP.sc = 3; SP.life = 0.55; rgb0(0.4, 0.3, 0.2, 0.55); rgb1(0.45, 0.38, 0.3, 0); SP.add = 0; SP.lit = 1; emit(SYS.glow);
-    const nd = cnt(12 * s, L);
-    for (let i = 0; i < nd; i++) { reset(); const r = dir(0.4, 1); at(p, 0.35 * s, 0, 0.35 * s); SP.y = G + 0.05; vel(r.x * rnd(0.6, 2), rnd(2.5, 6) * Math.sqrt(s), r.z * rnd(0.6, 2)); SP.g = 9.8; SP.k = 0.3; SP.G = G; SP.rest = 0.3; SP.mode = MODE.tumble; SP.shape = SH.chunk; SP.s0 = SP.s1 = rnd(0.06, 0.16) * s; SP.spin = rnd(6, 14) * sgn(); SP.life = rnd(1.2, 2); SP.delay = rnd(0, dur * 0.5); rgb0(0.3, 0.2, 0.12, 1); rgb1(0.3, 0.2, 0.12, 1); SP.lit = 1; SP.add = 0; emit(SYS.glow); }
+    const nd = cnt(18 * s, L);
+    for (let i = 0; i < nd; i++) { reset(); const r = dir(0.4, 1); at(p, 0.35 * s, 0, 0.35 * s); SP.y = G + 0.05; vel(r.x * rnd(0.6, 2.4), rnd(2.5, 6.5) * Math.sqrt(s), r.z * rnd(0.6, 2.4)); SP.g = 9.8; SP.k = 0.3; SP.G = G; SP.rest = 0.3; SP.mode = MODE.tumble; SP.shape = SH.chunk; SP.s0 = SP.s1 = rnd(0.09, 0.2) * s; SP.spin = rnd(6, 14) * sgn(); SP.life = rnd(1.2, 2); SP.delay = i < nd / 2 ? 0 : rnd(0, dur * 0.5); rgb0(0.3, 0.2, 0.12, 1); rgb1(0.3, 0.2, 0.12, 1); SP.lit = 1; SP.add = 0; emit(SYS.glow); }
     const ng = cnt(6 * s, L);
     for (let i = 0; i < ng; i++) { reset(); const r = dir(0.4, 1); at(p, 0.3 * s, 0, 0.3 * s); SP.y = G + 0.05; vel(r.x * 1.2, rnd(2, 4), r.z * 1.2); SP.g = 6; SP.k = 1.4; SP.G = G; SP.rest = 0.15; SP.mode = MODE.tumble; SP.shape = SH.confetti; SP.s0 = SP.s1 = rnd(0.04, 0.07); SP.spin = rnd(8, 14); SP.life = rnd(1.2, 1.8); SP.delay = rnd(0, dur * 0.5); rgb0(0.28, 0.45, 0.13, 1); rgb1(0.28, 0.45, 0.13, 1); SP.lit = 1; SP.add = 0; emit(SYS.glow); }
+    for (let i = 0; i < 3; i++) { reset(); at(p, 0.2 * s, 0, 0.2 * s); SP.y = G + 0.3; vel(rnd(-0.6, 0.6), rnd(1.5, 2.5), rnd(-0.6, 0.6)); SP.k = 2.5; SP.g = -0.2; SP.G = G + 0.1; SP.s0 = 0.5 * s; SP.s1 = 1.7 * s; SP.sc = 2.5; SP.life = rnd(1, 1.4); rgb0(0.26, 0.19, 0.12, 0.85); rgb1(0.42, 0.36, 0.28, 0); SP.lit = 1; SP.add = 0; SP.shape = SH.smoke; emit(SYS.smoke); } // the burst of earth
     const nu = cnt(8 * s, L);
     for (let i = 0; i < nu; i++) { reset(); const r = dir(0, 1); at(p, 0.4 * s, 0, 0.4 * s); SP.y = G + 0.2; vel(r.x * 0.6, rnd(0.5, 1.5), r.z * 0.6); SP.k = 2; SP.g = -0.3; SP.G = G + 0.1; SP.s0 = 0.4 * s; SP.s1 = rnd(1.2, 1.6) * s; SP.sc = 2; SP.life = rnd(1.2, 2); SP.delay = rnd(0, dur * 0.8); rgb0(0.34, 0.25, 0.16, 0.8); rgb1(0.45, 0.38, 0.3, 0); SP.lit = 1; SP.add = 0; SP.shape = SH.smoke; SP.fadeIn = 0.1; emit(SYS.smoke); }
   }
@@ -762,10 +770,11 @@ export function installParticles({ scene, camera, renderer = null, low = null } 
     if (NETTUNO) mist(AMB.nettuno, NETTUNO.x, 0.7, NETTUNO.z, 0.5, NETTUNO.r, dt);
     // fireflies at night over the Teletubbylandia meadow (x -96..-46, z 6..50)
     if (night > 0.45 && CAM.x > -104 && CAM.x < -38 && CAM.z > -2 && CAM.z < 58) {
-      const n = rate(AMB.fly, 12 * Q * (night - 0.3), dt);
-      for (let i = 0; i < n; i++) {
-        reset(); SP.x = clamp(CAM.x + rnd(-18, 18), -95, -47); SP.z = clamp(CAM.z + rnd(-18, 18), 7, 49); SP.y = rnd(0.3, 2.2);
-        vel(rnd(-0.3, 0.3), rnd(-0.1, 0.15), rnd(-0.3, 0.3)); SP.g = rnd(-0.05, 0.05); SP.s0 = 0.06; SP.s1 = 0.045; SP.life = rnd(2.5, 4.5); SP.fadeIn = 0.8; SP.cc = 1.6;
+      camera.getWorldDirection(CF);
+      const n = rate(AMB.fly, 20 * Q * (night - 0.3), dt);
+      for (let i = 0; i < n; i++) { // mostly in front of the camera, where they are seen
+        reset(); SP.x = clamp(CAM.x + CF.x * 9 + rnd(-11, 11), -95, -47); SP.z = clamp(CAM.z + CF.z * 9 + rnd(-11, 11), 7, 49); SP.y = rnd(0.3, 2.4);
+        vel(rnd(-0.3, 0.3), rnd(-0.1, 0.15), rnd(-0.3, 0.3)); SP.g = rnd(-0.05, 0.05); SP.s0 = 0.085; SP.s1 = 0.06; SP.life = rnd(2.5, 4.5); SP.fadeIn = 0.8; SP.cc = 1.6;
         rgb0(2.4, 4.6, 0.8, 1); rgb1(1.4, 3, 0.4, 0); emit(SYS.glow);
       }
     }
@@ -804,7 +813,7 @@ export function installParticles({ scene, camera, renderer = null, low = null } 
     stats.updMs = performance.now() - t;
   }
   function step(dt, night) { const p = api.paused; api.paused = false; update(dt, night); api.paused = p; } // tests: exact time steps
-  function clear() { U.uClear.value = T; for (const S of LIST) { S.lastDeath = -1; S.mesh.visible = false; } } // t0 < uClear: hidden; spawns from now on (t0 >= T) stay
+  function clear() { U.uClear.value = T; } // the shader hides t0 < uClear; spawns from now on (t0 >= T) stay; meshes hide themselves at lastDeath
   function alive() { // CPU estimate of the live particles (debug / tests only: scans the buffers)
     const out = {}; for (const S of LIST) { let c = 0; for (let i = 0; i < S.cap; i++) { const o = i * STRIDE, a = T - S.arr[o + 3]; if (S.arr[o + 7] > 0 && a >= 0 && a < S.arr[o + 7] && S.arr[o + 3] >= U.uClear.value) c++; } out[S.name] = c; } return out;
   }

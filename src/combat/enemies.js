@@ -260,11 +260,11 @@ export function createEnemies(C) {
       if (st.spawnT <= 0 && alive < cap) {
         st.spawnT = zOK ? rnd(1.2, 2.2) : rnd(2.4, 4);
         const L = levelFor(zone, night);
-        if (st.flockT <= 0 && cap - alive >= 3 && !list.some(e => e.type === 'pigeon')) { st.flockT = zOK ? rnd(35, 70) : rnd(22, 45); spawnFlock(P, Math.min(4, cap - alive), L); }
+        if (st.flockT <= 0 && cap - alive >= 3 && !list.some(e => e.type === 'pigeon')) { st.flockT = zOK ? rnd(70, 140) : rnd(22, 45); spawnFlock(P, Math.min(zOK ? 2 : 4, cap - alive), L); } // pigeons own the day, small rare flocks at night
         else if (zOK || arena) { const sp = findSpawn(P, zone); if (sp) newEnemy('zombie', sp, L, { yaw: Math.atan2(P.x - sp.x, P.z - sp.z) }); }
       }
       // dusk build-up: the first groans out of sight before they may come out
-      if (!zOK && night > 0.2 && !arena) { st.duskT = (st.duskT ?? 2) - dt; if (st.duskT <= 0) { st.duskT = rnd(5, 10); const a = Math.random() * 6.28; C.fxSfx('groan', V(P.x + Math.cos(a) * 16, 0, P.z + Math.sin(a) * 16), 0.9); } }
+      if (!zOK && night > 0.04 && !arena) { st.duskT = (st.duskT ?? 2) - dt; if (st.duskT <= 0) { st.duskT = rnd(5, 10); const a = Math.random() * 6.28; C.fxSfx('groan', V(P.x + Math.cos(a) * 16, 0, P.z + Math.sin(a) * 16), 0.9); } }
       // boss in Via Petroni
       st.bossCool = Math.max(0, st.bossCool - dt);
       if (zone === 'Via Petroni') st.petroniT += dt; else st.petroniT = Math.max(0, st.petroniT - dt * 0.5);

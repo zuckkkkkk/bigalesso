@@ -182,7 +182,7 @@ export function createNightZombies(M) {
     if (enabled() && n > 0.04) {
       build();
       if (!torch.visible) torch.visible = true;
-      const want = out ? n * (st.on ? 30 : 18) : 0;
+      const want = (out || /piazza|voltone/i.test(zone(p))) ? n * (st.on ? 30 : 18) : 0; // (the piazze of the north district too)
       torch.intensity += (want - torch.intensity) * Math.min(1, dt * 4);
       const yaw = w.yaw ?? man.root.rotation.y, f = V(Math.sin(yaw), 0, Math.cos(yaw));
       torch.position.copy(p).add(V(0, 1.35, 0)).addScaledVector(f, 0.25); torchT.position.copy(p).addScaledVector(f, 6).add(V(0, 0.1, 0)); torchT.updateMatrixWorld();
@@ -192,7 +192,7 @@ export function createNightZombies(M) {
     if (!st.on) {
       st.cool = Math.max(0, st.cool - dt);
       // dusk build-up: the first groans from the bottom of the garden before the zombies may come out
-      if (enabled() && out && n > 0.2 && !zombiesOut(n) && !busy && /giardino/i.test(zone(p))) { /* (streets: combat/enemies.js) */ st.duskT = (st.duskT ?? 3) - dt; if (st.duskT <= 0) { st.duskT = rnd(5, 9); groan(null, rnd(5, 9)); } }
+      if (enabled() && out && n > 0.04 && !zombiesOut(n) && !busy && /giardino/i.test(zone(p))) { /* (streets: combat/enemies.js) */ st.duskT = (st.duskT ?? 3) - dt; if (st.duskT <= 0) { st.duskT = rnd(5, 9); groan(null, rnd(5, 9)); } }
       if (enabled() && zombiesOut(n) && out && !busy && (!M.S.online || NET)) {
         st.armed += dt;
         if (!st.firstHint && st.armed > 1.5) { st.firstHint = true; w.toast && w.toast('Si sentono dei lamenti dal fondo del giardino…'); }

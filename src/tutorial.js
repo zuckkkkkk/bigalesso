@@ -221,7 +221,7 @@ export function installTutorial({ ui, S, input, level, man, camera, getWorld, au
   const FORCE = tq === 'force';
   const st = load();
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) { } };
-  const run = { active: false, step: 0, acc: 0, acted: false, flash: 0, padT: 0, final: 0, cardKey: '', lastPos: null, lastYaw: null, lastPitch: 0, prevMode: '' };
+  const run = { active: false, step: 0, acc: 0, acted: false, flash: 0, padT: 0, final: 0, cardKey: '', lastPos: null, lastYaw: null, lastPitch: 0, prevMode: '', seenT: 0 };
   const tipS = { cur: null, t: 0, gap: 8, check: 0, key: '' };
   let lastDev = 'kb', guideCat = 'all', guideDev = null, guideNote = '';
   try { window.__save && window.__save.define && window.__save.define('tutorial_done', { title: 'Patentino del quartiere', desc: 'Finisci il tutorial iniziale.', icon: '🎓', cat: 'Esplora' }); } catch (e) { }
@@ -290,7 +290,7 @@ export function installTutorial({ ui, S, input, level, man, camera, getWorld, au
     hideTip(false); run.cardKey = '';
     return true;
   }
-  function resetStep() { run.acc = 0; run.acted = false; run.flash = 0; run.padT = 0; run.lastPos = null; run.lastYaw = null; run.cardKey = ''; }
+  function resetStep() { run.acc = 0; run.acted = false; run.flash = 0; run.padT = 0; run.lastPos = null; run.lastYaw = null; run.cardKey = ''; run.seenT = 0; }
   function finishStep() {
     if (run.flash) return;
     run.flash = 0.9; run.cardKey = ''; blip(true);
@@ -380,7 +380,7 @@ export function installTutorial({ ui, S, input, level, man, camera, getWorld, au
       <div class="tu-foot"><button type="button" class="tu-skip" data-tu="skip">Salta tutorial${dev === 'kb' ? ' <kbd>⌫</kbd>' : ''}</button></div>`;
   }
   card.addEventListener('click', e => {
-    const b = e.target.closest('[data-tu]'); if (!b) return;
+    const b = e.target.closest('[data-tu]'); if (!b) { run.seenT = 0; card.classList.remove('mini'); return; } // tap: read it again
     e.preventDefault(); e.stopPropagation(); b.blur();
     const a = b.dataset.tu;
     if (a === 'skip') skip();
@@ -462,7 +462,7 @@ export function installTutorial({ ui, S, input, level, man, camera, getWorld, au
   let lastT = performance.now();
   function frame(now) {
     requestAnimationFrame(frame);
-    const dt = Math.min(0.1, Math.max(0, (now - lastT) / 1000)); lastT = now;
+    const dt = Math.min(0.25, Math.max(0, (now - lastT) / 1000)); lastT = now;
     try { tick(dt); } catch (e) { frame.err = (frame.err || 0) + 1; if (frame.err < 4) console.warn('tutorial', e); }
   }
   function tick(dt) {
@@ -479,6 +479,7 @@ export function installTutorial({ ui, S, input, level, man, camera, getWorld, au
       if (m) m.style.width = Math.round(clamp(run.acc / (s.id === 'look' ? 1.6 : 5), 0, 1) * 100) + '%';
     }
     showCard(showing);
+    if (showing) { run.seenT += dt; card.classList.toggle('mini', device() === 'touch' && run.active && !run.flash && run.seenT > 8); }
     wpFrame(showing && run.active && !run.flash && STEPS[run.step].id === 'street');
     tipsFrame(dt);
     run.prevMode = w ? w.mode : '';
@@ -571,12 +572,13 @@ export function installTutorial({ ui, S, input, level, man, camera, getWorld, au
 function injectCSS() {
   const css = `
 /* ---- tutorial card + tip (touch / default: under the top bar on the right; desktop: GTA help box top-left).
-   z-index 4: above the 3D view and the touch layer, under the interaction bubble (5), toasts, achievements and phone notes */
-#tuCard,#tuTip{position:fixed;z-index:4;right:max(12px,env(safe-area-inset-right));top:max(66px,calc(env(safe-area-inset-top) + 64px));width:min(310px,44vw);
+   z-index: under toasts, achievements and phone notes; on touch (6) above the interaction bubble, whose label is on the
+   action buttons anyway, on desktop (4) under it */
+#tuCard,#tuTip{position:fixed;z-index:6;left:50%;right:auto;top:max(62px,calc(env(safe-area-inset-top) + 56px));width:min(340px,44vw);
  padding:10px 12px 10px;border-radius:16px;background:var(--glass,rgba(20,8,46,.82));border:2px solid var(--yel,#ffd83a);box-shadow:0 12px 32px rgba(0,0,0,.45);
  color:var(--ink,#f6f0ff);font:600 13px/1.38 var(--ui,system-ui,sans-serif);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
- opacity:0;visibility:hidden;transform:translateY(-8px);transition:opacity .3s,transform .35s cubic-bezier(.2,.9,.3,1),visibility 0s .35s;pointer-events:none}
-#tuCard.on,#tuTip.on{opacity:1;visibility:visible;transform:none;transition:opacity .3s,transform .35s cubic-bezier(.2,.9,.3,1);pointer-events:auto}
+ opacity:0;visibility:hidden;transform:translate(-50%,-8px);transition:opacity .3s,transform .35s cubic-bezier(.2,.9,.3,1),visibility 0s .35s;pointer-events:none}
+#tuCard.on,#tuTip.on{opacity:1;visibility:visible;transform:translate(-50%,0);transition:opacity .3s,transform .35s cubic-bezier(.2,.9,.3,1);pointer-events:auto}
 #tuTip{border-color:#5ad1ff}
 #tuCard .tu-top,#tuTip .tu-top{display:flex;align-items:center;gap:8px;font:800 10px/1 var(--ui,system-ui);letter-spacing:.2em;text-transform:uppercase;color:var(--mut,#bfaee0)}
 #tuCard .tu-dots{display:flex;gap:5px;margin-left:auto}
@@ -600,8 +602,11 @@ function injectCSS() {
 #tuTip.on .tu-time i{animation:tuTime var(--d,10s) linear forwards}
 @keyframes tuTime{to{transform:scaleX(0)}}
 @media (max-height:430px){#tuCard,#tuTip{padding:8px 10px;font-size:12px}#tuCard h3,#tuTip h3{font-size:18px;margin:4px 0 2px}#tuCard .tu-foot{margin-top:5px}#tuCard .tu-skip,#tuCard .tu-btn{min-height:30px}}
-@media (max-width:520px){#tuCard,#tuTip{width:min(310px,calc(100vw - 24px))}}
-body.desk #tuCard,body.desk #tuTip{left:max(26px,env(safe-area-inset-left));right:auto;top:max(24px,env(safe-area-inset-top));width:min(390px,calc(100vw - 52px));padding:14px 18px 12px;border:0;border-left:3px solid #ff7a3c;border-radius:0;
+@media (max-width:520px){#tuCard,#tuTip{width:min(320px,calc(100vw - 24px))}}
+/* touch: after a few seconds the card shrinks to title + progress + skip (tap it to read it again) */
+#tuCard.mini p,#tuCard.mini .tu-keys{display:none}
+#tuCard.mini h3{margin-bottom:0}#tuCard.mini .tu-foot{margin-top:4px}#tuCard.mini .tu-skip{min-height:28px}
+body.desk #tuCard,body.desk #tuTip{z-index:4;left:max(26px,env(safe-area-inset-left));right:auto;top:max(24px,env(safe-area-inset-top));width:min(390px,calc(100vw - 52px));padding:14px 18px 12px;border:0;border-left:3px solid #ff7a3c;border-radius:0;
  background:linear-gradient(100deg,rgba(8,3,16,.9),rgba(14,6,28,.74));-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);box-shadow:0 14px 40px rgba(0,0,0,.4);font:500 14px/1.45 var(--ui,system-ui);color:#fff;text-shadow:0 1px 2px #000;transform:translateX(-14px)}
 body.desk #tuCard.on,body.desk #tuTip.on{transform:none}
 body.desk #tuTip{border-left-color:#5ad1ff}

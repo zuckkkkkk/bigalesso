@@ -165,14 +165,14 @@ export function dayNightFrame(phase) {
     }
   } catch (e) { }
   // dusk warning (first groans come from combat/enemies.js) and dawn
-  const n = DN.night;
-  if (EV.nightWas === null) { EV.nightWas = n; EV.warned = n > 0.2; return; }
+  const n = DN.night, setting = DN.hour > 15 && DN.hour < 21 && DN.elev < 6; // ≈ 19:20: ~40 s before the zombies
+  if (EV.nightWas === null) { EV.nightWas = n; EV.warned = setting || n > 0.2; return; }
   if (inWorld) {
-    if (!EV.warned && n > 0.2 && n > EV.nightWas) { EV.warned = true; say('🌆 Sta calando la notte: occhio agli zombi'); fire('dusk'); }
+    if (!EV.warned && setting) { EV.warned = true; say('🌆 Sta calando la notte: occhio agli zombi'); fire('dusk'); }
     if (EV.nightWas >= ZOMBIE_NIGHT && n < ZOMBIE_NIGHT) { say('🌅 Sorge il sole: gli zombi tornano sottoterra'); fire('dawn'); }
     if (EV.nightWas < ZOMBIE_NIGHT && n >= ZOMBIE_NIGHT) fire('night');
   }
-  if (n < 0.05) EV.warned = false;
+  if (DN.hour > 8 && DN.hour < 15) EV.warned = false;
   EV.nightWas = n;
 }
 function fire(kind) { try { window.dispatchEvent(new CustomEvent('bigalesso:daynight', { detail: { kind, hour: DN.hour, clock: DN.clock() } })); } catch (e) { } }

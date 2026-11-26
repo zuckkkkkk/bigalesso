@@ -215,6 +215,10 @@ export function createUI() {
         <tr><td><kbd>WASD</kbd> / bordo · rotella · <kbd>Q</kbd> <kbd>E</kbd></td><td>sposta la visuale · zoom · ruota · <kbd>Spazio</kbd> casa · clic sulla minimappa</td></tr>
         <tr><td><kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd> <kbd>V</kbd> · <kbd>B</kbd> <kbd>N</kbd></td><td>recluta teppista, lanciatortellini, spritzatore, rider · barricata, torretta (<kbd>R</kbd> ruota)</td></tr>
         <tr><td><kbd>T</kbd> <kbd>H</kbd> <kbd>Y</kbd> <kbd>F</kbd> <kbd>G</kbd></td><td>attacca-muovi · tieni posizione · stop · tutti i tuoi · chiama l'ondata · <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>9</kbd> gruppi</td></tr></table>
+        <h3>Party · Gioca insieme (<kbd>O</kbd> · telefono → Party)</h3><table>
+        <tr><td><kbd>O</kbd></td><td>apri il party, rispondi agli inviti (la cartolina nell'angolo) · codice di 6 caratteri o «Copia invito»</td></tr>
+        <tr><td><kbd>Invio</kbd> · <kbd>Esc</kbd></td><td>il capo fa partire il gioco, gli altri accettano · esci dalla lobby</td></tr>
+        <tr><td>In partita</td><td>quiz: <kbd>1</kbd>-<kbd>4</kbd> rispondi · Gulag co-op: tieni premuto <kbd>E</kbd> su un amico a terra per rianimarlo</td></tr></table>
         <h3>Lavori e roleplay</h3><table>
         <tr><td>Telefono → Lavori</td><td>inizia un turno: rider, barista al Celtic, buttafuori al Millennium, vigile (o la bacheca in Piazzetta)</td></tr>
         <tr><td>Barista</td><td>tieni <kbd>Spazio</kbd> per spinare · <kbd>A</kbd> <kbd>D</kbd> inclina · <kbd>Invio</kbd> servi · <kbd>X</kbd> butta</td></tr>
@@ -232,7 +236,7 @@ export function createUI() {
         <tr><td><kbd>C</kbd></td><td>camera: dentro lo schermo · spalla · cinema</td></tr>
         <tr><td><kbd>Esc</kbd> / <kbd>Q</kbd></td><td>alzati</td></tr></table>
         <h3>Sempre</h3><table>
-        <tr><td><kbd>Esc</kbd></td><td>menu / pausa</td></tr><tr><td><kbd>C</kbd></td><td>cambia camera</td></tr><tr><td><kbd>M</kbd></td><td>audio</td></tr><tr><td><kbd>H</kbd></td><td>comandi (in giro: arma)</td></tr><tr><td><kbd>T</kbd></td><td>telefono (online: chat, telefono su <kbd>P</kbd>)</td></tr><tr><td><kbd>B</kbd></td><td>ruota emote (anche tasto centrale)</td></tr><tr><td><kbd>G</kbd></td><td>trucchi del cane</td></tr></table>
+        <tr><td><kbd>Esc</kbd></td><td>menu / pausa</td></tr><tr><td><kbd>C</kbd></td><td>cambia camera</td></tr><tr><td><kbd>M</kbd></td><td>audio</td></tr><tr><td><kbd>H</kbd></td><td>comandi (in giro: arma)</td></tr><tr><td><kbd>T</kbd></td><td>telefono (online: chat, telefono su <kbd>P</kbd>)</td></tr><tr><td><kbd>B</kbd></td><td>ruota emote (anche tasto centrale)</td></tr><tr><td><kbd>G</kbd></td><td>trucchi del cane</td></tr><tr><td><kbd>O</kbd></td><td>Party: gioca insieme agli amici (anche telefono → Party)</td></tr><tr><td><kbd>I</kbd> · <kbd>J</kbd></td><td>zaino · missioni</td></tr></table>
       </div>
       <div class="ctab" data-ctab="pad"><table>
         <tr><td>Stick sinistro</td><td>cammina / muovi</td></tr><tr><td>Stick destro</td><td>camera</td></tr>
