@@ -139,6 +139,7 @@ function createWindow() {
       if (r.updated) say(1, r.version, 'Aggiornato alla versione ' + r.version);
       else if (r.reason === 'shell') say(1, r.version, "Versione " + r.version + " disponibile: serve la nuova app (scaricala dal link del gruppo)");
       else if (r.reason === 'error') say(1, '', 'Aggiornamento non riuscito, gioco con la versione che ho');
+      else if (r.reason === 'current' && r.version) say(1, r.version, 'Versione ' + r.version);
       setTimeout(play, r.updated || r.reason === 'current' ? 250 : 1600);
     }).catch(() => play());
   });

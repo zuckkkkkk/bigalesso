@@ -22,7 +22,11 @@ const ASSETS = ['anims.json', 'side.jpg', 'base_side.jpg', 'base_front.jpg', 'ma
 
 fs.mkdirSync(OUT, { recursive: true });
 const t0 = Date.now();
+// game version + build time, shown in Impostazioni and used by the desktop updater (update.json below)
+const PKG_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+const BUILD = Number(process.env.BIGALESSO_BUILD) || Date.now();
 await esbuild.build({
+  define: { __BIGALESSO_VERSION__: JSON.stringify(PKG_VERSION), __BIGALESSO_BUILD__: String(BUILD) },
   entryPoints: [path.join(ROOT, 'src/main.js')], bundle: true, format: 'iife', minify: true, sourcemap: false,
   target: ['es2020'], outfile: path.join(OUT, 'app.js'), logLevel: 'warning', legalComments: 'none',
   treeShaking: true, drop: ['debugger'], pure: ['console.log', 'console.debug', 'console.info'], // perf: strip debug logging (warn/error kept)
@@ -89,8 +93,7 @@ if (mode === 'web' && !single) {
     else if (!/\.(br|gz)$/.test(n.name) && rel !== 'update.json') { const buf = fs.readFileSync(path.join(OUT, rel)); files[rel] = { s: buf.length, h: crypto.createHash('sha256').update(buf).digest('hex') }; }
   } };
   walk('');
-  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-  const build = Number(process.env.BIGALESSO_BUILD) || Date.now();
+  const pkg = { version: PKG_VERSION }, build = BUILD;
   // shell: version of the desktop wrapper API this content needs (bump when the game starts using a new preload function)
   fs.writeFileSync(path.join(OUT, 'update.json'), JSON.stringify({ version: pkg.version, build, shell: 1, files }));
 }

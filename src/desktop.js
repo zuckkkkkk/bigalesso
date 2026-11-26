@@ -87,6 +87,16 @@ addEventListener('keydown', e => {
 });
 window.__stutter = { report: () => JSON.parse(report()), copy: copyReport, spikes };
 
+// ---------------- version (build-time constants from scripts/build.mjs; desktop also shows the app shell) ----------------
+const GAME_VERSION = typeof __BIGALESSO_VERSION__ !== 'undefined' ? __BIGALESSO_VERSION__ : 'dev';
+const GAME_BUILD = typeof __BIGALESSO_BUILD__ !== 'undefined' ? __BIGALESSO_BUILD__ : 0;
+let appVersion = '';
+function verText() {
+  const d = GAME_BUILD ? new Date(GAME_BUILD) : null;
+  const when = d ? ` · ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
+  return `Gioco ${GAME_VERSION}${when}` + (appVersion ? ` · app ${appVersion}` : '');
+}
+window.__version = { game: GAME_VERSION, build: GAME_BUILD };
 // ---------------- settings rows ----------------
 const ds = { uncapFps: false, uncapFpsSaved: false, fullscreen: true };
 let rowsAdded = false, gpuName = '';
@@ -99,6 +109,7 @@ function addRows() {
   const q = document.querySelector('[data-page="settings"] .seg[data-set="quality"]');
   const row = q && q.closest('.srow'); if (!row) return false;
   let html = tog('fps', 'Mostra FPS', 'Contatore in alto a destra (anche con F3). "Picco" alto = scatti; F4 copia il report degli scatti');
+  html += `<div class="srow" data-drow="version"><span class="lab">Versione<small id="dVer">${verText()}</small></span></div>`;
   if (D) {
     html += tog('uncapFps', 'FPS illimitati', 'Toglie il limite al refresh dello schermo. Si applica al riavvio') +
       `<div class="srow" data-drow="restart" hidden><span class="lab">Riavvio necessario<small>Per applicare gli FPS illimitati</small></span><button class="pbtn ghost" data-dact="restart">Riavvia ora</button></div>` +
@@ -139,6 +150,7 @@ function init() {
   if (saved) setFps(true);
   if (D) {
     Promise.resolve(D.getSettings()).then(s => { if (s) Object.assign(ds, s); sync(); }).catch(() => { });
+    if (D.versions) Promise.resolve(D.versions()).then(v => { if (v && v.app) { appVersion = v.app; const e = document.getElementById('dVer'); if (e) e.textContent = verText(); } }).catch(() => { });
     // the WebGL renderer string names the GPU actually drawing the game (ANGLE (NVIDIA, …) on Windows)
     setTimeout(() => { const g = window.__gfx && window.__gfx.gpu; if (g && g.name) { gpuName = g.name.replace(/^ANGLE \((.*)\)$/, '$1').replace(/\s*\(0x[0-9a-f]+\)/ig, '').replace(/,?\s*(Direct3D|OpenGL|Vulkan|Metal).*$/i, '').replace(/^[^,()]+,\s*/, ''); sync(); } }, 3000);
   }
