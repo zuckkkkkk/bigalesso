@@ -768,7 +768,7 @@ export function buildLevel(scene, opts = {}) {
     // night: lamps, sky, fog
     const n = st8.night;
     skyMat.uniforms.uNight.value = n;
-    if (scene.fog) scene.fog.color.setRGB(0.84 - 0.74 * n, 0.87 - 0.75 * n, 0.9 - 0.68 * n);
+    if (scene.fog) scene.fog.color.setRGB(0.9 - 0.8 * n, 0.85 - 0.73 * n, 0.79 - 0.57 * n); // warm afternoon haze (sky horizon follows uFog); night unchanged
     lampGlass.emissiveIntensity = n * 2.2;
     // point lights cost every lit pixel even at intensity 0: only enable them at night
     const lampsOn = n > 0.04;

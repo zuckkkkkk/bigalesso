@@ -66,8 +66,12 @@ export function createEnemies(C) {
       }
     }
   }
-  const outdoorAt = (x, z) => { const zn = level && level.zoneAt ? level.zoneAt(x, z) : null; return !!zn && OUTDOOR_ZONES.has(zn); };
+  // arena (wave 2, e.g. the Gulag rooms): window.__combat.arena = { contains(x, z), walkable(x, z, r) } counts as outdoor
+  // ground for enemies and uses its own walls instead of the level colliders
+  const arenaAt = (x, z) => { const A = window.__combat && window.__combat.arena; return A && A.contains(x, z) ? A : null; };
+  const outdoorAt = (x, z) => { if (arenaAt(x, z)) return true; const zn = level && level.zoneAt ? level.zoneAt(x, z) : null; return !!zn && OUTDOOR_ZONES.has(zn); };
   function walkable(x, z, r = 0.3, needOutdoor = true) {
+    const AR = arenaAt(x, z); if (AR) return AR.walkable(x, z, r);
     if (!grid || gridN !== ((level && level.colliders) || []).length) buildGrid();
     if (needOutdoor && !outdoorAt(x, z)) return false;
     const a = grid.get(key(Math.floor(x / CELL), Math.floor(z / CELL))); if (!a) return true;
@@ -220,7 +224,7 @@ export function createEnemies(C) {
   const _t = V(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), UP = V(0, 1, 0);
   function update(dt, ctx) {
     if (!ready) return;
-    const P = man.root.position, zone = level.zoneAt ? level.zoneAt(P.x, P.z) : null, outdoor = !!zone && OUTDOOR_ZONES.has(zone);
+    const P = man.root.position, zone = level.zoneAt ? level.zoneAt(P.x, P.z) : null, outdoor = (!!zone && OUTDOOR_ZONES.has(zone)) || !!arenaAt(P.x, P.z);
     const night = C.night(), attackable = ctx.attackable && outdoor;
     // ---------- director
     if (ctx.spawning && outdoor) {
@@ -324,9 +328,10 @@ export function createEnemies(C) {
       if (e.state === 'rise' || !e.moving) { r.play('idle', 0.3); r.setRate(1); }
       else { const run = e.moving > 1.3 && r.has('run'); r.play(run ? 'run' : 'walk', 0.3); r.setRate(clamp(e.moving / (run ? r.speed.run : r.speed.walk), 0.5, 1.7)); }
     }
-    // far ones animate at half rate
+    // far ones animate at half rate; off-screen ones at ~5 Hz (perf: skincull.js window.__onScreen)
     const far = Math.hypot(e.pos.x - man.root.position.x, e.pos.z - man.root.position.z) > 28;
-    e.acc = (e.acc || 0) + dt; if (!far || e.acc > 0.066) { r.update(e.acc); e.acc = 0; }
+    _t.set(e.pos.x, 1, e.pos.z); const seen = !window.__onScreen || window.__onScreen(_t, 1.8);
+    e.acc = (e.acc || 0) + dt; if ((!far && seen) || e.acc > (seen ? 0.066 : 0.2)) { r.update(e.acc); e.acc = 0; }
     if (e.type === 'boss' && bossCap) {
       if (r.head) { r.root.updateMatrixWorld(true); r.head.getWorldPosition(_t); bossCap.position.copy(_t).add(V(0, 0.14, 0)); }
       else bossCap.position.set(e.pos.x, 2.35 + r.root.position.y, e.pos.z);

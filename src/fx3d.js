@@ -246,7 +246,10 @@ export function createFX(scene, camera, opts = {}) {
   // outdoor factor (0 = arcade room, ~0.2 lounge, 1 = garden): brighter sky ambient, bluish hemisphere
   state.out = 0;
   const hemiBase = lights && lights.hemi ? { sky: lights.hemi.color.clone(), gnd: lights.hemi.groundColor.clone() } : null;
-  const skyCol = new THREE.Color(0xcfe2ff), gndCol = new THREE.Color(0x7d8a5a);
+  // Bologna art direction (outdoors): a soft warm sky and a terracotta bounce from the ochre walls / portico floors;
+  // the sun turns golden (late afternoon). Indoors (o = 0) the original intro lighting is untouched.
+  const skyCol = new THREE.Color(0xdfe5f0), gndCol = new THREE.Color(0xb3835f), sunCol = new THREE.Color(0xffcf9a);
+  const keyCol = lights && lights.key ? lights.key.color.clone() : null;
   function setOutdoor(k) { state.out = Math.max(0, Math.min(1, k)); }
 
   function update(dt) {
@@ -263,7 +266,8 @@ export function createFX(scene, camera, opts = {}) {
       scaleProp(lights.hemi, 'intensity', (1 - 0.93 * n) * (1 + 0.9 * o));
       scaleProp(lights.fill, 'intensity', (1 - 0.95 * n) * (1 + 0.3 * o));
       scaleProp(scene, 'environmentIntensity', (1 - 0.9 * n) * (1 + 0.5 * o));
-      if (hemiBase) { lights.hemi.color.copy(hemiBase.sky).lerp(skyCol, o * 0.7); lights.hemi.groundColor.copy(hemiBase.gnd).lerp(gndCol, o * 0.7); }
+      if (hemiBase) { lights.hemi.color.copy(hemiBase.sky).lerp(skyCol, o * 0.7); lights.hemi.groundColor.copy(hemiBase.gnd).lerp(gndCol, o * 0.75); }
+      if (keyCol) lights.key.color.copy(keyCol).lerp(sunCol, o * 0.6);
     }
     if (cab) { if (n > 0.001) scaleProp(cab.marqueeMat, 'emissiveIntensity', 1 + 0.5 * n); if (cab.screenMat) cab.screenMat.uniforms.bright.value = 1.55 + 0.25 * n; }
     moon.intensity = (0.28 + 0.32 * (state.out || 0)) * n; // cold, dim moonlight

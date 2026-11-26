@@ -30,6 +30,8 @@ import { loadManifest, loadOptional, swapInstanced, swapObject, instancedFrom, m
 import { createLife } from './quartiere/life.js';
 import { createDress } from './quartiere/dress.js';
 import { instances } from './quartiere/kit.js';
+import { NORD_ZONES, NORD_ANCHORS, NORD_HOOKS, NORD_PROPS, nordColliders } from './quartiere/nord_layout.js';
+import { buildNord, nordSilhouette } from './quartiere/nord.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const PI = Math.PI;
@@ -46,6 +48,11 @@ const PLACES = {
   'Casa di Seghino': { id: 'seghino', title: 'Zombata', desc: 'Sei entrato a casa di Seghino', icon: '🧟' },
   'Checkpoint': { id: 'checkpoint', title: 'Zona demilitarizzata', desc: 'Sei arrivato al checkpoint', icon: '🚧' },
   'Teletubbylandia': { id: 'teletubbylandia', title: 'Teletubbylandia certificata', desc: 'Hai raggiunto le colline di Teletubbylandia', icon: '🌼' },
+  'Voltone': { id: 'voltone', title: 'Passaggio segreto', desc: 'Hai trovato il voltone sotto i portici', icon: '🏛️' },
+  'Via Zamboni': { id: 'zamboni', title: 'Fuori corso', desc: 'Sei arrivato in zona universitaria', icon: '🎓' },
+  'Piazza Verdi': { id: 'verdi', title: 'Piazza Verdi alle due di notte', desc: 'Hai trovato Piazza Verdi', icon: '🎭' },
+  'Via Rizzoli': { id: 'rizzoli', title: 'Una vasca in Rizzoli', desc: 'Hai fatto una vasca in Via Rizzoli', icon: '🛍️' },
+  'Piazza Maggiore': { id: 'maggiore', title: 'Sul Crescentone', desc: 'Sei arrivato in Piazza Maggiore, dal Gigante', icon: '⛲' },
 };
 const KNOCK = [
   n => `Casa di ${n}: «Chi è? …ah sei tu. Arrivo dopo, sono in compettina»`,
@@ -72,6 +79,9 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
       parts.push([rx0, bz0, rx1, bz1], [rx0, fz0, d0, fz1], [d1, fz0, rx1, fz1]);
       for (const [a, c, e, f] of parts) if (e - a > 1e-3 && f - c > 1e-3) { box(a, c, e, f); blk(a, 0, c, e, gh, f); }
       blk(d0, 2.45, fz0, d1, gh, fz1); blk(rx0, room.ceil, rz0, rx1, gh + 0.01, rz1);
+    } else if (b.passage) { // the Voltone (f4): two piers, the passage stays open, the camera stays under the vault
+      const P = b.passage; box(g[0], g[1], P.x0, g[3]); box(P.x1, g[1], g[2], g[3]); blk(g[0], 0, g[1], P.x0, gh, g[3]); blk(P.x1, 0, g[1], g[2], gh, g[3]);
+      if (P.h < gh) blk(P.x0, P.h, g[1], P.x1, gh, g[3]);
     } else { box(g[0], g[1], g[2], g[3]); blk(g[0], 0, g[1], g[2], gh, g[3]); }
     if (gh < b.h) blk(b.rect[0], gh, b.rect[1], b.rect[2], b.h + 3, b.rect[3]);
   }
@@ -86,11 +96,13 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
   // street props + interiors + teletubbylandia (data only)
   for (const c of teletubbyColliders()) C.push(c);
   for (const c of placeColliders()) C.push(c);
+  { const N = nordColliders(); for (const c of N.C) C.push(c); for (const b of N.BL) BL.push(b); } // Via Zamboni … Piazza Maggiore
   // zones, bounds, anchors
   for (const z of ZONES) level.zones.push({ name: z.name, rect: z.rect.slice() });
+  for (const z of NORD_ZONES) level.zones.push({ name: z.name, rect: z.rect.slice() });
   Object.assign(level.bounds, { x0: Math.min(level.bounds.x0, BOUNDS.x0), x1: Math.max(level.bounds.x1, BOUNDS.x1), z1: Math.max(level.bounds.z1, BOUNDS.z1) });
   const anchors = {};
-  for (const [k, [x, z, yaw]] of Object.entries(ANCHORS)) { const v = V(x, 0, z); v.yaw = yaw; v.userData = { yaw }; anchors[k] = v; if (!(k in level.anchors)) level.anchors[k] = v; }
+  for (const [k, [x, z, yaw]] of Object.entries({ ...ANCHORS, ...NORD_ANCHORS })) { const v = V(x, 0, z); v.yaw = yaw; v.userData = { yaw }; anchors[k] = v; if (!(k in level.anchors)) level.anchors[k] = v; }
   level.houses = HOUSES; level.quartiere = null; // set below
 
   // ================= meshes =================
@@ -112,8 +124,13 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
 
   const areas = {
     // visible from the west half of the street (through the checkpoint) and from inside; never from the house/garden
-    tele: { center: V(-46, 0, 27), buildR: 70, showR: 140, see: p => (p.x < 10 && p.z > 19.5) || p.x < -30, group: null, hooks: null, build: () => { const g = new THREE.Group(); g.name = 'teletubbylandia'; root.add(g); const h = buildTeletubby(g, { low }); return { group: g, hooks: h }; } },
+    tele: { center: V(-46, 0, 27), buildR: 70, showR: 140, see: p => (p.x < 10 && p.z > 19.5 && p.z < 46) || p.x < -40, group: null, hooks: null, build: () => { const g = new THREE.Group(); g.name = 'teletubbylandia'; root.add(g); const h = buildTeletubby(g, { low }); return { group: g, hooks: h }; } },
+    // Voltone, Via Zamboni, Piazza Verdi, Via Rizzoli, Piazza Maggiore: shown from the Voltone's mouth and inside;
+    // from the street/garden only the cheap silhouette (towers over the far row's roofs) is drawn
+    nord: { center: V(-3, 0, 76), buildR: 200, showR: 170, see: p => (p.z > 29 && p.x > -9.5 && p.x < -0.5) || (p.z > 45.5 && p.x > -40 && p.x < 34), group: null, hooks: null,
+      build: () => { const g = new THREE.Group(); g.name = 'nord'; root.add(g); const h = buildNord(g, { low }); return { group: g, hooks: h }; } },
   };
+  const nordSil = nordSilhouette(root); // 1 instanced draw call; visible while the district itself is hidden
   const places = {}; // id -> built interior (from places.js)
   const placeDefs = Object.entries(INTERIORS).map(([id, I]) => { const [x0, z0, x1, z1] = I.rect; return { id, I, door: V((I.door[0] + I.door[1]) / 2, 0, id === 'seghino' ? z1 : z0), center: V((x0 + x1) / 2, 0, (z0 + z1) / 2) }; });
 
@@ -135,6 +152,7 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
     try { const r = a.build(); a.group = r.group; a.hooks = r.hooks; } catch (e) { console.warn('quartiere: area ' + k, e); a.group = new THREE.Group(); a.hooks = { anim: [], night: [], tripo: [] }; }
     if (!S.preloading) try { window.__gfx && window.__gfx.warmup && window.__gfx.warmup(a.group); } catch (e) { }
     if (k === 'tele') { S.barrier = a.hooks.barrier; dress.tele(a.hooks, a.group); }
+    if (k === 'nord') for (const v of a.hooks.lampSpots || []) SH.lampSpots.push(v); // the point-light pool picks them at night
     return a;
   }
 
@@ -169,7 +187,7 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
   // real point lights: a FIXED pool (count only changes with the quality preset / when leaving the neighbourhood, so
   // three.js never recompiles every material while walking around). Inside a place: its light descriptors;
   // outside at night: the nearest street lamps; otherwise intensity 0.
-  const QZ = new Set(ZONES.map(z => z.name));
+  const QZ = new Set([...ZONES, ...NORD_ZONES].map(z => z.name));
   const pool = []; for (let i = 0; i < 3; i++) { const L = new THREE.PointLight(0xffc27a, 0, 13, 2); L.visible = false; root.add(L); pool.push(L); }
   let lampT = 0, lampSrc = [];
   const WARM = new THREE.Color(0xffc27a);
@@ -222,6 +240,8 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
       if (vis && pl.update) pl.update(dt, t);
     }
     if (areas.tele.group && areas.tele.group.visible) for (const f of areas.tele.hooks.anim) f(dt, t);
+    if (areas.nord.group && areas.nord.group.visible) for (const f of areas.nord.hooks.anim) f(dt, t);
+    nordSil.visible = !(areas.nord.group && areas.nord.group.visible);
     // street life (Tripo cat / poodle / pigeons): loaded once the player is out in the world
     if (focus && S.frame > 30) life.load();
     if (S.frame > 60) dress.gulag();
@@ -295,6 +315,8 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
         P('Giardino', 'Via Teletubbylandia', 13.1, 20, 0, 1);
         P('Via Teletubbylandia', 'Piazzetta', 40, 26, 1, 0); P('Piazzetta', 'Via Petroni', 44, 33.6, 0, 1); P('Via Petroni', 'Millennium', 44, 78.1, 0, 1);
         P('Via Teletubbylandia', 'Celtic', 3, 33.75, 0, 1); P('Via Teletubbylandia', 'Sushi', 23, 33.75, 0, 1); P('Via Teletubbylandia', 'Casa di Ashish', -22, 33.75, 0, 1);
+        P('Via Teletubbylandia', 'Voltone', -5, 33.6, 0, 1); P('Voltone', 'Via Zamboni', -5, 46, 0, 1); P('Via Zamboni', 'Piazza Verdi', -3, 55, 0, 1);
+        P('Piazza Verdi', 'Via Rizzoli', -3, 74, 0, 1); P('Via Rizzoli', 'Piazza Maggiore', -17, 80, 0, 1);
         P('Via Teletubbylandia', 'Casa di Seghino', -12, 19.85, 0, -1); P('Via Teletubbylandia', 'Checkpoint', -36, 26.8, -1, 0); P('Checkpoint', 'Teletubbylandia', -46, 26.8, -1, 0);
         dog.setEnv({ portals });
       }
@@ -305,6 +327,25 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
   // ================= preload: everything built and every model in place during the loading screen =================
   // (no lazy build/swap while walking around: those were the in-game hitches). Areas and interiors are built hidden;
   // update() keeps showing/hiding them by distance as before, and the gfx warm-up uploads/compiles them before the menu.
+  // stand-ins replaced by Tripo models (procedural houses, lamp posts, arches, trees, benches, bins, Due Torri,
+  // interior props): off the scene graph before the gfx warm-up, which used to upload and compile them too (hidden
+  // meshes are shown for one 'render all'). The objects stay referenced with .visible === false, so code that checks
+  // whether a swap happened (interact/index.js benches) keeps working; geometries no other mesh uses are disposed.
+  function retireStandIns() {
+    const out = [], add = o => { if (o && o.isObject3D && o.visible === false && o.parent && !out.includes(o)) out.push(o); };
+    for (const B of Object.values(SH.bld || {})) if (!B.group.visible) { add(B.group); B.extras.forEach(add); }
+    [SH.torri, SH.binIm, SH.lamps && SH.lamps.poles, SH.lamps && SH.lamps.heads].forEach(add);
+    for (const k of ['arches', 'treeIms', 'benchIms', 'sushiLanterns', 'milFront']) (SH[k] || []).forEach(add);
+    for (const p of Object.values(places)) if (p) for (const k of ['taps', 'tapHandles', 'booth', 'sofa', 'kitchen', 'kaiten']) add(p[k]);
+    if (areas.tele.hooks) add(areas.tele.hooks.booth);
+    for (const o of out) o.parent.remove(o);
+    const keep = new Set(); scene.traverse(m => { if (m.geometry) keep.add(m.geometry); });
+    const R = { objects: out.length, geometries: 0, tris: 0, names: out.map(o => o.name || o.type).slice(0, 40) };
+    for (const o of out) o.traverse(m => { const g = m.geometry; if (!g || keep.has(g)) return; keep.add(g);
+      R.tris += Math.round((g.index ? g.index.count : g.attributes.position.count) / 3) * (m.isInstancedMesh ? m.count : 1); R.geometries++; g.dispose(); });
+    S.retired = R; return R;
+  }
+
   async function preload(onStep) {
     const step = n => { try { onStep && onStep(n); } catch (e) { } };
     const tick = () => new Promise(r => setTimeout(r, 0));
@@ -315,6 +356,7 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
       for (const d of placeDefs) { const pl = buildPlace(d.id); if (pl && pl.group) pl.group.visible = false; step('place:' + d.id); await tick(); }
       await modelsP; step('street');
       await Promise.all(Object.values(places).map(p => p && p.modelsP).filter(Boolean)); step('interiors');
+      try { retireStandIns(); } catch (e) { console.warn('quartiere: retire stand-ins', e); }
       try { await life.load(); } catch (e) { console.warn('quartiere life', e); } step('life');
       for (let i = 0; i < 60 && !(window.__app && window.__app.gulag && window.__app.gulag.root); i++) await new Promise(r => setTimeout(r, 150));
       try { await dress.gulag(); } catch (e) { console.warn('quartiere gulag', e); } step('gulag');
@@ -328,6 +370,7 @@ export function buildQuartiere({ scene, level, low = false, getFX = null, ui = n
     build: id => (areas[id] ? buildArea(id) : buildPlace(id)),
     onPlace: cb => S.cbs.push(cb), isNight: () => S.night > 0.5, zoneOf: (x, z) => level.zoneAt(x, z),
     get barrier() { return S.barrier; }, buildTime: 0, state: S, street: SH, areas, life,
+    nord: { hooks: NORD_HOOKS, zones: NORD_ZONES, anchors: NORD_ANCHORS, props: NORD_PROPS }, // MOTORI raceLoop, RP doors, BR circle
   };
   API.buildTime = performance.now() - t0;
   level.quartiere = API;

@@ -99,7 +99,17 @@ Il sito è statico: basta pubblicare la cartella `dist/`. Tutti i percorsi sono 
 `model/gltf-binary` (oppure usa `npm run build:artifact`, che non usa file `.glb`).
 
 ## Multiplayer online con Docker
-Il gioco online passa da un piccolo server Node (`server/server.mjs`, libreria `ws`, niente database) che serve anche il sito.
+Il gioco online passa da un piccolo server Node (`server/server.mjs`, libreria `ws`) che serve anche il sito e fa da arbitro:
+- **stanze private** a codice (8 giocatori) e il **Quartiere pubblico**: zone da 24 giocatori, ognuno riceve solo chi gli è
+  vicino (70 m), chi è inattivo da 3 minuti esce da solo;
+- **partite arbitrate dal server** (`server/match.mjs`): le regole stanno in `shared/<modalità>.mjs` (vedi `shared/README.md`) e
+  sono le stesse che girano nel browser quando giochi da solo. Online il server mischia, valida ogni mossa, fa girare timer,
+  zona e bot e manda a ognuno solo quello che può vedere (niente carte altrui, niente bari);
+- **salvataggi sul server** (`/api/profile`): i progressi di ogni giocatore restano anche cambiando PC, telefono o l'app per
+  Windows, con il *codice di recupero* (Impostazioni → Salvataggio). **Classifiche** (`/api/board/…`) con i punteggi
+  verificati dal server e il **seme del giorno** (`/api/daily`) uguale per tutti;
+- database **SQLite** già incluso in Node 22 (nessuna dipendenza in più) nella cartella `DATA_DIR` (`/data` nel container);
+  se SQLite manca usa un file JSON.
 
 **Avvio con Docker** (consigliato):
 ```
@@ -114,7 +124,7 @@ Ci sono due Dockerfile:
 
 Entrambi servono i file già compressi (`.br`/`.gz` creati da `npm run build:prod`), con cache lunga su `app.js?v=…`
 e `ETag` sul resto: il server non comprime niente al volo e non tiene file in memoria. Node parte con
-`--max-old-space-size=96` e `docker-compose.yml` mette un tetto di 192 MB (`mem_limit`).
+`--max-old-space-size=256` e `docker-compose.yml` mette un tetto di 384 MB (`mem_limit`) e un volume `bigalesso-data` su `/data`.
 Apri `http://localhost:8080` (o `http://IP-del-server:8080`). Porta diversa: `PORT=3000 docker compose up -d --build`.
 Stato del server: `http://localhost:8080/healthz`.
 
@@ -134,22 +144,33 @@ Esempio Caddy: `gioco.tuodominio.it { reverse_proxy localhost:8080 }`. Va bene q
 (VPS, Render, Fly.io, Railway, Google Cloud Run con WebSocket attivi). Netlify/Vercel/GitHub Pages servono solo il sito
 statico: lì il gioco funziona in singolo e in 2 giocatori sullo stesso PC, ma non online.
 
-Limiti del server (variabili d'ambiente): `PORT` (8080), `MAX_ROOMS` (500), 8 giocatori per stanza, messaggi max 128 KB,
-stato dei giocatori inoltrato 15 volte al secondo, connessioni inattive chiuse dopo ~25 s.
+Limiti del server (variabili d'ambiente): `PORT` (8080), `MAX_ROOMS` (500), `WORLD_CAP` (24 per zona del quartiere pubblico),
+`WORLD_RADIUS` (70 m), `MAX_MATCHES` (300 partite arbitrate), `DATA_DIR` (`/data`), `API_RPM` (60 richieste al minuto per IP
+su salvataggi e classifiche), 8 giocatori per stanza, messaggi max 128 KB, stato dei giocatori inoltrato 15 volte al secondo
+(10 nel quartiere pubblico), mosse max 40 al secondo per giocatore, connessioni inattive chiuse dopo ~25 s.
 Server diverso da quello che serve la pagina: aggiungi `?server=wss://host/ws` all'indirizzo.
 
 **Protocollo (JSON su `/ws`)**: `create`/`join {code,name}` → `welcome {id, code, host, players}`; `state {s}` (posizione,
 direzione, animazione, gesti, mani) inoltrato a 15 Hz come `states`; `ev` eventi brevi (cane, posti al cabinato);
 `to {id,d}` messaggi diretti (comandi del giocatore verso l'host); `game {d}` istantanee della partita dall'host (~20 Hz);
-`chat {text}`; `joined`/`left`/`host` per ingressi, uscite e passaggio di host.
+`chat {text}`; `joined`/`left`/`host` per ingressi, uscite e passaggio di host. Quartiere pubblico: `world {name}` →
+`welcome {world:true}`, `far {ids}` quando qualcuno esce dal raggio. Extra visibili agli altri (auto, mestiere…):
+`extra {k, v}` → `extra {id, k, v}`. Partite arbitrate: `match:create|join|start|act|leave|list` → `match:created|joined|
+view|event|players|over|error|list` (dettagli in cima a `server/match.mjs`; nel gioco si usa `window.__match`, vedi
+`src/net/match.js`). HTTP: `GET/PUT /api/profile` (header `X-Token`), `GET/POST /api/board/:id`, `GET /api/daily?mode=…`.
 
 ### Easypanel
 1. *Create Project* → *+ Service* → **App**.
 2. *Source*: **GitHub** (repository e branch) oppure *Docker Image* se la costruisci tu.
 3. *Build*: **Dockerfile**, percorso `Dockerfile` (oppure `Dockerfile.prebuilt` se hai fatto il commit di `dist/` dopo `npm run build:prod`).
 4. *Environment* (facoltativo): `ANTHROPIC_API_KEY=sk-ant-…` per i minigiochi e i personaggi con Claude. Senza chiave il gioco usa le battute offline.
+   Mettila qui (variabili d'ambiente), **non** nei *Build Args*: lì finisce nei log della build.
+4b. *Mounts* → **Add Volume**: nome `bigalesso-data`, *Mount Path* **`/data`**. Lì stanno salvataggi dei giocatori e
+   classifiche (file `bigalesso.db`): senza volume si azzerano a ogni deploy. Nei log, all'avvio, deve comparire
+   `store: sqlite /data/bigalesso.db`.
 5. *Domains*: aggiungi il dominio e punta alla **porta 8080** (HTTPS lo fa Easypanel; WebSocket su `/ws` funziona da solo).
-6. *Advanced → Resources*: bastano 256 MB di memoria (il server ne usa ~60-100 MB). Health check: `/healthz`.
+6. *Advanced → Resources*: 384 MB di memoria bastano (a riposo ~60-100 MB, di più con tante partite in corso). Health check: `/healthz`
+   (mostra stanze, zone del quartiere, giocatori, partite e tipo di archivio).
 7. *Deploy*. Nei log deve comparire `BIGALESSO server su http://localhost:8080`. Un `stop (SIGTERM)` vuol dire solo che Easypanel ha sostituito il container durante un deploy.
 
 ## Scaricarlo e giocarlo offline

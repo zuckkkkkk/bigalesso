@@ -98,7 +98,7 @@ const SKY_FRAG = `uniform float uTime, uNight; uniform vec3 uSun; uniform vec3 u
   void main(){
     vec3 d = normalize(vD); float y = d.y; vec3 sun = normalize(uSun); float mu = dot(d, sun);
     float hh = pow(clamp(y, 0.0, 1.0), 0.42);
-    vec3 day = mix(vec3(0.66,0.77,0.90), vec3(0.15,0.33,0.70), hh);
+    vec3 day = mix(vec3(0.76,0.79,0.86), vec3(0.17,0.34,0.68), hh); // warmer horizon (Bologna art direction)
     day += vec3(1.0,0.84,0.6) * (pow(max(mu,0.0), 6.0) * 0.22 + pow(max(mu,0.0), 48.0) * 0.5) * (1.0 - 0.4 * hh);
     day += vec3(1.0,0.96,0.88) * smoothstep(0.9991, 0.9996, mu) * 5.0;
     vec3 night = mix(vec3(0.06,0.08,0.15), vec3(0.012,0.02,0.055), hh);
@@ -283,7 +283,9 @@ export function installGfx(ctx) {
   };
   // first warm-up right after load (gates the menu); later runs are on demand.
   // It waits for main.js's preload (quartiere + models + NPC bodies), then uploads and compiles everything in one go
-  firstP = QS.has('nowarm') ? Promise.resolve(W) : Promise.resolve(window.__preloadP).catch(() => { }).then(() => G.warmup({ all: true }));
+  firstP = QS.has('nowarm') ? Promise.resolve(W) : Promise.resolve(window.__preloadP).catch(() => { })
+    .then(() => { try { if (window.__batchWorld) window.__batchWorld(); } catch (e) { console.warn('batch', e); } }) // batch.js: BatchedMeshes exist before the warm-up compiles them
+    .then(() => G.warmup({ all: true }));
   firstP.finally(() => { firstDone = true; G.ready = true; gateResolve && gateResolve(); });
   return G;
 }

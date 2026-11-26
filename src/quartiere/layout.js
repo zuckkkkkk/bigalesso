@@ -12,14 +12,17 @@
 //   Teletubbylandia      x -96..-46, z 6..50     (meadow in a ring of hills)
 //   Celtic / Sushi / Casa di Ashish (Discord): far side, doors under the portico
 //   Casa di Seghino (zombata): near side west, door on the street (z=20)
+//   Voltone -> Via Zamboni / Piazza Verdi / Via Rizzoli / Piazza Maggiore: north of the far row, see nord_layout.js
+
+import { NORD_OUTDOOR, VOLT } from './nord_layout.js'; // the northern districts (Via Zamboni, Piazza Verdi, Via Rizzoli, Piazza Maggiore)
 
 export const GATE = { x0: 12.4, x1: 13.8, z: 20 }; // opening in the garden fence (world.js fenceRuns)
 
 // world.js flattens the distant hills and skips distant trees inside these rects (x0, z0, x1, z1)
-export const RESERVED = [[-142, -22, -30, 100], [-36, 4, 64, 100]];
+export const RESERVED = [[-142, -22, -30, 100], [-36, 4, 64, 100], [-48, 40, 40, 128]]; // 3rd: the northern districts (nord_layout.js)
 
 // world.js treats these zones as outdoor (sun/sky lighting like the garden)
-export const OUTDOOR_ZONES = new Set(['Via Teletubbylandia', 'Piazzetta', 'Via Petroni', 'Checkpoint', 'Teletubbylandia']);
+export const OUTDOOR_ZONES = new Set(['Via Teletubbylandia', 'Piazzetta', 'Via Petroni', 'Checkpoint', 'Teletubbylandia', ...NORD_OUTDOOR]);
 
 export const ST = { x0: -36, x1: 40, zNear: 20, curbNear: 22.6, curbFar: 29.4, colZ: 29.4, zFar: 33.6, portH: 4.4, bay: 3.6 };
 export const PET = { x0: 40, x1: 48, z0: 33.6, z1: 78, colW: 42.5, colE: 45.5, portH: 4.2 };
@@ -53,7 +56,7 @@ export const BUILDINGS = [
   { id: 'f1', rect: [-36, 29.4, -26, 46], h: 14, col: '#dba25e', face: 's', portico: true, door: -31 },
   { id: 'f2', rect: [-26, 29.4, -18, 46], h: 13, col: '#c86e48', face: 's', portico: true, door: -22, house: 'ashish', interior: 'ashish' },
   { id: 'f3', rect: [-18, 29.4, -8, 46], h: 15, col: '#e7c98a', face: 's', portico: true, door: -13, shop: 'TABACCHI' },
-  { id: 'f4', rect: [-8, 29.4, -2, 46], h: 12, col: '#d88f6a', face: 's', portico: true, door: -5 },
+  { id: 'f4', rect: [-8, 29.4, -2, 46], h: 12, col: '#d88f6a', face: 's', portico: true, door: -5, passage: { x0: VOLT.x0, x1: VOLT.x1, h: VOLT.h } }, // the Voltone to Via Zamboni
   { id: 'f5', rect: [-2, 29.4, 8, 46], h: 14, col: '#c9884c', face: 's', portico: true, door: 3, interior: 'celtic' },
   { id: 'f6', rect: [8, 29.4, 18, 46], h: 13, col: '#e3b06e', face: 's', portico: true, door: 13, shop: 'ALIMENTARI' },
   { id: 'f7', rect: [18, 29.4, 28, 46], h: 15, col: '#d79a72', face: 's', portico: true, door: 23, interior: 'sushi' },
@@ -88,7 +91,7 @@ export const ZONES = [
   { name: 'Teletubbylandia', rect: [MEADOW.x0, MEADOW.z0, MEADOW.x1, MEADOW.z1] },
 ];
 
-export const BOUNDS = { x0: -96, x1: 62, z1: 92 }; // level.bounds grows to these (z0 stays 0)
+export const BOUNDS = { x0: -96, x1: 62, z1: 108 }; // level.bounds grows to these (z0 stays 0)
 
 // friends' houses: door anchors on the street side (stand here, facing the door)
 const HOUSE_NAMES = { parme: 'Parme', seghino: 'Seghino', forla: 'Forla', asche: 'Asche', ashish: 'Ashish', lombu: 'Lombu' };

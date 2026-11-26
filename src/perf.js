@@ -4,6 +4,7 @@
 //  - live game screens: drawn + uploaded every frame only when a mesh showing them is on screen, otherwise at ~10 Hz;
 //  - dynamic resolution in 'auto' quality: the pixel ratio slides between 60% and 100% of the preset to hold ~55 fps.
 import * as THREE from 'three';
+import { currentQuality } from './scene.js';
 
 export function installPerf({ renderer, scene, camera, composer, lights, resize, getQuality, protect = [], screens = [] }) {
   const q = new URLSearchParams(location.search);
@@ -45,14 +46,17 @@ export function installPerf({ renderer, scene, camera, composer, lights, resize,
     if (!visible(mesh)) return false;
     const g = mesh.geometry; if (!g.boundingSphere) g.computeBoundingSphere();
     sph.copy(g.boundingSphere).applyMatrix4(mesh.matrixWorld);
+    const d2 = sph.center.distanceToSquared(camera.position); if (d2 < S.minD2) S.minD2 = d2;
+    if (d2 > 22 * 22) return false; // far away (and usually behind walls): a screen this far is a few pixels at most
     return frustum.intersectsSphere(sph);
   }
   // true when this screen must be redrawn this frame
   function screenDue(i) {
     const sc = screens[i]; if (!sc) return true;
     if (S.frustumFrame !== S.frame) { camera.updateMatrixWorld(); pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); frustum.setFromProjectionMatrix(pv); S.frustumFrame = S.frame; }
+    S.minD2 = Infinity;
     for (const m of sc.meshes) if (onScreen(m)) return true;
-    return (S.frame + sc.slot) % 6 === 0; // off screen: ~10 Hz keeps the screen light colour alive
+    return (S.frame + sc.slot) % (S.minD2 > 45 * 45 ? 30 : 6) === 0; // off screen: ~10 Hz keeps the screen light colour alive (~2 Hz when far)
   }
 
   // ---------- dynamic resolution (auto quality only) ----------
@@ -67,10 +71,11 @@ export function installPerf({ renderer, scene, camera, composer, lights, resize,
   function update(dt) {
     S.frame++;
     if (S.frame === 150) pruneCasters(); // catch props added after start-up
-    // shadow map: ~40 Hz; skip entirely while the sun is down (night, Gulag)
+    // shadow map: every frame on high/ultra (the batched world makes the shadow pass cheap; an even cadence = no
+    // alternating heavy/light frames), every 2nd frame on medium, every 3rd on low; skipped while the sun is down
     const sun = lights && lights.key ? lights.key.intensity : 1;
-    S.shadowAcc += dt;
-    if (S.force || (sun > 0.25 && S.shadowAcc >= 1 / 40)) { renderer.shadowMap.needsUpdate = true; S.shadowAcc = 0; S.force = false; }
+    const ql = currentQuality(), every = ql === 'low' ? 3 : ql === 'medium' ? 2 : 1;
+    if (S.force || (sun > 0.25 && S.frame % every === 0)) { renderer.shadowMap.needsUpdate = true; S.force = false; }
     // somebody else changed the pixel ratio (quality preset) -> rebase
     if (Math.abs(renderer.getPixelRatio() - S.set) > 1e-3) { S.base = renderer.getPixelRatio(); S.set = S.base; S.scale = 1; S.force = true; }
     if (dynOff || !getQuality || getQuality() !== 'auto' || dt <= 0) return;

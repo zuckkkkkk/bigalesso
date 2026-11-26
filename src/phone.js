@@ -53,6 +53,11 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
           <button data-go="bot"><i style="--b:#9aa7b8">🤖</i><span>Il Bot</span></button>
           <button data-go="games"><i style="--b:#e0457b">🎮</i><span>Giochi</span></button>
           <button data-go="quests"><i style="--b:#2fb8c9">📜</i><span>Missioni</span></button>
+          <button data-go="cards"><i style="--b:#c0392b">🃏</i><span>Carte</span></button>
+          <button data-go="rpjobs"><i style="--b:#28c2a0">💼</i><span>Lavori</span></button>
+          <button data-go="rpdocs"><i style="--b:#5a7fd8">🪪</i><span>Documenti</span></button>
+          <button data-go="rpcasa"><i style="--b:#c88a4a">🛋️</i><span>Casa</span></button>
+          <button data-go="motor"><i style="--b:#e8452c">🏁</i><span>Motori</span></button>
         </div>
         <div class="ph-dock">T / Esc per chiudere</div>
       </section>
@@ -87,11 +92,34 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
           <button data-mg="sushi"><b>🍣 Sushi all you can eat</b><small>60 secondi al nastro contro gli amici</small></button>
           <button data-mg="processo"><b>⚖️ Processo AI</b><small>difenditi davanti al giudice</small></button>
           <button data-mg="corriere"><b>📰 Corriere AI</b><small>edizione speciale sulla tua partita</small></button>
+          <button data-mg="br"><b>🚌 Ultimo in piedi</b><small>battle royale nel quartiere (anche online)</small></button>
+          <button data-mg="gulag"><b>⛓️ Gulag profondo</b><small>roguelike: stanze a caso, il Secondino in fondo</small></button>
+          <button data-rts="1"><b>🗺️ Assedio al quartiere</b><small>RTS: comanda gli amici contro le orde · anche online</small></button>
         </div>
+      </section>
+      <section data-app="cards">
+        <header><button class="ph-back" data-go="home">‹</button><div class="ph-gt"><b>Carte</b><small>briscola, scopa, figurine degli amici</small></div></header>
+        <div class="ph-list ph-games ph-cards"></div>
       </section>
       <section data-app="quests">
         <header><button class="ph-back" data-go="home">‹</button><div class="ph-gt"><b>Missioni</b><small>favori per gli amici · J</small></div></header>
         <div class="ph-list ph-quests"></div>
+      </section>
+      <section data-app="rpjobs">
+        <header><button class="ph-back" data-go="home">‹</button><div class="ph-gt"><b>Lavori</b><small>turni, paga e mance</small></div></header>
+        <div class="rp-app"></div>
+      </section>
+      <section data-app="rpdocs">
+        <header><button class="ph-back" data-go="home">‹</button><div class="ph-gt"><b>Documenti</b><small>carta d'identità · fedina</small></div></header>
+        <div class="rp-app"></div>
+      </section>
+      <section data-app="rpcasa">
+        <header><button class="ph-back" data-go="home">‹</button><div class="ph-gt"><b>Casa</b><small>arredamento</small></div></header>
+        <div class="rp-app"></div>
+      </section>
+      <section data-app="motor">
+        <header><button class="ph-back" data-go="home">‹</button><div class="ph-gt"><b>Motori</b><small>gare, officina, la tua 500</small></div></header>
+        <div class="mt-app"></div>
       </section>
       <section data-app="ai">
         <header><button class="ph-back" data-go="home">‹</button><div class="ph-gt"><b>Claude</b><small>chi scrive le battute</small></div></header>
@@ -107,6 +135,8 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
   const $ = s => root.querySelector(s);
   const msgsEl = $('.ph-msgs'), typingEl = $('.ph-typing'), form = $('.ph-compose'), inp = form.querySelector('input');
   root.addEventListener('click', e => {
+    const rt = e.target.closest('[data-rts]'); // Assedio (src/rts): close the phone, open the lobby
+    if (rt) { e.preventDefault(); close(); setTimeout(() => { try { window.__rts && window.__rts.open(); } catch (err) { console.warn('rts', err); } }, 80); return; }
     const m = e.target.closest('[data-mg]');
     if (m) { // minigames (src/minigames/index.js): close the phone, then open the game
       e.preventDefault(); const id = m.dataset.mg; close();
@@ -162,7 +192,10 @@ export function installPhone({ ui, audio, level, S, getFX, man, npcs }) {
     if (a === 'photos') { renderPhotos(); unlock('phone_roll', { title: 'Rullino', desc: 'Guarda le foto sul telefono.', icon: '🖼️' }); }
     if (a === 'ai') renderAI();
     if (a === 'map') drawMap();
+    if (a === 'cards') { try { const el = $('.ph-cards'); if (el && window.__cards) el.innerHTML = window.__cards.phoneHTML(); } catch (e) { console.warn('cards', e); } } // cards/: app Carte
     if (a === 'quests') { try { window.__rpg && window.__rpg.renderQuests($('.ph-quests')); } catch (e) { console.warn('quests', e); } } // rpg/ui.js
+    if (a === 'motor') { try { window.__motor && window.__motor.renderApp(root.querySelector('section[data-app="motor"] .mt-app')); } catch (e) { console.warn('motor', e); } } // motor/index.js
+    if (a === 'rpjobs' || a === 'rpdocs' || a === 'rpcasa') { try { window.__rp && window.__rp.renderApp(a, root.querySelector(`section[data-app="${a}"] .rp-app`)); } catch (e) { console.warn('rp', e); } } // rp/index.js
     updateBadges();
   }
 

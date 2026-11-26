@@ -19,7 +19,7 @@ function shadows(o, cast) { o.traverse(m => { if (m.isMesh) { m.castShadow = cas
 const findBone = (o, re) => { let b = null; o.traverse(n => { if (!b && n.isBone && re.test(n.name)) b = n; }); return b; };
 
 export function createLife(root, { getQuality = () => 'high' } = {}) {
-  const G = new THREE.Group(); G.name = 'streetLife'; root.add(G);
+  const G = new THREE.Group(); G.name = 'streetLife'; G.userData.noBatch = true; root.add(G); // everything here moves: not for batch.js
   const S = { ready: false, walkers: [], pigeons: [], q: null, loading: false };
 
   async function load() {
@@ -73,7 +73,10 @@ export function createLife(root, { getQuality = () => 'high' } = {}) {
         if ((s > 1 && w.dir > 0) || (s < 0 && w.dir < 0)) { w.dir *= -1; w.pause = 0.8 + Math.random() * 1.6; }
       }
       let dy = tgtYaw - w.o.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); w.o.rotation.y += dy * Math.min(1, dt * 4);
-      if (d < 45) w.mixer.update(dt);
+      // animation LOD: full rate on screen and near, ~8 Hz far, frozen when off screen (perf: window.__onScreen from skincull.js)
+      w.macc = (w.macc || 0) + dt;
+      if (d < 45 && (!window.__onScreen || window.__onScreen(w.o.position, 1.5)) && (d < 18 || w.macc > 0.12)) { w.mixer.update(w.macc); w.macc = 0; }
+      else if (w.macc > 1) w.macc = 1;
     }
     for (const p of S.pigeons) {
       if (!p.on) continue;

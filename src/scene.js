@@ -28,15 +28,25 @@ export function createRenderer(container, low) {
 }
 
 export const FinalShader = {
-  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, grain: { value: 0.035 }, vignette: { value: 0.32 }, fade: { value: 1 }, bars: { value: 0 }, aspect: { value: 1.7 } },
+  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, grain: { value: 0.035 }, vignette: { value: 0.32 }, fade: { value: 1 }, bars: { value: 0 }, aspect: { value: 1.7 }, grade: { value: 1 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float time, grain, vignette, fade, bars, aspect; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform float time, grain, vignette, fade, bars, aspect, grade; varying vec2 vUv;
     float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
     void main(){
       vec2 uv = vUv;
       vec2 d = uv - 0.5;
       vec3 c = texture2D(tDiffuse, uv).rgb;
+      // colour grade (display space, after tone mapping): warm highlights / slightly cool shadows, gentle S-curve,
+      // a touch of saturation. NaN/inf-safe (a bad pixel must never spread).
+      if (any(isnan(c)) || any(isinf(c))) c = vec3(0.0);
+      c = clamp(c, 0.0, 1.0);
+      float L = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c += grade * (vec3(0.03, 0.012, -0.025) * smoothstep(0.35, 1.0, L) + vec3(-0.01, 0.0, 0.018) * (1.0 - smoothstep(0.0, 0.35, L)));
+      c = clamp(c, 0.0, 1.0);
+      c = mix(c, c * c * (3.0 - 2.0 * c), 0.16 * grade);
+      L = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c = clamp(mix(vec3(L), c, 1.0 + 0.07 * grade), 0.0, 1.0);
       float v = 1.0 - dot(d*vec2(1.0,0.85), d*vec2(1.0,0.85)) * vignette * 2.2;
       c *= v;
       float n = h(uv*vec2(1931.0,1173.0) + fract(time*7.13)) - 0.5;
@@ -121,7 +131,8 @@ export function detectGPU(renderer) {
   if (software) tier = 0;
   else if (/apple m\d/.test(s)) tier = /(pro|max|ultra)/.test(s) ? 3 : 2;
   else if (/nvidia|geforce|quadro|rtx|gtx/.test(s)) {
-    if (/rtx\s*\d{4}/.test(s) || /rtx a\d{4}/.test(s)) tier = 3;
+    if (/rtx\s*\d0[25]0/.test(s)) tier = 2; // RTX 2050/3050/4050 (+ Ti, laptop): entry level -> 'high'
+    else if (/rtx\s*\d{4}/.test(s) || /rtx a\d{4}/.test(s)) tier = 3;
     else if (/gtx\s*(16\d\d|10[6-8]0|980|970)/.test(s)) tier = 2;
     else if (/\bmx\s*\d{3}|gtx\s*(9[0-6]0|10[35]0)|gt\s*\d{3}/.test(s)) tier = 1;
     else tier = 2;
@@ -148,7 +159,7 @@ export const QUALITY_LABELS = { auto: 'Auto', low: 'Bassa', medium: 'Media', hig
 export const QUALITY = {
   low: { pr: 1.0, maxPx: 1.6e6, shadow: 1024, soft: false, refl: false, bloom: false, dust: false, msaa: 0, grain: 0.02, ao: 0, bloomR: 0.4 },
   medium: { pr: 1.3, maxPx: 2.8e6, shadow: 1536, soft: true, refl: false, bloom: true, dust: true, msaa: 2, grain: 0.03, ao: 0, bloomR: 0.45 },
-  high: { pr: 1.6, maxPx: 4.6e6, shadow: 2048, soft: true, refl: true, bloom: true, dust: true, msaa: 4, grain: 0.035, ao: 8, bloomR: 0.45 },
+  high: { pr: 1.35, maxPx: 3.4e6, shadow: 2048, soft: true, refl: true, bloom: true, dust: true, msaa: 4, grain: 0.035, ao: 8, bloomR: 0.45 },
   ultra: { pr: 2.0, maxPx: 8.4e6, shadow: 4096, soft: true, refl: true, bloom: true, dust: true, msaa: 4, grain: 0.035, ao: 16, bloomR: 0.55 },
 };
 let GPU = null;

@@ -1,9 +1,10 @@
+import './net/profile.js'; // first: cloud save (codice di recupero) hooks localStorage before any module uses it; window.__board, window.__daily
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import './gltfsetup.js';
 import { installCull, installHouseCull } from './perfcull.js'; // distance culling of small props (draw calls) // meshopt decoder for every GLTFLoader (optimised Tripo models in assets/models)
 import { installMobile } from './mobile.js'; // touch devices: caps the pixel ratio at import, UI added after createUI
-import { createRenderer, createComposer, setupLights, applyQuality, autoQualityLevel, lowerQuality } from './scene.js';
+import { createRenderer, createComposer, setupLights, applyQuality, autoQualityLevel, lowerQuality, currentQuality } from './scene.js';
 import { installGfx, gfxGate } from './gfx.js'; // warm-up, detail materials, blobs (round 6 GRAFICA)
 import { createUI } from './ui.js';
 import { buildRoom, powerCable } from './room.js';
@@ -33,13 +34,24 @@ import { createSave } from './save.js';
 import { playOpening } from './opening.js';
 import './ai.js'; // window.__ai (Claude provider chain + offline fallback), window.__personas — installed on import
 import { installLightPad } from './lightpad.js';
+import './net/match.js'; // window.__match: shared rules (shared/*.mjs) locally or refereed by the server
+import PROF, { hookRenderer as hookProf } from './prof.js'; // ?prof frame profiler (window.__prof)
+import { createBatcher } from './batch.js'; // static meshes -> BatchedMesh (one draw per material), window.__batch
+import { installSkinCull, updateCamFrustum } from './skincull.js'; // skinned characters: real frustum culling + window.__onScreen
+import { installLazyMatrix } from './lazymatrix.js'; // still objects skip the per-frame matrix recompose
 import './desktop.js'; // FPS counter (F3 / Impostazioni) + desktop-app settings (FPS illimitati, schermo intero, scheda video)
 import { installNPCs } from './npcs.js'; // the friends of the group as NPCs (E to talk)
 import { createInteractions } from './interact/index.js'; // emote wheel (B), friend actions, world props (interact/)
 import { installSport } from './sport/index.js'; // calcetto cage in Teletubbylandia: ball, 3v3 with the friends, rigori, tiri liberi
 import { installPhone } from './phone.js'; // in-game phone (T): group chat, contacts, photos, map, Claude settings
+import { installRP } from './rp/index.js'; // v8 roleplay: lavori (rider, barista, buttafuori, vigile), documenti, casa, /me /do /dado (rp/)
+import { installRTS } from './rts/index.js'; // v8 RTS "Assedio al quartiere": command table in the garden / phone, rules in shared/siege.mjs (local or server)
+import { installCards } from './cards/index.js'; // v8 carte: briscola e scopa al Celtic, figurine degli amici + duello, album/bustine/scambio (cards/)
+import { installMotor } from './motor/index.js'; // v8 motori: your 500 + the friends' (E), Officina tuning, races on 3 tracks (shared/race.mjs), Vespa nitro
 import { installRPG } from './rpg/index.js'; // v7 looter + RPG: loot/crates/Euro, Zaino (I), XP/livelli/talenti, missioni dagli amici (J), Banco dei pegni
 import { installCombat } from './combat/index.js'; // v7: first/third person, comic weapons, health, open-world enemies (combat/)
+import { installBR } from './br/index.js'; // v8 battle royale "Ultimo in piedi a Bologna": bus stop / phone, rules in shared/br.mjs (server referee or local bots)
+import { installGulagRun } from './gulag/index.js'; // v8 roguelike "Il Gulag profondo": iron door in the basement / phone, rules in shared/gulag.mjs
 
 // ======================= CONFIG (all tunables) =======================
 export const CONFIG = {
@@ -224,7 +236,7 @@ async function main() {
   // ---------- input ----------
   const input = createInput(el);
   // ---------- mouse look (pointer lock) ----------
-  const LOOK_MODES = ['explore', 'goto', 'ko']; // ko: combat K.O. (combat/index.js)
+  const LOOK_MODES = ['explore', 'goto', 'ko', 'car', 'vespa']; // ko: combat K.O. (combat/index.js); car/vespa: mouse orbits the chase camera (motor/)
   const overlayOpen = () => !!(document.querySelector('#rdr.on') || document.body.dataset.overlay);
   input.canLock = () => !ui.coarse && S.phase === 'world' && !!world && LOOK_MODES.includes(world.mode) && !ui.menuOpen && !overlayOpen();
   // Esc releases the lock in the browser: open the pause menu (unless something else took the mouse on purpose)
@@ -425,6 +437,9 @@ async function main() {
   const npcs = installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, camera, input, getFX, low, S }); plugins.push(npcs.plugin); // friends of the group chat (npcs.js): clones the man's bind pose, so before his first update
   const IA = createInteractions({ scene, man, ui, audio, getFX, level, input, S, npcs, renderer, news }); plugins.push(IA.plugin); // interact/: emotes, friend actions, props
   const rpg = installRPG({ scene, camera, ui, audio, level, S, man, npcs }); plugins.push(rpg.plugin); // rpg/: crates + shop colliders before createWorld, loot meshes now (warm-up)
+  const motor = installMotor({ scene, level, man, input, ui, audio, camera, S, IA }); plugins.push(motor.plugin); // motor/: cars + race arches built now (preload/warm-up)
+  const cards = installCards({ scene, level, man, input, ui, audio, camera, S, npcs }); plugins.push(cards.plugin); // cards/: tavolo del Celtic (carte 3D costruite ora: warm-up) + edicola (bustine)
+  const rts = installRTS({ scene, camera, renderer, level, ui, input, audio, low }); plugins.push(rts.plugin); // rts/: command table collider before createWorld, instanced meshes now (warm-up)
   // ---------- preload: the whole neighbourhood + every model during the loading screen / intro ----------
   // nothing is built, decoded or swapped lazily while playing any more (that was the in-game lag); gfx.js waits for
   // this before its warm-up (texture upload + shader compile of everything), and the menu opens after that
@@ -437,11 +452,17 @@ async function main() {
     // gfx.js warm-up progress (textures on the GPU, shaders, one render of everything) on the same bar
     (window.__gfx = window.__gfx || {}).onProgress = k => { try { ui.loading.set(0.96 + 0.04 * k, 'Preparo la grafica… ' + Math.round(k * 100) + '%'); } catch (e) { } };
   }
+  // roleplay (rp/): jobs, uniforms, job board collider, furniture templates (joins the preload: warm-up covers them)
+  const rp = installRP({ scene, camera, ui, audio, level, S, man, npcs, input }); plugins.push(rp.plugin);
+  window.__preloadP = Promise.all([window.__preloadP, rp.preload().catch(e => console.warn('rp preload', e))]);
 
   // ---------- explore world ----------
   // easter eggs: props + colliders must exist before createWorld (explore merges level colliders at init)
   const eggs = createEggs({ scene, level, room, screenTex, low });
   const gulag = buildGulag({ scene, level, lights, low, audio, ui, man, dog, camera, getFX }); // secret basement (gulag.js): colliders before createWorld
+  // battle royale + Gulag roguelike (br/, gulag/): bus stop colliders before createWorld; arena, loot pool, umbrella and avatars built now (warm-up)
+  const br = installBR({ scene, camera, man, ui, audio, level, S, gltf, Man, anims, getWorld: () => world }); plugins.push(br.plugin);
+  const grun = installGulagRun({ scene, camera, man, ui, audio, level, S, getWorld: () => world, getGulag: () => gulag }); plugins.push(grun.plugin);
   world = createWorld({
     scene, camera, man, dog, cab, game, audio, ui, CONFIG, S, props, input, TRACKS, getFX, level, cabinets, plugins,
     playMusic: n => playMusic(n),
@@ -564,7 +585,7 @@ async function main() {
 
   // 'inside the cabinet': camera on the screen normal at the distance where the CRT (plus a hair of bezel)
   // exactly fits the viewport: fit to height on landscape, to width on portrait.
-  const _hv = new THREE.Vector3(), _hv2 = new THREE.Vector3(), _cv = new THREE.Vector3();
+  const _hv = new THREE.Vector3(), _hv2 = new THREE.Vector3(), _cv = new THREE.Vector3(), _dl = new THREE.Vector3();
   function insidePose(AC) {
     const cs = CONFIG.cams.schermo, fv = THREE.MathUtils.degToRad(fovFor(cs.fov)), tv = Math.tan(fv / 2);
     const Wt = 0.53 * cs.pad, Ht = 0.3975 * cs.pad;
@@ -632,6 +653,7 @@ async function main() {
   }
   function tickBody() {
     const dt = Math.min(clock.getDelta(), 0.05); t += dt; frame++;
+    PROF.start();
     // the opening / pre-game menu cover the whole screen: draw only 1 frame in 8 behind them (uploads and warm-up keep going,
     // the GPU rests); once everything is warmed up the intro plays with no 3D rendering at all behind it
     if ((S.phase === 'ready' || S.phase === 'loading') && (document.body.dataset.opening || ui.menuOpen) && (frame % 8 || (document.body.dataset.opening && window.__gfx && window.__gfx.ready))) { ui.update(dt); input.endFrame(); return; }
@@ -648,7 +670,8 @@ async function main() {
       if (input.pressed('KeyT') && ui.chat) ui.chat.focus();
       // Esc / gamepad Start open the pause menu while walking around (in sub-modes Esc means "back")
       const padStart = input.pads[0].cur[9] && !input.pads[0].prev[9];
-      if (S.phase === 'world' && world.mode === 'explore' && (input.pressed('Escape') || padStart)) { ui.menu.show('pause'); input.edges.delete('Escape'); }
+      // (with the dog's trick menu open, Esc closes that menu first: dogplay.js handles it)
+      if (S.phase === 'world' && world.mode === 'explore' && (input.pressed('Escape') || padStart) && !(world.DP && world.DP.menuOpen && world.DP.menuOpen())) { ui.menu.show('pause'); input.edges.delete('Escape'); }
     }
     // auto quality: drop a level if the frame rate stays low
     if (S.phase === 'world' && ui.settings.quality === 'auto' && !ui.menuOpen) {
@@ -685,6 +708,7 @@ async function main() {
       if (inp.start && !S.prevStart) { audio.sfx('button'); S.startPress = Math.max(S.startPress, 0.35); } S.prevStart = inp.start;
     }
     // game
+    PROF.m('pre');
     if (!net.gameHook(dt)) game.update(ui.menuOpen && !S.online ? 0 : dt); if (perf.screenDue(0)) { game.draw(); screenTex.needsUpdate = true; } // perf: off-screen screens redraw at ~10 Hz
     dgame.update(ui.menuOpen ? 0 : dt); if (perf.screenDue(1)) { dgame.draw(); dTex.needsUpdate = true; }
     MG.update(dt, { ci, menuOpen: ui.menuOpen, perf, t });
@@ -693,6 +717,7 @@ async function main() {
     if (game.state !== S.prevGameState) { S.prevGameState = game.state; if (game.state === 'attract') { S.twoP = false; refreshHint(); } }
     if (ci < 1 && S.phase === 'world' && game.state === 'attract' && !world.dancing && music !== 'title' && audio.ctx) playMusic('title');
     if (game.players && game.players.length > 1 && !S.twoP) { S.twoP = true; refreshHint(); }
+    PROF.m('cabgames');
     // intro / world
     let dogLook = null, dogEx = 0;
     if (S.phase === 'intro') { if (!S.freeze) S.introT += dt; introUpdate(S.introT, dt); }
@@ -700,8 +725,9 @@ async function main() {
       eggs.preUpdate(ui.menuOpen ? 0 : dt);
       IA.update(ui.menuOpen ? 0 : dt); // interact/: wheel input, follower, can, TV (before world.update)
       if (!ui.menuOpen) sport.pre(dt); // sport/: left click / Q / touch kicks (before world.update)
+      motor.pre(dt); // motor/: parked/driven cars as colliders, vespa nitro + race keys (before world.update)
       const pose = world.update(ui.menuOpen ? 0 : dt);
-      const c = IA.camera(CB.camera(pose, dt), dt) || playCamera(t); // combat: first person / over the shoulder (snap = no smoothing)
+      const c = rts.camera(IA.camera(CB.camera(pose, dt), dt), dt) || playCamera(t); // rts: high angled camera over the quartiere while in Assedio // combat: first person / over the shoulder (snap = no smoothing)
       const looking = pose && performance.now() - input.drag.last < 300;
       const k = c.snap ? 1 : 1 - Math.exp(-dt * (pose ? (looking ? 16 : 6.5) : (inCab ? 7 : 3)));
       S.curPos.lerp(c.pos, k); S.curLook.lerp(c.look, k); S.curFov = lerp(S.curFov, c.fov, k);
@@ -710,10 +736,11 @@ async function main() {
       final.uniforms.fade.value = 1;
       const dl = world.dogLook();
       if (dl) { dogLook = dl.look; dogEx = dl.excite; }
-      else { dogLook = game.state === 'attract' ? man.root.position.clone().add(new THREE.Vector3(0, 1.4, 0)) : AC.screenCenter; dogEx = dog.state.wag > 0.5 ? 0.8 : 0; }
+      else { dogLook = game.state === 'attract' ? _dl.copy(man.root.position).setY(man.root.position.y + 1.4) : AC.screenCenter; dogEx = dog.state.wag > 0.5 ? 0.8 : 0; }
       dog.update(dt, dogLook, dogEx);
       if (frame % 6 === 0) refreshHint();
     } else { dog.update(dt, screenCenter, 0); }
+    PROF.m('world');
     // first-person: hide the man in "Schermo"
     const inside = insidePose(AC);
     const headW = man.bones && man.bones.Head ? man.bones.Head.getWorldPosition(_hv) : man.root.position;
@@ -740,7 +767,7 @@ async function main() {
     // man
     man.ik = S.ik; man.lean = S.lean; man.look = S.look;
     if (S.phase === 'world' && world.lookAtOut && !inCab) man.lookTarget.copy(world.lookAtOut);
-    else man.lookTarget.copy(AC.screenCenter).add(new THREE.Vector3(0, -0.02, 0));
+    else { man.lookTarget.copy(AC.screenCenter); man.lookTarget.y -= 0.02; }
     if (S.phase === 'intro' && S.introLookW > 0) man.lookTarget.lerp(S.introLook, S.introLookW); // intro: looks at the camera while waving
     S.press +=((inCab && (inp.fire || inp.bomb) ? 1 : 0) - S.press) * Math.min(1, dt * 18); man.press = S.press;
     if (S.ik > 0.001) {
@@ -752,14 +779,26 @@ async function main() {
       if (S.startPress > 0) { const st = W(AK.buttons.start1.cap).add(V3(CONFIG.man.startOff)); rt.lerp(st, smooth(S.startPress / 0.2)); }
       man.rightTarget.copy(rt);
     }
+    PROF.m('cabinets');
     man.update(dt);
+    PROF.m('man');
     IA.post(dt); // interact/: finger pose after the man's update
+    PROF.m('ia.post');
     CB.post(dt); // combat: weapon in hand, projectiles, enemies, fx, health
+    PROF.m('combat');
     footsteps(dt);
     net.update(dt);
+    PROF.m('net');
     npcs.update(dt); phone.update(dt); // after net.update: NPC colliders are appended to world.extraCircles
+    PROF.m('npcs+phone');
     rpg.update(ui.menuOpen ? 0 : dt, t); // rpg/: loot physics + pickups, crates, quests, HUD, waypoint
+    PROF.m('rpg');
+    cards.update(dt); // cards/: carte 3D sul tavolo del Celtic, refresh dei fumetti
     sport.update(ui.menuOpen ? 0 : dt); // sport/: ball, match AI (drives the NPC bodies after npcs.update), kick pose after man.update
+    motor.update(ui.menuOpen ? 0 : dt); // motor/: race HUD/bots/ghost, other players' cars
+    rts.update(ui.menuOpen ? 0 : dt, t); // rts/: Assedio (interpolated units, HUD, minimap, events)
+    rp.update(ui.menuOpen ? 0 : dt); // rp/: jobs, scripted friends, uniforms follow the bones (after man.update), furniture colliders
+    PROF.m('sport+features');
     // props / fx
     if (props.typewriter) props.typewriter.update(dt);
     mural.update(dt);
@@ -791,20 +830,29 @@ async function main() {
       C.sLight.color.copy(C.sCol); C.sLight.intensity = CONFIG.screenLight.intensity * S.screenOn * (0.4 + C.sLum * 1.6) * (1 + (1 - S.lightK) * 0.8);
     }
     if (audio.setHum) audio.setHum(S.screenOn);
-    level.update(dt, t, S.phase === 'world' ? man.root.position : null, camera);
-    quartiere.update(dt, t, S.phase === 'world' ? man.root.position : null, camera);
+    PROF.m('props+lights');
+    level.update(dt, t, S.phase === 'world' ? (rts.focus() || man.root.position) : null, camera);
+    PROF.m('level');
+    quartiere.update(dt, t, S.phase === 'world' ? (rts.focus() || man.root.position) : null, camera);
+    PROF.m('quartiere');
     // small props far from the camera stop drawing (after the start-up warm-up has uploaded everything)
     if (!S.cullOn && window.__gfx && window.__gfx.ready) { S.cullOn = true; try { S.cull = installCull({ camera, roots: [level.root, room && room.room, quartiere.root] }); S.cull.collect(); } catch (e) { console.warn('cull', e); } }
     if (S.cull && !q.has('nocull')) S.cull.update(dt);
+    if (S.cullOn && !q.has('noskincull')) SKIN.update(dt);
+    LAZY.update(dt);
+    if (BATCH.done) { const qq = currentQuality(); BATCH.update(400, camera.position, qq === 'low' ? 14 : qq === 'medium' ? 20 : qq === 'high' ? 28 : 38); }
     if (S.cullOn && !S.houseCull && !q.has('nocull')) try {
       const HOUSE = ['eggs', 'cronache', 'caso', 'news-prints', 'gulagPassage', 'dogprops', 'mural'];
       S.houseCull = installHouseCull({ camera, level, groups: () => [room && room.room, cab.group, cab2 && cab2.group, ...scene.children.filter(o => /^cabinet-/.test(o.name) || HOUSE.includes(o.name))] });
     } catch (e) { console.warn('house cull', e); }
     if (S.houseCull) S.houseCull.update(dt);
+    PROF.m('cull');
     if (audio.setAmbience) { const fn = getFX(); audio.setAmbience(S.phase === 'world' ? (level.outdoor || 0) : 0, (fn && fn.nightAmount) || 0, gulag && gulag.inside ? 1 : 0); }
     if (fx) fx.update(dt);
     fxFallback.update(dt);
     gulag.update(dt, t); // after fx.update: dims the house lights while in the basement
+    br.update(dt); grun.update(ui.menuOpen ? 0 : dt); // br/ (views at 15 Hz → avatars, zone, HUD) · gulag/ (room waves, HUD)
+    PROF.m('fx+gulag');
     // camera
     S.shake = Math.max(0, S.shake - dt * 0.12);
     if (window.__camOverride) { const o = window.__camOverride; S.curPos.set(o[0], o[1], o[2]); S.curLook.set(o[3], o[4], o[5]); } // test hook
@@ -814,17 +862,48 @@ async function main() {
     eggs.update(dt, t); // easter eggs (after lookAt: tipsy camera sway)
     const f = fovFor(S.curFov); if (Math.abs(camera.fov - f) > 0.01) { camera.fov = f; camera.updateProjectionMatrix(); }
     CB.afterCamera(dt); // combat: first-person viewmodel + HUD projected from 3D
+    updateCamFrustum(camera); // window.__onScreen() for animation LOD (combat, life…), next frame's updates use it
     final.uniforms.time.value = t;
     if (S.phase === 'ready' || S.phase === 'loading') { final.uniforms.fade.value = 0.0; }
+    PROF.m('camera+late');
     perf.update(dt); // shadow-map throttle, dynamic resolution
     composer.render(dt);
+    PROF.m('render');
     input.endFrame();
+    PROF.end();
   }
   // initial state: dark room, screen off
   setLights(0.035); S.marquee = 0; S.screenOn = 0; man.root.position.set(...CONFIG.man.path[0]);
   final.uniforms.bars.value = 1; final.uniforms.fade.value = 0;
   const perf = installPerf({ renderer, scene, camera, composer, lights, resize, getQuality: () => ui.settings.quality, protect: [man.root, dog.root], screens: [{ tex: screenTex }, { tex: dTex }, ...MG.screens] });
   try { installGfx({ renderer, scene, camera, composer, bloom, lights, room, level, man, dog, fx }); } catch (e) { console.warn('gfx', e); }
+  try { hookProf({ renderer, scene, composer }); } catch (e) { console.warn('prof', e); }
+  // ---------- batching (batch.js): after the preload, before the gfx warm-up (gfx.js calls window.__batchWorld) ----------
+  // every static mesh of the house, the arcade room and each neighbourhood group is drawn through BatchedMeshes;
+  // new districts (src/quartiere/*) are picked up automatically as children of quartiere.root, or by calling
+  // window.__batch.batch(group) themselves before the warm-up.
+  const BATCH = createBatcher({ scene });
+  const SKIN = installSkinCull({ scene });
+  const LAZY = installLazyMatrix({ scene, on: !q.has('nolazy') });
+  window.__batch = BATCH;
+  window.__batchWorld = (force) => {
+    if ((q.has('nobatch') && force !== true) || BATCH.done) return BATCH.stats(); BATCH.done = true;
+    const t0 = performance.now(), roots = [];
+    // every static top-level group of the scene (house, arcade room, cabinets, murals, quartiere areas and places,
+    // gulag, mode props…); characters (anything with a skinned mesh), effects and moving rigs are left alone.
+    // Anything that moves later is un-batched by the watcher, so a wrong guess here costs speed, never correctness.
+    const DYN = /^(npc_|br-avatar|combat-|fx$|motorCars|rpg-loot|streetLife)/;
+    const skip = c => !c || c.isLight || c.isCamera || c.isMesh || c.isPoints || !c.children.length || (c.userData && (c.userData.noBatch || c.userData.isMan || c.userData.isDog)) || DYN.test(c.name || '');
+    const skinned = c => { let k = false; c.traverse(o => { if (o.isSkinnedMesh) k = true; }); return k; };
+    for (const c of scene.children) {
+      if (c === quartiere.root) { for (const g of c.children) if (!skip(g)) roots.push(g); continue; }
+      if (!skip(c) && !skinned(c)) roots.push(c);
+    }
+    for (const r of [level.root, room && room.room, gulag && gulag.root]) if (r && !roots.includes(r)) roots.push(r);
+    for (const r of roots) if (r) try { BATCH.batch(r, { name: r.name || 'group' }); } catch (e) { console.warn('batch', r && r.name, e); }
+    BATCH.ms = Math.round(performance.now() - t0);
+    return BATCH.stats();
+  };
   requestAnimationFrame(tick);
   window.__app = { S, game, man, cab, camera, CONFIG, skipIntro, world, input, props, dog, fx: getFX, net, level, eggs, news, mural, caso, gulag, cron, audio, combat: CB.api,
     dgame, cabinets: cabinets.map(c => ({ id: c.id, name: c.name, cab: c.cab, game: c.game })),

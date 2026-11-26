@@ -1,23 +1,36 @@
 // BIGALESSO GAMES – server multiplayer
-// Serve la build statica (dist/) e un WebSocket su /ws con stanze a codice di 4 lettere.
-// Nessun database: tutto in memoria. Avvio: PORT=8080 node server/server.mjs
+// Serve la build statica (dist/) e un WebSocket su /ws con:
+//   - stanze private a codice di 4 lettere (max 8) e il "Quartiere pubblico" a shard da 24 con interest management;
+//   - partite arbitrate dal server (server/match.mjs: regole in shared/*.mjs);
+//   - salvataggi dei giocatori, classifiche e seme del giorno (server/api.mjs + server/store.mjs, DATA_DIR=/data).
+// Avvio: PORT=8080 node server/server.mjs
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { handleAI } from './ai.mjs'; // POST /api/ai (Claude proxy, env ANTHROPIC_API_KEY)
+import { handleApi } from './api.mjs'; // /api/profile, /api/board/:id, /api/daily
+import { openStore, hashToken } from './store.mjs';
+import { createMatches } from './match.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = +process.env.PORT || 8080;
 const STATIC_DIR = path.resolve(process.env.STATIC_DIR || path.join(__dirname, '..', 'dist'));
-const MAX_PLAYERS = 8;
+const MAX_PLAYERS = 8;                // private rooms
+const WORLD_CAP = Math.max(2, +process.env.WORLD_CAP || 24); // public shards ("Quartiere pubblico")
+const WORLD_RADIUS = +process.env.WORLD_RADIUS || 70;        // metres: presence sent only for players this close
+const WORLD_IDLE_MS = 180000;          // no presence for 3 min in a shard -> dropped
 const MAX_ROOMS = +process.env.MAX_ROOMS || 500;
-const STATE_HZ = 15;
+const STATE_HZ = 15, WORLD_HZ = 10;
+const MAX_EXTRA = 512;                // bytes, presence extras (car look, job title…)
+const TOKEN_RE = /^[A-HJ-NP-Z2-9]{16,32}$/;
 const MAX_MSG = 128 * 1024;          // bytes, any message
 const MAX_STATE = 2048;               // bytes, presence state
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I/O
 const log = (...a) => console.log(new Date().toISOString(), ...a);
+const store = await openStore(log);                     // profiles + leaderboards (DATA_DIR, default /data)
+const matches = createMatches({ send, log, store });    // server-refereed matches (shared/*.mjs rules)
 
 // ---------------------------------------------------------------- static files
 const MIME = {
@@ -102,25 +115,42 @@ const cleanName = n => String(n || '').replace(/[\u0000-\u001f<>]/g, '').trim().
 const cleanText = s => String(s || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 200);
 function send(c, msg) { if (c.ws.readyState === 1) { try { c.ws.send(typeof msg === 'string' ? msg : JSON.stringify(msg)); } catch { } } }
 function broadcast(room, msg, except) { const s = JSON.stringify(msg); for (const c of room.clients.values()) if (c !== except) send(c, s); }
-const pub = c => ({ id: c.id, name: c.name, color: c.color });
+const pub = c => ({ id: c.id, name: c.name, color: c.color, ...(c.extra && Object.keys(c.extra).length ? { extra: c.extra } : {}) });
 
 function joinRoom(c, room) {
-  if (room.clients.size >= MAX_PLAYERS) return send(c, { t: 'err', code: 'full', msg: 'Stanza piena (max ' + MAX_PLAYERS + ')' });
+  const cap = room.cap || MAX_PLAYERS;
+  if (room.clients.size >= cap) return send(c, { t: 'err', code: 'full', msg: 'Stanza piena (max ' + cap + ')' });
   leaveRoom(c);
   const used = new Set([...room.clients.values()].map(x => x.color));
   c.color = 0; while (used.has(c.color)) c.color++;
   c.room = room; room.clients.set(c.id, c);
   if (!room.host || !room.clients.has(room.host)) room.host = c.id;
-  send(c, { t: 'welcome', id: c.id, code: room.code, host: room.host, players: [...room.clients.values()].map(pub), states: Object.fromEntries([...room.clients.values()].filter(x => x.state).map(x => [x.id, x.state])) });
+  c.seen = new Set(); c.lastStateAt = Date.now();
+  // shards: only the states of players nearby (interest management); private rooms: everyone
+  const near = x => !room.world || !x.state || !c.state || x === c;
+  const states = Object.fromEntries([...room.clients.values()].filter(x => x.state && near(x)).map(x => [x.id, x.state]));
+  send(c, { t: 'welcome', id: c.id, code: room.code, host: room.host, world: !!room.world, cap, players: [...room.clients.values()].map(pub), states });
   broadcast(room, { t: 'joined', p: pub(c) }, c);
-  log('join', room.code, c.id, c.name, room.clients.size + '/' + MAX_PLAYERS);
+  log('join', room.code, c.id, c.name, room.clients.size + '/' + cap);
 }
 function leaveRoom(c) {
   const room = c.room; if (!room) return;
-  room.clients.delete(c.id); c.room = null; c.state = null; c.dirty = false;
+  room.clients.delete(c.id); c.room = null; c.state = null; c.dirty = false; c.seen = null;
   broadcast(room, { t: 'left', id: c.id });
+  for (const o of room.clients.values()) if (o.seen) o.seen.delete(c.id);
   if (room.clients.size === 0) { rooms.delete(room.code); log('room closed', room.code); return; }
   if (room.host === c.id) { room.host = room.clients.keys().next().value; broadcast(room, { t: 'host', id: room.host }); log('host ->', room.host, 'in', room.code); }
+}
+
+// public shards: fill the busiest shard that still has room, else open a new one (Q1, Q2…)
+function worldShard() {
+  let best = null;
+  for (const r of rooms.values()) if (r.world && r.clients.size < r.cap && (!best || r.clients.size > best.clients.size)) best = r;
+  if (best) return best;
+  if (rooms.size >= MAX_ROOMS) return null;
+  let n = 1; while (rooms.has('Q' + n)) n++;
+  const r = { code: 'Q' + n, clients: new Map(), host: null, created: Date.now(), world: true, cap: WORLD_CAP };
+  rooms.set(r.code, r); log('shard aperto', r.code); return r;
 }
 
 // token bucket per connection
@@ -136,8 +166,28 @@ function onMessage(c, data, isBinary) {
   let m; try { m = JSON.parse(data); } catch { return; }
   if (!m || typeof m.t !== 'string') return;
   const room = c.room;
+  if (m.t.startsWith('match:')) { matches.onMessage(c, m).catch(e => log('match', e && e.message)); return; }
   switch (m.t) {
-    case 'hello': c.name = cleanName(m.name); break;
+    case 'hello': {
+      c.name = cleanName(m.name);
+      if (typeof m.token === 'string' && TOKEN_RE.test(m.token)) c.th = hashToken(m.token); // verified leaderboard entries
+      break;
+    }
+    case 'world': { // public "Quartiere" shard
+      c.name = cleanName(m.name || c.name);
+      if (room && room.world) return send(c, { t: 'err', code: 'already', msg: 'Sei già nel quartiere pubblico' });
+      const r = worldShard(); if (!r) return send(c, { t: 'err', code: 'busy', msg: 'Server pieno, riprova più tardi' });
+      joinRoom(c, r); break;
+    }
+    case 'extra': { // presence extras: small keyed values, sent once and kept by the server for newcomers
+      const k = String(m.k || '').replace(/[^a-z0-9_]/gi, '').slice(0, 24); if (!k) return;
+      const next = { ...(c.extra || {}) };
+      if (m.v === null || m.v === undefined) delete next[k]; else next[k] = m.v;
+      if (JSON.stringify(next).length > MAX_EXTRA) return send(c, { t: 'err', code: 'extra', msg: 'extra troppo grande' });
+      c.extra = next;
+      if (room) broadcast(room, { t: 'extra', id: c.id, k, v: m.v === undefined ? null : m.v }, c);
+      break;
+    }
     case 'create': {
       if (rooms.size >= MAX_ROOMS) return send(c, { t: 'err', code: 'busy', msg: 'Server pieno, riprova più tardi' });
       c.name = cleanName(m.name || c.name);
@@ -155,7 +205,7 @@ function onMessage(c, data, isBinary) {
     case 'state': { // presence, relayed in batches at STATE_HZ
       if (!room || !m.s || typeof m.s !== 'object') return;
       const s = JSON.stringify(m.s); if (s.length > MAX_STATE) return;
-      c.state = m.s; c.dirty = true; break;
+      c.state = m.s; c.dirty = true; c.lastStateAt = Date.now(); break;
     }
     case 'ev': { // immediate small event to everyone else in the room
       if (!room || !m.e || typeof m.e !== 'object') return;
@@ -179,21 +229,56 @@ function onMessage(c, data, isBinary) {
   }
 }
 
-// presence relay tick
+// presence relay: private rooms at STATE_HZ to everyone; shards at WORLD_HZ, each client gets only the players within
+// WORLD_RADIUS (plus those sharing a match with it), a player coming into range is sent even if it didn't change,
+// and players leaving range are announced with 'far' so the client hides their avatar.
+let tickN = 0;
+const R2 = WORLD_RADIUS * WORLD_RADIUS;
 setInterval(() => {
+  tickN++;
+  const worldTick = tickN % Math.round(STATE_HZ / WORLD_HZ) === 0 || WORLD_HZ >= STATE_HZ;
   for (const room of rooms.values()) {
-    let s = null;
-    for (const c of room.clients.values()) if (c.dirty) { (s ||= {})[c.id] = c.state; c.dirty = false; }
-    if (s) broadcast(room, { t: 'states', s });
+    if (!room.world) {
+      let s = null;
+      for (const c of room.clients.values()) if (c.dirty) { (s ||= {})[c.id] = c.state; c.dirty = false; }
+      if (s) broadcast(room, { t: 'states', s });
+      continue;
+    }
+    if (!worldTick) continue;
+    const list = [...room.clients.values()];
+    for (const r of list) {
+      if (!r.seen) r.seen = new Set();
+      let s = null, far = null; const now = new Set();
+      for (const c of list) {
+        if (c === r || !c.state) continue;
+        const near = !r.state || ((c.state.x - r.state.x) ** 2 + (c.state.z - r.state.z) ** 2 <= R2) || matches.shared(r, c);
+        if (!near) continue;
+        now.add(c.id);
+        if (c.dirty || !r.seen.has(c.id)) (s ||= {})[c.id] = c.state;
+      }
+      for (const id of r.seen) if (!now.has(id)) (far ||= []).push(id);
+      r.seen = now;
+      if (s) send(r, { t: 'states', s });
+      if (far) send(r, { t: 'far', ids: far });
+    }
+    for (const c of list) c.dirty = false;
   }
 }, 1000 / STATE_HZ);
+// shards: drop players with no presence for a while (closed laptop, background tab)
+setInterval(() => {
+  const now = Date.now();
+  for (const room of rooms.values()) if (room.world) for (const c of [...room.clients.values()]) {
+    if (now - (c.lastStateAt || 0) > WORLD_IDLE_MS) { leaveRoom(c); send(c, { t: 'bye', reason: 'idle' }); }
+  }
+}, 15000).unref();
 
 // ---------------------------------------------------------------- http + ws
 const server = http.createServer((req, res) => {
   if (handleAI(req, res, log)) return;
+  if (handleApi(req, res, store, log)) return;
   if (req.url === '/healthz') {
-    let players = 0; for (const r of rooms.values()) players += r.clients.size;
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ ok: true, rooms: rooms.size, players, uptime: Math.round(process.uptime()) }));
+    let players = 0, shards = 0; for (const r of rooms.values()) { players += r.clients.size; if (r.world) shards++; }
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ ok: true, rooms: rooms.size, shards, players, ...matches.stats(), store: store.kind, uptime: Math.round(process.uptime()) }));
     return;
   }
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405).end(); return; }
@@ -213,9 +298,9 @@ wss.on('connection', ws => {
   const c = { id: nextId++, ws, name: 'Giocatore', color: 0, room: null, state: null, dirty: false
     , tokens: 240, last: Date.now() };
   ws.on('message', (d, bin) => onMessage(c, d, bin));
-  ws.on('close', () => leaveRoom(c));
+  ws.on('close', () => { matches.onClose(c); leaveRoom(c); });
   ws.on('error', () => { });
-  send(c, { t: 'hi', id: c.id, max: MAX_PLAYERS });
+  send(c, { t: 'hi', id: c.id, max: MAX_PLAYERS, world: WORLD_CAP, games: matches.typesNow(), v: 2 });
 });
 // heartbeat: drop dead sockets (no pong within one interval)
 const hb = setInterval(() => {
@@ -229,4 +314,4 @@ wss.on('close', () => clearInterval(hb));
 
 server.listen(PORT, () => log(`BIGALESSO server su http://localhost:${PORT}  (statici: ${STATIC_DIR}, ws: /ws)`));
 let stopping = false;
-for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { if (stopping) return; stopping = true; log('stop (' + sig + ')'); wss.clients.forEach(w => w.close(1001)); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 1500).unref(); });
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { if (stopping) return; stopping = true; log('stop (' + sig + ')'); wss.clients.forEach(w => w.close(1001)); matches.close(); store.close(); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 1500).unref(); });

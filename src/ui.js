@@ -192,9 +192,35 @@ export function createUI() {
         <tr><td>Clic sinistro · destro</td><td>spara · mira (zoom, più preciso)</td></tr>
         <tr><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> / rotella</td><td>cambia arma (con l'arma in mano)</td></tr>
         <tr><td><kbd>R</kbd> · <kbd>Q</kbd></td><td>ricarica · ombrellata</td></tr></table>
+        <h3>Ultimo in piedi (fermata dell'autobus · telefono → Giochi)</h3><table>
+        <tr><td>Clic sulla mappa</td><td>scegli dove lanciarti con l'ombrello · <kbd>E</kbd> raccogli armi, brodo e felpe · <kbd>Tab</kbd> mappa</td></tr>
+        <tr><td>Da eliminato</td><td><kbd>E</kbd> / <kbd>Spazio</kbd> cambia chi guardi · <kbd>Esc</kbd> esci · resta dentro la zona: fuori fa male</td></tr></table>
+        <h3>Gulag profondo (porta di ferro in cantina · telefono → Giochi)</h3><table>
+        <tr><td><kbd>E</kbd></td><td>alle porte: stanza successiva (si aprono a stanza pulita) · ripostiglio · Spaccio di Cesco</td></tr>
+        <tr><td>Run</td><td>armi e vizi valgono solo nella run · se muori perdi tutto · i Gettoni del Gulag restano e sbloccano vizi di partenza</td></tr></table>
         <h3>Al calcetto (Teletubbylandia)</h3><table>
         <tr><td><kbd>E</kbd> / clic</td><td>tira (tieni premuto per caricare) · <kbd>R</kbd> pallonetto · <kbd>Q</kbd> passa · corri sulla palla per portarla</td></tr>
         <tr><td>Lavagna</td><td><kbd>E</kbd> sfida gli amici 3 contro 3 · <kbd>R</kbd> rigori · al canestro: tiri liberi</td></tr></table>
+        <h3>In macchina e in Vespa (la tua 500 è davanti all'Officina, Via Teletubbylandia)</h3><table>
+        <tr><td><kbd>W</kbd> <kbd>S</kbd> · <kbd>A</kbd> <kbd>D</kbd></td><td>gas · freno e retro · sterzo</td></tr>
+        <tr><td><kbd>Spazio</kbd> · <kbd>Shift</kbd> · <kbd>F</kbd></td><td>freno a mano (derapata) · nitro · clacson</td></tr>
+        <tr><td><kbd>C</kbd> · <kbd>R</kbd></td><td>camera · rimettiti in pista (o raddrizza la macchina)</td></tr>
+        <tr><td><kbd>G</kbd></td><td>vicino al cartello di una gara: corri (amici, cronometro col fantasma, online) · davanti all'Officina: tuning</td></tr>
+        <tr><td><kbd>E</kbd> / <kbd>Q</kbd></td><td>scendi (da fermo) · in gara: ritirati (premi due volte)</td></tr>
+        <tr><td>Telefono → Motori</td><td>tutte le gare, le gare online aperte dagli altri, l'Officina, chiama la 500</td></tr></table>
+        <h3>Assedio al quartiere (tavolo del comando in giardino · telefono → Giochi)</h3><table>
+        <tr><td>Trascina · clic destro</td><td>seleziona gli amici · muovi (su uno zombie: attacca) · doppio clic: tutti quelli dello stesso tipo</td></tr>
+        <tr><td><kbd>WASD</kbd> / bordo · rotella · <kbd>Q</kbd> <kbd>E</kbd></td><td>sposta la visuale · zoom · ruota · <kbd>Spazio</kbd> casa · clic sulla minimappa</td></tr>
+        <tr><td><kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd> <kbd>V</kbd> · <kbd>B</kbd> <kbd>N</kbd></td><td>recluta teppista, lanciatortellini, spritzatore, rider · barricata, torretta (<kbd>R</kbd> ruota)</td></tr>
+        <tr><td><kbd>T</kbd> <kbd>H</kbd> <kbd>Y</kbd> <kbd>F</kbd> <kbd>G</kbd></td><td>attacca-muovi · tieni posizione · stop · tutti i tuoi · chiama l'ondata · <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>9</kbd> gruppi</td></tr></table>
+        <h3>Lavori e roleplay</h3><table>
+        <tr><td>Telefono → Lavori</td><td>inizia un turno: rider, barista al Celtic, buttafuori al Millennium, vigile (o la bacheca in Piazzetta)</td></tr>
+        <tr><td>Barista</td><td>tieni <kbd>Spazio</kbd> per spinare · <kbd>A</kbd> <kbd>D</kbd> inclina · <kbd>Invio</kbd> servi · <kbd>X</kbd> butta</td></tr>
+        <tr><td>Buttafuori · Vigile</td><td><kbd>E</kbd> entra · <kbd>R</kbd> fuori · <kbd>B</kbd> prendi la mazzetta · al verbale <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></td></tr>
+        <tr><td>Casa</td><td>telefono → Casa: compra, <kbd>E</kbd> posa · <kbd>R</kbd> ruota · <kbd>X</kbd> annulla · chat online <kbd>/me</kbd> <kbd>/do</kbd> <kbd>/dado</kbd></td></tr></table>
+        <h3>A carte (Celtic · telefono → Carte · amici: 7)</h3><table>
+        <tr><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> / clic</td><td>briscola e scopa: gioca la carta (scopa: scegli la presa se ce n'è più d'una)</td></tr>
+        <tr><td><kbd>1</kbd>-<kbd>7</kbd> poi <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td><td>figurine duel: scegli la figurina e la corsia · <kbd>Invio</kbd> fine turno · <kbd>⌫</kbd> riprendi</td></tr></table>
         <h3>Al cabinato</h3><table>
         <tr><td>Frecce / <kbd>WASD</kbd></td><td>muovi Bigalesso</td></tr>
         <tr><td><kbd>Z</kbd> <kbd>Spazio</kbd></td><td>spara</td></tr>

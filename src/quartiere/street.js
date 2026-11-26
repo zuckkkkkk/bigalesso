@@ -172,6 +172,8 @@ export function buildStreet(root, { low = false, quality = 'high', interiorDoors
       solid([rx0, bz0], [rx1, bz1], 0, gh);
       solid([rx0, fz0], [d0, fz1], 0, gh); solid([d1, fz0], [rx1, fz1], 0, gh); solid([d0, fz0], [d1, fz1], 2.45, gh);
       solid([rx0, rz0], [rx1, rz1], room.ceil, gh);
+    } else if (b.passage) { // the Voltone: side piers + the vault over the passage (nord.js dresses the inside)
+      const P = b.passage; solid([g[0], g[1]], [P.x0, g[3]], 0, gh); solid([P.x1, g[1]], [g[2], g[3]], 0, gh); solid([P.x0, g[1]], [P.x1, g[3]], P.h, gh);
     } else solid([g[0], g[1]], [g[2], g[3]], 0, gh);
     if (gh < b.h - 1e-3) BB.box(wallMat, x0, gh, z0, x1, b.h, z1, { color: col, uv: wuv }); // upper floors (over the portico)
     // cornice + string course
@@ -209,7 +211,7 @@ export function buildStreet(root, { low = false, quality = 'high', interiorDoors
       }
     }
     // ground floor: door + shop / window
-    if (!b.club) {
+    if (!b.club && !b.passage) {
       const gl = b.portico ? F.ground : F.line; const dp = F.pos(b.door, 0, 0.01, gl);
       const enter = room && interiorDoors;
       if (!enter) { // closed door (wood, two leaves) with a stone frame
@@ -496,6 +498,7 @@ export function buildStreet(root, { low = false, quality = 'high', interiorDoors
       const side = i % 3; let x, z;
       if (side === 0) { x = -30 + R2() * 110; z = 98 + R2() * 22; } else if (side === 1) { x = 66 + R2() * 20; z = 20 + R2() * 90; } else { x = -28 + R2() * 56; z = 50 + R2() * 44; }
       if (x > 28 && x < 64 && z > 44 && z < 96) continue; // keep Petroni/Millennium clear
+      if ((x > -48 && x < 40 && z > 40 && z < 106) || (x > -40 && x < 4 && z > 100 && z < 130)) continue; // the northern districts (nord.js) stand there now
       const w = 6 + R2() * 10, d = 6 + R2() * 10, h = 8 + R2() * 14;
       sky.push({ x, y: h / 2, z, sx: w, sy: h, sz: d, color: ['#b98a6a', '#c9a07a', '#a87058', '#d0b08a'][(R2() * 4) | 0] });
     }

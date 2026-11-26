@@ -5,6 +5,8 @@
 // The parked vespa is an instance of quartiere's InstancedMesh (procedural, or the Tripo copy): while riding that
 // instance is hidden and a rideable copy is shown; when you get off, the instance is written where you parked.
 // The rider uses Man.sit (pelvis on the seat, feet on the floorboard) and reaches the handlebar grips.
+// motor/ (v8): Shift = nitro, freeze (race countdown), place / mountAt / info / leave for races and window.__vehicles,
+// st.mul (performance multipliers), st.exitGuard (a race asks before you get off).
 import * as THREE from 'three';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -28,7 +30,7 @@ const LINES = {
 const rnd = a => a[(Math.random() * a.length) | 0];
 
 export function createVespa({ scene, man, audio, input, level, say, ev, unlock, toast }) {
-  const st = { spots: null, riding: null, dist: 0, crashT: 0, hornT: 0, commentT: 0, eng: null, circles: [] };
+  const st = { spots: null, riding: null, dist: 0, crashT: 0, hornT: 0, commentT: 0, eng: null, circles: [], mul: { max: 1, acc: 1 }, nitro: 1, nitroOn: false, frozen: false, exitGuard: null, W: null, H: null, startMode: null };
   const Q = () => window.__quartiere;
   const t1 = V(), t2 = V(), m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), s1 = V(1, 1, 1), s0 = V(0, 0, 0), YA = V(0, 1, 0);
 
@@ -78,6 +80,7 @@ export function createVespa({ scene, man, audio, input, level, say, ev, unlock, 
 
   // ---------------------------------------------------------------- items (one per parked vespa)
   function items(W, H, startMode) {
+    st.W = W; st.H = H; st.startMode = startMode;
     const out = [];
     for (let k = 0; k < 3; k++) {
       const sp = () => { const L = spots(); const s = L && L[k]; return s && !s.hidden ? s : null; };
@@ -102,6 +105,7 @@ export function createVespa({ scene, man, audio, input, level, say, ev, unlock, 
     s.hidden = true; writeInstance(s, false);
     st.riding = { s, yaw: s.ry, speed: 0, steer: 0, lean: 0, phase: 'mount', t: 0, from: man.root.position.clone(), crash: 0, prevPos: rig.position.clone() };
     startMode();
+    try { window.__combat && window.__combat.holster && window.__combat.holster(); } catch (e) { } // motor (v8): no weapons on the Vespa
     engineStart();
     unlock('vespa');
     ev('è salito su una Vespa che non è sua');
@@ -192,12 +196,17 @@ export function createVespa({ scene, man, audio, input, level, say, ev, unlock, 
       const P = I.pads && I.pads[0]; if (P) { x += P.axes[0] || 0; y -= P.axes[1] || 0; if (I.padHeld && I.padHeld(0, 7)) y = Math.max(y, 1); if (I.padHeld && I.padHeld(0, 6)) y = Math.min(y, -1); }
       if (I.touch && I.touch.active) { x += I.touch.x; y -= I.touch.y; }
       x = clamp(x, -1, 1); y = clamp(y, -1, 1);
+      if (st.frozen) { x = 0; y = 0; R.speed = 0; }
+      // ---- nitro (Shift / RB / touch NITRO): +35% top speed, punchier, a tank that refills slowly
+      const wantN = !st.frozen && y > 0.1 && (I.k('ShiftLeft') || I.k('ShiftRight') || (I.padHeld && I.padHeld(0, 5)) || (I.tHeld && I.tHeld('nitro')));
+      st.nitroOn = wantN && st.nitro > 0.02; st.nitro = st.nitroOn ? Math.max(0, st.nitro - dt / 3) : Math.min(1, st.nitro + dt * 0.07);
+      const MX = MAX * st.mul.max * (st.nitroOn ? 1.35 : 1), AC = st.mul.acc * (st.nitroOn ? 1.6 : 1);
       // ---- longitudinal
       let a = 0;
-      if (y > 0.05) a = (R.speed < 0 ? 6 : 3.4 * (1 - smooth(R.speed / MAX) * 0.85)) * y;
+      if (y > 0.05) a = (R.speed < 0 ? 6 : 3.4 * AC * (1 - smooth(R.speed / MX) * 0.85)) * y;
       else if (y < -0.05) a = R.speed > 0.25 ? -7.5 * -y : -1.8 * -y;
       else a = -Math.sign(R.speed) * Math.min(Math.abs(R.speed) / Math.max(dt, 1e-3), 0.9 + Math.abs(R.speed) * 0.12);
-      R.speed = clamp(R.speed + a * dt, -REV, MAX);
+      R.speed = clamp(R.speed + a * dt, -REV, Math.max(MX, Math.min(R.speed, MAX * 1.5)));
       // ---- steering: stronger at low speed, gentle at full speed, none when still
       R.steer += (x - R.steer) * (1 - Math.exp(-dt * 6));
       const sp = Math.abs(R.speed), dir = Math.sign(R.speed || 1);
@@ -226,7 +235,7 @@ export function createVespa({ scene, man, audio, input, level, say, ev, unlock, 
       // ---- horn / comments / get off
       if (I.pressed('Space') || I.pressed('KeyF') || (I.tPressed && I.tPressed('alt'))) { horn(); if (st.hornT <= 0 && Math.random() < 0.5) say(rnd(LINES.horn), 'ti suona col clacson della Vespa'); st.hornT = 4; }
       st.hornT = Math.max(0, st.hornT - dt); st.commentT = Math.max(0, st.commentT - dt);
-      if ((keys.actP || keys.backP) && R.t > 0.4) dismount(W, H);
+      if ((keys.actP || keys.backP) && R.t > 0.4 && !(st.exitGuard && st.exitGuard())) dismount(W, H);
     }
     // ---- place the scooter, the rider and his limbs
     rig.rotation.y = R.yaw; leanG.rotation.z = R.phase === 'ride' ? R.lean : R.lean * sitW; rig.updateMatrixWorld(true);
@@ -292,7 +301,21 @@ export function createVespa({ scene, man, audio, input, level, say, ev, unlock, 
     if (!st.riding) { if (man.model.rotation.z !== 0) man.model.rotation.z = 0; if (man.sit && man.sit.src === 'vespa') man.sit = null; }
   }
 
-  const api = { items, update, camera, pre, get riding() { return !!st.riding; }, state: st, dismount, rig };
+  // ---------------------------------------------------------------- motor/ hooks (races, window.__vehicles)
+  function place(x, z, yaw) { const R = st.riding; if (!R) return false; rig.position.set(x, 0, z); R.yaw = yaw; R.speed = 0; R.prevPos.copy(rig.position); return true; }
+  // get on a vespa right here (no walk): the nearest parked one is moved under you
+  async function mountAt(x, z, yaw) {
+    if (st.riding) { place(x, z, yaw); return true; }
+    const L = spots(); if (!L || !st.W) return false;
+    let best = null, bd = 1e9; for (const s of L) { if (s.hidden) continue; const d = (s.x - x) ** 2 + (s.z - z) ** 2; if (d < bd) { bd = d; best = s; } }
+    if (!best) return false;
+    best.x = x; best.z = z; best.ry = yaw; st.circles[best.i] && st.circles[best.i].c.set(x, 0, z); writeInstance(best, true);
+    man.root.position.set(x + Math.cos(yaw) * 0.75, 0, z - Math.sin(yaw) * 0.75);
+    await mount(best, st.W, st.H, st.startMode); return true;
+  }
+  const info = () => { const R = st.riding; return R ? { x: rig.position.x, z: rig.position.z, yaw: R.yaw, speed: R.speed, nitro: st.nitro, nitroOn: st.nitroOn, phase: R.phase } : null; };
+  const leave = () => { if (st.riding && st.W) dismount(st.W, st.H); };
+  const api = { items, update, camera, pre, get riding() { return !!st.riding; }, state: st, dismount, rig, place, mountAt, info, leave, freeze: v => { st.frozen = !!v; } };
   window.__vespa = api; // debug / tests
   return api;
 }

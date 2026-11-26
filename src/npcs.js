@@ -592,7 +592,8 @@ export function installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, ca
     n.state = 'talk'; n.target = null; n.dance = 0; n.man.stopClip && n.man.stopClip('Dance', 0.3);
     document.body.dataset.overlay = 'npc';
     dlg.open(n.p, { onChoose: choose, onClose: () => closeTalk(true), onActions: window.__npcActions ? () => { if (TALK && TALK.n === n) window.__npcActions(n, () => closeTalk(false)); } : null,
-      onQuest: window.__rpg ? () => { if (TALK && TALK.n === n) questTalk(n); } : null });
+      onQuest: window.__rpg ? () => { if (TALK && TALK.n === n) questTalk(n); } : null,
+      onCards: window.__cards ? () => { if (TALK && TALK.n === n) { const id = n.id; n.say(cap(rnd(['dai, ti asfalto', 'mazzo nuovo eh', 'chi perde paga la birra', ...n.p.catchphrases.slice(0, 2)])), 3); closeTalk(false); setTimeout(() => window.__cards.challenge(id), 120); } } : null });
     aiTurn('');
     if (!talked.has(n.id)) { talked.add(n.id); saveTalked(talked); }
     unlock('npc_first', { title: 'Due chiacchiere', desc: 'Hai parlato con un amico del gruppo', icon: '💬' });
@@ -645,6 +646,7 @@ export function installNPCs({ scene, gltf, anims, Man, man, level, ui, audio, ca
         if (I.pressed('Digit4') || I.pressed('Tab')) dlg.free();
         if (I.pressed('Digit5') || I.pressed('Numpad5')) dlg.actions();
         if (I.pressed('Digit6') || I.pressed('Numpad6')) dlg.quest();
+        if (I.pressed('Digit7') || I.pressed('Numpad7')) dlg.cards(); // cards/: sfida a carte
         if (keys.actP) dlg.skip();
         if (keys.backP) { closeTalk(true); return {}; }
       }
@@ -724,6 +726,7 @@ function buildDialog() {
     if (choices.length > 1) { const li = document.createElement('li'); li.className = 'alt'; li.innerHTML = '<kbd>4</kbd><span>Scrivi tu…</span>'; li.onclick = () => api.free(); ol.appendChild(li); }
     if (cb && cb.onActions) { const li = document.createElement('li'); li.className = 'alt'; li.innerHTML = '<kbd>5</kbd><span>Fai qualcosa… (birra, cinque, braccio di ferro, selfie, seguimi)</span>'; li.onclick = () => api.actions(); ol.appendChild(li); }
     if (cb && cb.onQuest) { const li = document.createElement('li'); li.className = 'alt quest'; li.innerHTML = '<kbd>6</kbd><span>📜 Hai qualcosa da fare?</span>'; li.onclick = () => api.quest(); ol.appendChild(li); }
+    if (cb && cb.onCards) { const li = document.createElement('li'); li.className = 'alt'; li.innerHTML = '<kbd>7</kbd><span>🃏 Ci facciamo una briscola?</span>'; li.onclick = () => api.cards(); ol.appendChild(li); }
     const li = document.createElement('li'); li.className = 'alt'; li.innerHTML = '<kbd>Esc</kbd><span>Ciao, ci vediamo</span>'; li.onclick = () => cb && cb.onClose(); ol.appendChild(li);
   }
   function step() {
@@ -742,6 +745,7 @@ function buildDialog() {
     pick(i) { if (shown < full.length || !cb || !choices[i]) return; cb.onChoose(choices[i]); },
     actions() { if (cb && cb.onActions) cb.onActions(); },
     quest() { if (shown < full.length || !cb || !cb.onQuest) return; cb.onQuest(); },
+    cards() { if (!cb || !cb.onCards) return; cb.onCards(); },
     free() { if (!cb) return; inp.hidden = false; inp.placeholder = `Scrivi a ${name}… (Invio)`; inp.focus(); },
   };
   return api;

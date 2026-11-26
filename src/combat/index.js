@@ -162,17 +162,22 @@ export function installCombat(ctx) {
     }
     return best;
   }
-  const HIT = { t: 0, point: V(), normal: V(), kind: 'none', e: null, head: false, npc: null, pid: null };
+  const HIT = { t: 0, point: V(), normal: V(), kind: 'none', e: null, head: false, npc: null, pid: null, tid: null };
+  // remote targets (wave 2: battle royale players/bots refereed by the server): api.setTargets(list, onHit)
+  //   list() -> [{ id, x, y, z }] (reused array, no allocations) · onHit({ id, amount, head, base, item, splash, k, melee })
+  //   damage is NOT applied here: the mode sends the hit to its referee (shared/br.mjs) and shows the result
+  const TG = { list: null, hit: null };
   const _bn = V();
   function raycast(o, d, maxT, opt = {}) {
-    HIT.t = maxT; HIT.kind = 'none'; HIT.e = null; HIT.head = false; HIT.npc = null; HIT.pid = null; HIT.normal.set(0, 1, 0);
+    HIT.t = maxT; HIT.kind = 'none'; HIT.e = null; HIT.head = false; HIT.npc = null; HIT.pid = null; HIT.tid = null; HIT.normal.set(0, 1, 0);
     const t0 = opt.skip || 0;
     if (!opt.hostile) {
       const r = E.ray(o, d, HIT.t); if (r && r.t >= t0) { HIT.t = r.t; HIT.kind = 'enemy'; HIT.e = r.e; HIT.head = r.head; }
       // friends (no damage, they react), the dog, other players
       if (npcs && npcs.active) for (const id of npcs.active()) { const nn = npcs.get(id); if (!nn || !nn.root) continue; const p = nn.root.position; const t = rayCyl(o, d, p.x, p.z, 0.3, p.y, p.y + 1.8, HIT.t); if (t >= t0 && t >= 0 && t < HIT.t) { HIT.t = t; HIT.kind = 'npc'; HIT.npc = nn; } }
       if (dog && dog.root) { const p = dog.root.position; const t = raySphere(o, d, p.x, p.y + 0.3, p.z, 0.32, HIT.t); if (t >= t0 && t >= 0 && t < HIT.t) { HIT.t = t; HIT.kind = 'dog'; } }
-      const net = window.__net; if (net && net.online && net.players) for (const P of net.players.values()) { if (!P.avatar || !P.avatar.root) continue; const p = P.avatar.root.position; const t = rayCyl(o, d, p.x, p.z, 0.3, p.y, p.y + 1.8, HIT.t); if (t >= t0 && t >= 0 && t < HIT.t) { HIT.t = t; HIT.kind = 'player'; HIT.pid = P.id; } }
+      const net = window.__net; if (net && net.online && net.players && !TG.list) for (const P of net.players.values()) { if (!P.avatar || !P.avatar.root) continue; const p = P.avatar.root.position; const t = rayCyl(o, d, p.x, p.z, 0.3, p.y, p.y + 1.8, HIT.t); if (t >= t0 && t >= 0 && t < HIT.t) { HIT.t = t; HIT.kind = 'player'; HIT.pid = P.id; } }
+      if (TG.list) for (const T of TG.list()) { const y = T.y || 0; const t = rayCyl(o, d, T.x, T.z, 0.32, y, y + 1.8, HIT.t); if (t >= t0 && t >= 0 && t < HIT.t) { HIT.t = t; HIT.kind = 'target'; HIT.tid = T.id; HIT.head = raySphere(o, d, T.x, y + 1.62, T.z, 0.18, t + 0.6) >= 0; } }
     } else {
       const p = man.root.position; const t = rayCyl(o, d, p.x, p.z, 0.36, p.y, p.y + 1.8, HIT.t); if (t >= 0 && t < HIT.t) { HIT.t = t; HIT.kind = 'me'; }
     }
@@ -237,13 +242,15 @@ export function installCombat(ctx) {
       if (I.pressed('KeyH') || I.padPressed(0, 13)) { if (ST.want) holster(); else { ST.want = true; fx.sfx('switch'); } I.edges.delete('KeyH'); }
       if (I.pressed('Digit0')) { holster(); I.edges.delete('Digit0'); }
       if (ST.drawn) {
-        for (let i = 0; i < 4; i++) if (I.pressed('Digit' + (i + 1))) { I.edges.delete('Digit' + (i + 1)); if (ST.slots[i]) equip(i); else toast('Slot ' + (i + 1) + ' vuoto'); }
+        // the dog's trick menu (G) also uses the digits: leave them to it while it's open
+        if (!(w.DP && w.DP.menuOpen && w.DP.menuOpen())) for (let i = 0; i < 4; i++) if (I.pressed('Digit' + (i + 1))) { I.edges.delete('Digit' + (i + 1)); if (ST.slots[i]) equip(i); else toast('Slot ' + (i + 1) + ' vuoto'); }
         if (I.padPressed(0, 15)) cycle(1); if (I.padPressed(0, 14)) cycle(-1);
         if (I.drag.wheel) { ST.wheelAcc += I.drag.wheel; I.drag.wheel = 0; if (Math.abs(ST.wheelAcc) > 60) { cycle(Math.sign(ST.wheelAcc)); ST.wheelAcc = 0; } }
         const f = w.focus, alt = f && f.alt && f.alt() && f.altAct;
         if ((I.pressed('KeyR') && !alt) || I.padPressed(0, 12)) { I.edges.delete('KeyR'); startReload(); }
       }
-      if (I.pressed('KeyQ') && w.mode === 'explore') { I.edges.delete('KeyQ'); melee(); }
+      // Q = umbrella hit; during a calcetto match (unarmed) Q is the pass (sport/), so leave it to the sport
+      if (I.pressed('KeyQ') && w.mode === 'explore' && (ST.drawn || !(window.__sport && window.__sport.match))) { I.edges.delete('KeyQ'); melee(); }
     }
     // fire / draw on click
     const locked = I.look && (I.look.locked || I.look.failed);
@@ -373,16 +380,20 @@ export function installCombat(ctx) {
     } else if (hit.kind === 'npc') { npcReact(hit.npc, stt.element); fx.burst(hit.point, color, 4, { size: 0.2, speed: 1.2, life: 0.5, grav: 3 }); }
     else if (hit.kind === 'dog') { dogReact(); fx.burst(hit.point, color, 4, { size: 0.18, speed: 1.2, life: 0.5, grav: 3 }); }
     else if (hit.kind === 'player') { fx.burst(hit.point, color, 5, { size: 0.22, speed: 1.2, life: 0.5, grav: 3 }); }
+    else if (hit.kind === 'target') {
+      if (dmg > 0 && TG.hit) { try { TG.hit({ id: hit.tid, amount: dmg * (hit.head ? (B.headMult || 1.6) : 1), head: hit.head, base: it ? it.base : 'pistola', item: it, splash: false, k: 1 }); } catch (e) { console.warn(e); } hud.hitMarker(false); fx.sfx(hit.head ? 'head' : 'hit', null, 1); }
+      fx.burst(hit.point, color, 5, { size: 0.22, speed: 1.2, life: 0.5, grav: 3 });
+    }
     else if (hit.kind === 'wall' || hit.kind === 'ground') {
       fx.splat(hit.point, hit.normal, color, B.rocket ? 2.2 : stt.splashRadius ? 0.75 : B.kind === 'hitscan' ? 0.32 : 0.28, B.rocket ? 14 : 10);
       fx.burst(hit.point, color, B.kind === 'hitscan' ? 2 : 5, { size: 0.16, speed: 1.1, life: 0.45, grav: 3, vel: _b.copy(hit.normal).multiplyScalar(1.2) });
       if (B.kind === 'hitscan' && Math.random() < 0.3) fx.sfx('drip', hit.point, 0.5);
     }
     const R = (stt.splashRadius || 0) + (perks.includes('esplosivo') ? 1.2 : 0);
-    if (isProj && R > 0) explode(hit.point, R, (stt.splashRadius ? dmg * 0.75 : dmg * 0.4), stt.knockback, color, B, it, hit.kind === 'enemy' ? hit.e : null);
+    if (isProj && R > 0) explode(hit.point, R, (stt.splashRadius ? dmg * 0.75 : dmg * 0.4), stt.knockback, color, B, it, hit.kind === 'enemy' ? hit.e : null, hit.kind === 'target' ? hit.tid : null);
     else if (isProj && hit.kind !== 'none') fx.sfx(B.stick ? 'dart' : 'splat', hit.point, 0.9);
   }
-  function explode(p, R, dmg, knock, color, B, it, skipE) {
+  function explode(p, R, dmg, knock, color, B, it, skipE, skipT = null) {
     const big = B.rocket;
     fx.flash(p, big ? '#ffb040' : color, big ? 2.4 : 0.9, big ? 0.18 : 0.1);
     fx.burst(p, color, big ? 16 : 8, { size: big ? 0.9 : 0.45, speed: big ? 4 : 2.2, life: big ? 1.0 : 0.6, grav: 2, up: 1.2 });
@@ -399,6 +410,10 @@ export function installCombat(ctx) {
       emit('hit', { enemy: e, amount: dealt, head: false, weapon: it });
     }
     if (skipE && skipE.dead) kills++;
+    if (dmg > 0 && TG.list && TG.hit) for (const T of TG.list()) { // remote targets in the splash (the referee re-checks)
+      if (T.id === skipT) continue; const dd = Math.hypot(T.x - p.x, (T.y || 0) + 0.9 - p.y, T.z - p.z);
+      if (dd < R + 0.3) { const k = 1 - clamp(dd / R, 0, 1) * 0.55; try { TG.hit({ id: T.id, amount: dmg * k, head: false, base: it ? it.base : B === BASES.spritz ? 'spritz' : 'tortellini', item: it, splash: true, k }); } catch (e) { console.warn(e); } hud.hitMarker(false); }
+    }
     if (kills > 0) hud.hitMarker(true);
     if (kills >= 3) unlock('cb_triple');
     if (npcs && npcs.active) for (const id of npcs.active()) { const nn = npcs.get(id); if (nn && nn.root && nn.root.position.distanceTo(p) < R + 0.5) npcReact(nn, B.element); }
@@ -435,6 +450,7 @@ export function installCombat(ctx) {
     }
     if (npcs && npcs.active) for (const id of npcs.active()) { const nn = npcs.get(id); if (!nn || !nn.root) continue; const q = nn.root.position, ex = q.x - p.x, ez = q.z - p.z, d = Math.hypot(ex, ez); if (d < stt.range && (ex * _d.x + ez * _d.z) / (d || 1) > 0.3) { nn._cbT = 0; npcReact(nn, 'bonk'); fx.stars(V(q.x, 1.95, q.z), 3, { size: 0.15 }); any = true; } }
     if (dog && dog.root && dog.root.position.distanceTo(p) < stt.range) dogReact();
+    if (TG.list && TG.hit) for (const T of TG.list()) { const ex = T.x - p.x, ez = T.z - p.z, d = Math.hypot(ex, ez); if (d < stt.range + 0.3 && (d < 0.4 || (ex * _d.x + ez * _d.z) / d > 0.35)) { try { TG.hit({ id: T.id, amount: stt.damage * mods.damage, head: false, base: 'ombrello', item: it, splash: false, k: 1, melee: true }); } catch (e) { console.warn(e); } fx.stars(V(T.x, (T.y || 0) + 1.9, T.z), 3, { size: 0.15 }); any = true; } }
     if (any) { fx.sfx('bonk'); hud.hitMarker(false); }
     void B; void w;
   }
@@ -724,16 +740,22 @@ export function installCombat(ctx) {
   }
 
   // ---------------------------------------------------------------- network (cosmetic shots of the other players)
+  // a shot drawn for someone else (other players online, battle-royale bots): no damage, just beam/projectile + sound
+  function cosmeticShot(base, o, t) {
+    const B = BASES[base]; if (!B || !o || !t || o.distanceTo(t) > 120) return;
+    const color = ELEMENTS[B.element];
+    if (B.kind === 'hitscan') { fx.beam(o, t, color, 0.02, 0.09); fx.burst(t, color, 3, { size: 0.16, speed: 1.2, life: 0.45, grav: 3 }); fx.sfx(B.element, o, 0.7); }
+    else if (B.kind === 'projectile') { const d = t.clone().sub(o), dist = d.length(); d.normalize(); const sp = B.stats.projectileSpeed, g = B.gravity || 0; const vel = d.multiplyScalar(sp); vel.y += 0.5 * g * dist / sp; spawnProj(base, o, vel, { cosmetic: true, g, B, st: B.stats }); fx.sfx(B.element, o, 0.7); }
+    else if (B.kind === 'melee') { fx.stars(t.clone().add(V(0, 0.4, 0)), 3, { size: 0.15 }); fx.sfx('bonk', t, 0.7); }
+  }
   function hookNet() {
     const net = window.__net; if (!net || !net.on || hookNet.done) return; hookNet.done = true;
     net.on('ev', ({ from, e }) => {
       if (!e || e.k !== 'cb' || e.a !== 'f' || !BASES[e.w]) return;
       const P = net.players && net.players.get(from); const av = P && P.avatar && P.avatar.root;
       const o = Array.isArray(e.o) ? V(+e.o[0] || 0, +e.o[1] || 0, +e.o[2] || 0) : av ? av.position.clone().add(V(0, 1.35, 0)) : null;
-      const t = Array.isArray(e.t) ? V(+e.t[0] || 0, +e.t[1] || 0, +e.t[2] || 0) : null; if (!o || !t || o.distanceTo(t) > 120) return;
-      const B = BASES[e.w], color = ELEMENTS[B.element];
-      if (B.kind === 'hitscan') { fx.beam(o, t, color, 0.02, 0.09); fx.burst(t, color, 3, { size: 0.16, speed: 1.2, life: 0.45, grav: 3 }); fx.sfx(B.element, o, 0.7); }
-      else if (B.kind === 'projectile') { const d = t.clone().sub(o), dist = d.length(); d.normalize(); const sp = B.stats.projectileSpeed, g = B.gravity || 0; const vel = d.multiplyScalar(sp); vel.y += 0.5 * g * dist / sp; spawnProj(e.w, o, vel, { cosmetic: true, g, B, st: B.stats }); fx.sfx(B.element, o, 0.7); }
+      const t = Array.isArray(e.t) ? V(+e.t[0] || 0, +e.t[1] || 0, +e.t[2] || 0) : null;
+      cosmeticShot(e.w, o, t);
     });
   }
   setTimeout(hookNet, 0);
@@ -768,6 +790,10 @@ export function installCombat(ctx) {
     get state() { return { drawn: ST.drawn, want: ST.want, fp: ST.fp, aiming: ST.aiming, cur: ST.cur, reload: ST.reloadT, aimPitch: ST.aimPitch }; },
     _debug: { ST, E, fx, hud, raycast, projs },
     ownsKey: code => code === 'KeyH' && inPlay(),
+    // wave 2 hooks (battle royale / Gulag): remote targets, hurt feedback without HP logic, cosmetic shots
+    setTargets(list, onHit) { TG.list = typeof list === 'function' ? list : null; TG.hit = typeof onHit === 'function' ? onHit : null; },
+    hurtFx(k = 0.2) { hud.hurt(clamp(k, 0, 1)); fx.sfx('hurt'); if (ui.settings && ui.settings.cameraShake) S.shake = Math.max(S.shake || 0, 0.012 + 0.03 * clamp(k, 0, 1)); },
+    fxShot(base, o, t) { cosmeticShot(base, o && o.isVector3 ? o : V(...(o || [0, 0, 0])), t && t.isVector3 ? t : V(...(t || [0, 0, 0]))); },
   };
   window.__combat = api;
   return { pre, camera: camera_, post, afterCamera, api };

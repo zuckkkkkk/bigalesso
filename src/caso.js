@@ -213,19 +213,21 @@ export function buildCaso(scene, { level = null, room = null, low = false, getFX
     s.textContent = `#caso-flash{position:fixed;inset:0;z-index:5;pointer-events:none;opacity:0;mix-blend-mode:screen}
 #caso-flash.b{background:radial-gradient(120% 100% at 100% 35%,rgba(40,90,255,.7),rgba(40,90,255,.12) 45%,rgba(40,90,255,0) 70%)}
 #caso-flash.r{background:radial-gradient(120% 100% at 0% 35%,rgba(255,40,40,.65),rgba(255,40,40,.12) 45%,rgba(255,40,40,0) 70%)}
-#ccap{position:fixed;left:50%;bottom:11vh;transform:translateX(-50%);z-index:7;max-width:min(880px,88vw);text-align:center;pointer-events:none;opacity:0;transition:opacity .5s}
-#ccap.on{opacity:1}
-body.desk #ccap{bottom:auto;top:12vh}
-#ccap b{display:block;font:600 21px/1.3 Georgia,"Times New Roman",serif;color:#fff;text-shadow:0 2px 6px #000,0 0 22px rgba(0,0,0,.7)}
-#ccap small{display:block;margin-top:8px;font:500 12px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.72);text-shadow:0 1px 3px #000}`;
+#casocap{position:fixed;left:50%;bottom:11vh;transform:translateX(-50%);z-index:7;max-width:min(880px,88vw);text-align:center;pointer-events:none;opacity:0;transition:opacity .5s}
+#casocap.on{opacity:1}
+body.desk #casocap{bottom:auto;top:12vh}
+#casocap b{display:block;font:600 21px/1.3 Georgia,"Times New Roman",serif;color:#fff;text-shadow:0 2px 6px #000,0 0 22px rgba(0,0,0,.7)}
+#casocap small{display:block;margin-top:8px;font:500 12px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.72);text-shadow:0 1px 3px #000}`;
     document.head.appendChild(s);
     flashEl = document.createElement('div'); flashEl.id = 'caso-flash'; document.body.appendChild(flashEl);
-    const c = document.createElement('div'); c.id = 'ccap'; c.innerHTML = '<b></b><small></small>'; document.body.appendChild(c);
+    // own caption element: #ccap belongs to cronache.js (different markup); sharing it made whichever module came
+    // second throw (null.textContent) and broke its interactions (pigeon, tortellini, fisarmonica, 112 call…)
+    const c = document.createElement('div'); c.id = 'casocap'; c.innerHTML = '<b></b><small></small>'; document.body.appendChild(c);
     return flashEl;
   }
   let capT = 0;
   function caption(big, small = '', dur = 3.4) {
-    flashDiv(); const c = document.getElementById('ccap');
+    flashDiv(); const c = document.getElementById('casocap');
     c.querySelector('b').textContent = big; c.querySelector('small').textContent = small;
     c.classList.remove('on'); void c.offsetWidth; c.classList.add('on'); capT = dur;
   }
@@ -307,7 +309,7 @@ body.desk #ccap{bottom:auto;top:12vh}
       if (save.foulard && !st.wornF) wear('f');
       if (save.necklace && !st.wornN) wear('n');
     }
-    if (capT > 0) { capT -= dt; if (capT <= 0) { const el = document.getElementById('ccap'); el && el.classList.remove('on'); } }
+    if (capT > 0) { capT -= dt; if (capT <= 0) { const el = document.getElementById('casocap'); el && el.classList.remove('on'); } }
     // moka: brewing -> ready
     if (st.brew > 0) {
       st.brew -= dt;

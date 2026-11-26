@@ -1,8 +1,18 @@
-// Online multiplayer: rooms with a 4-letter code, other players as avatars, host-run cabinet co-op.
-// Transports: WebSocket to our Node server (/ws, see server/server.mjs — Docker) or, on the claude.ai
-// published link, the artifact "room" capability (presence only: avatars, gestures, chat).
-// Public API (also on window.__net): create(name), join(code, name), leave(), chat(text), setName(name),
-// on(evt, fn) with evt: 'status' | 'players' | 'chat' | 'error' | 'seats'; fields status, code, id, role, players, transport.
+// Online multiplayer: rooms with a 4-letter code, the public "Quartiere" shards, other players as avatars,
+// host-run cabinet co-op. Transports: WebSocket to our Node server (/ws, see server/server.mjs — Docker) or, on the
+// claude.ai published link, the artifact "room" capability (presence only: avatars, gestures, chat).
+// Public API (also on window.__net):
+//   create(name), join(code, name), joinWorld(name) (public shard, up to 24, presence only for players nearby),
+//   leave(), chat(text), setName(name), inviteLink()
+//   on(evt, fn) -> unsubscribe; evt: 'status' | 'players' | 'chat' | 'error' | 'seats' | 'ev' | 'extra' | 'socket'
+//   fields: status ('offline'|'connecting'|'online' = in a room), code, id, role, players, transport, world (bool), games
+//   connected() -> the WebSocket to our server is open (also without a room: server matches, see src/net/match.js)
+//   socket() -> Promise<bool>: opens the WebSocket if needed (no room joined)
+//   send(msg) -> bool: raw message to the server (ws only); onMsg(type, fn) -> unsubscribe: raw server messages
+//   setExtra(key, value): small JSON shown to the others (car look, job title…), ≤ 512 B in total, sent only on
+//     change and kept by the server for players who join later; value null removes the key.
+//     Others get net.on('extra', ({ id, key, value })) and players' extras in net.players.get(id).extra
+//   extras: my current extras object
 import * as THREE from 'three';
 import { Avatar, makeTemplate, palmIndex, TAG_COLORS } from './avatars.js';
 
@@ -71,17 +81,21 @@ export function installNet(ctx) {
   const ui = ctx.ui || {};
   const toast = (msg, kind) => { if (typeof ui.toast === 'function') ui.toast(msg, kind === 'gold' ? 'online' : kind); else if (world && world.toast) world.toast(msg, kind); };
   const tpl = makeTemplate(gltf.scene);
-  const listeners = {};
+  const listeners = {}, rawHooks = {};
   const fire = (e, d) => { for (const f of listeners[e] || []) try { f(d); } catch (err) { console.error(err); } };
+  const fireRaw = m => { for (const f of rawHooks[m.t] || []) try { f(m); } catch (err) { console.error(err); } };
   let storedName = ''; try { storedName = localStorage.getItem('bigalesso_name') || ''; } catch { }
   const net = {
     status: 'offline', code: null, id: null, host: null, transport: null, players: new Map(), seats: { p1: null, p2: null },
     name: storedName || ('Giocatore ' + (10 + Math.floor(Math.random() * 89))), myColor: 0,
     get role() { return this.status !== 'online' ? 'solo' : (this.host === this.id ? 'host' : 'guest'); },
     get online() { return this.status === 'online'; },
-    remoteGame: false, ping: 0,
+    remoteGame: false, ping: 0, world: false, games: [], extras: {},
     on(e, f) { (listeners[e] ||= []).push(f); return () => { listeners[e] = listeners[e].filter(x => x !== f); }; },
+    onMsg(t, f) { (rawHooks[t] ||= []).push(f); return () => { rawHooks[t] = rawHooks[t].filter(x => x !== f); }; },
   };
+  let holds = 0; // server matches keep the socket open when leaving a room
+  net.hold = d => { holds = Math.max(0, holds + d); if (!holds && tr && tr.kind === 'ws' && net.status === 'offline') { tr.close(); tr = null; net.transport = null; fire('socket', false); } };
   window.__net = net;
   net._p2 = () => localP2;
   net._dbg = () => ({ snapAge: hostSnap ? Math.round(performance.now() - hostSnapAt) : null, snapState: hostSnap && hostSnap.st, remoteIn: [...remoteIn.keys()], ping: net.ping, p2: localP2 ? [r2(localP2.root.position.x), r2(localP2.root.position.z), !!localP2.script, !!localP2.leaving] : null });
@@ -103,16 +117,21 @@ export function installNet(ctx) {
   // ---------------- connection ----------------
   function setStatus(s, extra) { net.status = s; fire('status', { status: s, code: net.code, role: net.role, ...extra }); updatePanel(); hudOnline(); }
   function onMsg(m) {
+    if (m.t && m.t.startsWith('match:')) { fireRaw(m); return; }
     switch (m.t) {
-      case 'hi': break;
+      case 'hi': net.games = Array.isArray(m.games) ? m.games : []; net.serverV = m.v || 1; net.id = m.id; break;
       case 'welcome':
-        net.id = m.id; net.code = m.code; net.host = m.host; clearPlayers();
+        net.id = m.id; net.code = m.code; net.host = m.host; net.world = !!m.world; clearPlayers();
         for (const p of m.players) addPlayer(p);
         for (const id in (m.states || {})) onState(+id, m.states[id]);
-        try { history.replaceState(null, '', location.pathname + '?room=' + m.code + location.hash); } catch { }
+        if (!net.world) try { history.replaceState(null, '', location.pathname + '?room=' + m.code + location.hash); } catch { }
         setStatus('online');
-        toast(net.role === 'host' ? 'Stanza ' + m.code + ' creata: invita gli amici col codice!' : 'Sei nella stanza ' + m.code, 'gold');
+        if (net.world) toast('Sei nel quartiere pubblico (' + m.code + ') · ' + net.players.size + ' giocatori', 'gold');
+        else toast(net.role === 'host' ? 'Stanza ' + m.code + ' creata: invita gli amici col codice!' : 'Sei nella stanza ' + m.code, 'gold');
         sendState(true); break;
+      case 'far': for (const id of m.ids || []) { const P = net.players.get(id); if (P) { P.far = true; if (P.avatar) P.avatar.root.visible = false; } } break;
+      case 'extra': { const P = net.players.get(m.id); if (P) { P.extra = { ...(P.extra || {}) }; if (m.v === null) delete P.extra[m.k]; else P.extra[m.k] = m.v; } fire('extra', { id: m.id, key: m.k, value: m.v }); break; }
+      case 'bye': if (m.reason === 'idle') { toast('Sei uscito dal quartiere pubblico (inattivo)'); roomGone(); } break;
       case 'joined': addPlayer(m.p); toast(m.p.name + ' è entrato'); audio && audio.sfx && audio.sfx('join2'); break;
       case 'left': { const p = net.players.get(m.id); if (p) { toast(p.name + ' è uscito'); removePlayer(m.id); } break; }
       case 'host': net.host = m.id; if (net.role === 'host') toast('Ora sei tu l\'host della stanza'); fire('players', list()); updatePanel(); break;
@@ -123,22 +142,54 @@ export function installNet(ctx) {
       case 'chat': onChat(m.id, m.name, m.text); break;
       case 'pong': net.ping = Math.round(performance.now() - m.ts); updatePanel(); break;
       case 'err': toast(m.msg || 'Errore', 'warn'); fire('error', m); if (net.status === 'connecting') setStatus('offline'); break;
+      default: fireRaw(m);
     }
   }
-  function onClose() { if (net.status !== 'offline') { toast('Connessione persa', 'warn'); cleanup(); } }
+  function onClose() { const was = net.status !== 'offline'; tr = null; net.transport = null; fire('socket', false); if (was) { toast('Connessione persa', 'warn'); cleanup(); } }
+  const token = () => { try { return localStorage.getItem('bgl_token') || undefined; } catch { return undefined; } };
+  const hello = t => { t.send({ t: 'hello', name: net.name, v: 2, token: token() }); for (const k in net.extras) t.send({ t: 'extra', k, v: net.extras[k] }); };
   async function connect() {
+    if (tr && tr.kind === 'ws' && tr.ws && tr.ws.readyState === 1) return tr; // reuse the open socket (matches, world)
     const url = wsURL();
     if (url) {
       const t = new WSTransport(url, onMsg, onClose);
-      try { await t.open(); return t; } catch (e) { /* fall through */ }
+      try { await t.open(); hello(t); fire('socket', true); return t; } catch (e) { /* fall through */ }
     }
     return null;
   }
-  net.create = async (name) => {
-    if (net.status !== 'offline') net.leave();
+  // socket without a room: server-refereed matches (src/net/match.js), leaderboards with a verified name
+  let sockP = null;
+  net.connected = () => !!(tr && tr.kind === 'ws' && tr.ws && tr.ws.readyState === 1);
+  net.socket = async () => {
+    if (net.connected()) return true;
+    if (tr && tr.kind !== 'ws') return false; // claude.ai room capability: no server
+    if (!sockP) sockP = connect().then(t => { sockP = null; if (t) { tr = t; net.transport = 'ws'; return true; } return false; });
+    return sockP;
+  };
+  net.send = m => !!(tr && tr.kind === 'ws' && tr.send(m));
+  net.setExtra = (k, v) => {
+    k = String(k || '').replace(/[^a-z0-9_]/gi, '').slice(0, 24); if (!k) return false;
+    const next = { ...net.extras }; if (v === null || v === undefined) delete next[k]; else next[k] = v;
+    if (JSON.stringify(next).length > 512) { console.warn('setExtra: troppo grande'); return false; }
+    if (JSON.stringify(net.extras[k]) === JSON.stringify(v)) return true;
+    net.extras = next; if (net.connected()) tr.send({ t: 'extra', k, v: v === undefined ? null : v });
+    return true;
+  };
+  const leaveRoomOnly = () => { if (tr && net.status !== 'offline') { tr.send({ t: 'leave' }); roomGone(); } };
+  function roomGone() { clearPlayers(); net.code = null; net.host = null; net.world = false; net.seats = { p1: null, p2: null }; hostSnap = null; net.remoteGame = false; setStatus('offline'); try { history.replaceState(null, '', location.pathname + location.hash); } catch { } }
+  net.joinWorld = async (name) => {
+    if (net.status !== 'offline' && net.world) return true;
+    if (tr && tr.kind === 'ws' && net.status !== 'offline') leaveRoomOnly(); else if (net.status !== 'offline') net.leave();
     net.setName(name); setStatus('connecting');
     tr = await connect();
-    if (tr) { tr.send({ t: 'hello', name: net.name, v: 1 }); tr.send({ t: 'create', name: net.name }); net.transport = 'ws'; return true; }
+    if (tr) { tr.send({ t: 'world', name: net.name }); net.transport = 'ws'; return true; }
+    setStatus('offline'); toast('Il quartiere pubblico non è raggiungibile da qui', 'warn'); return false;
+  };
+  net.create = async (name) => {
+    if (tr && tr.kind === 'ws' && net.status !== 'offline') leaveRoomOnly(); else if (net.status !== 'offline') net.leave();
+    net.setName(name); setStatus('connecting');
+    tr = await connect();
+    if (tr) { tr.send({ t: 'create', name: net.name }); net.transport = 'ws'; return true; }
     // artifact fallback: make a code and join it through the room capability
     const code = Array.from({ length: 4 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[(Math.random() * 24) | 0]).join('');
     return joinRoomCap(code);
@@ -146,10 +197,10 @@ export function installNet(ctx) {
   net.join = async (code, name) => {
     code = String(code || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
     if (code.length !== 4) { toast('Il codice ha 4 lettere', 'warn'); return false; }
-    if (net.status !== 'offline') net.leave();
+    if (tr && tr.kind === 'ws' && net.status !== 'offline') leaveRoomOnly(); else if (net.status !== 'offline') net.leave();
     net.setName(name); setStatus('connecting');
     tr = await connect();
-    if (tr) { tr.send({ t: 'hello', name: net.name, v: 1 }); tr.send({ t: 'join', code, name: net.name }); net.transport = 'ws'; return true; }
+    if (tr) { tr.send({ t: 'join', code, name: net.name }); net.transport = 'ws'; return true; }
     return joinRoomCap(code);
   };
   async function joinRoomCap(code) {
@@ -157,9 +208,10 @@ export function installNet(ctx) {
     try { tr = t; net.transport = 'room'; await t.open(code, net.name); return true; }
     catch (e) { tr = null; net.transport = null; setStatus('offline'); toast('Online non disponibile qui: avvia il server (docker compose up) e apri il gioco da lì', 'warn'); fire('error', { msg: String(e.message || e) }); return false; }
   }
-  net.leave = () => { if (tr) { tr.send({ t: 'leave' }); tr.close(); } cleanup(); };
-  function cleanup() { tr = null; net.transport = null; clearPlayers(); net.code = null; net.host = null; net.seats = { p1: null, p2: null }; hostSnap = null; net.remoteGame = false; setStatus('offline'); try { history.replaceState(null, '', location.pathname + location.hash); } catch { } }
-  net.setName = n => { n = String(n || '').trim().slice(0, 16); if (n) { net.name = n; try { localStorage.setItem('bigalesso_name', n); } catch { } } };
+  // leaving the room keeps the socket while server matches are running (net.hold)
+  net.leave = () => { if (tr) { tr.send({ t: 'leave' }); if (holds && tr.kind === 'ws') { roomGone(); return; } tr.close(); } cleanup(); };
+  function cleanup() { const had = !!tr; tr = null; net.transport = null; roomGone(); if (had) fire('socket', false); }
+  net.setName = n => { n = String(n || '').trim().slice(0, 16); if (n) { net.name = n; try { localStorage.setItem('bigalesso_name', n); } catch { } if (net.connected()) tr.send({ t: 'hello', name: n, v: 2, token: token() }); } };
   net.chat = text => { text = String(text || '').trim().slice(0, 200); if (!text || !tr) return; tr.send({ t: 'chat', text }); };
   net.inviteLink = () => net.code ? location.origin + location.pathname + '?room=' + net.code : null;
   const ev = e => { if (tr && net.online) tr.send({ t: 'ev', e }); };
@@ -169,13 +221,14 @@ export function installNet(ctx) {
   const list = () => [...net.players.values()].map(p => ({ id: p.id, name: p.name, color: p.color, host: p.id === net.host, you: p.id === net.id }));
   function addPlayer(p) {
     if (net.players.has(p.id)) return;
-    const P = { id: p.id, name: p.name, color: p.color, avatar: null };
+    const P = { id: p.id, name: p.name, color: p.color, avatar: null, extra: p.extra || {}, far: false };
     net.players.set(p.id, P);
     if (p.id === net.id) net.myColor = p.color;
     else {
       P.avatar = new Avatar({ tpl, Man, anims, scene, name: p.name, color: p.color || 1 });
       P.avatar.place(CONFIG.man.path[0][0], CONFIG.man.path[0][2], -Math.PI / 2);
       P.avatar.netId = p.id;
+      if (net.world) { P.far = true; P.avatar.root.visible = false; } // public shard: shown when their position arrives (they may be far)
     }
     fire('players', list()); updatePanel();
   }
@@ -192,6 +245,7 @@ export function installNet(ctx) {
     let P = net.players.get(id);
     if (!P) { addPlayer({ id, name: s.n || 'Ospite', color: (s.c | 0) || 2 }); P = net.players.get(id); }
     if (!P.avatar) return;
+    if (P.far) { P.far = false; P.avatar.root.visible = true; P.avatar.buf.length = 0; } // back in range (public shard)
     if (s.n && s.n !== P.name) { P.name = s.n; fire('players', list()); updatePanel(); }
     if (!P.avatar.buf.length) P.avatar.place(s.x, s.z, s.yw);
     P.avatar.push(now, s);
@@ -409,7 +463,9 @@ export function installNet(ctx) {
     net.on('status', st => {
       if (st.status === 'connecting') L.setStatus && L.setStatus('Connessione…');
       L.setRoom && L.setRoom(net.online ? net.code : null);
-      if (net.online && L.setStatus) L.setStatus('Stanza ' + net.code + (net.role === 'host' ? ' · sei l\'host' : ' · ospite') + ' · passa il codice agli amici');
+      if (net.online && L.setStatus) L.setStatus(net.world ? 'Quartiere pubblico ' + net.code + ' · ' + net.players.size + ' giocatori · vedi chi ti è vicino'
+        : 'Stanza ' + net.code + (net.role === 'host' ? ' · sei l\'host' : ' · ospite') + ' · passa il codice agli amici');
+      const wb = document.getElementById('oworld'); if (wb) wb.hidden = net.online && net.world;
       L.setPlayers && L.setPlayers(net.online ? cssList() : []);
     });
     net.on('error', e => L.setStatus && L.setStatus(e.msg || 'Errore di rete'));
@@ -469,12 +525,38 @@ export function installNet(ctx) {
   }
   updatePanel();
 
+  // ---------------- public "Quartiere" (shards of up to 24, presence only for players nearby) ----------------
+  const AUTO_KEY = 'bigalesso_net_autoworld';
+  const pname = () => (ui.settings && ui.settings.playerName) || net.name;
+  (function worldCard() {
+    if (L) {
+      const box = document.querySelector('[data-page="online"] .obox'); if (!box || document.getElementById('oworldCard')) return;
+      const card = document.createElement('div'); card.className = 'ocard'; card.id = 'oworldCard';
+      card.innerHTML = '<h3>Quartiere pubblico</h3><p>Entra nel quartiere con chi è online adesso, fino a 24 per zona. Vedi chi ti è vicino.</p>' +
+        '<div class="orow"><button class="pbtn" id="oworld">Entra nel quartiere</button>' +
+        '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#cbbfe6"><input type="checkbox" id="oworldAuto"> Entra da solo all\'avvio</label></div>';
+      const after = box.querySelector('#ocreate'); const ref = after ? after.closest('.ocard') : null;
+      box.insertBefore(card, ref || null);
+      card.querySelector('#oworld').addEventListener('click', () => { L.setStatus && L.setStatus('Entro nel quartiere pubblico…'); net.joinWorld(pname()); });
+      const cb = card.querySelector('#oworldAuto'); try { cb.checked = localStorage.getItem(AUTO_KEY) === '1'; } catch { }
+      cb.addEventListener('change', () => { try { localStorage.setItem(AUTO_KEY, cb.checked ? '1' : '0'); } catch { } });
+    } else if (panel) {
+      const row = document.createElement('div'); row.className = 'row';
+      row.innerHTML = '<button type="button" class="world alt">Quartiere pubblico</button>';
+      panel.offline.insertBefore(row, panel.offline.querySelector('label[for="netCode"]'));
+      row.querySelector('.world').addEventListener('click', () => net.joinWorld(panel.root.querySelector('#netName').value));
+    }
+  })();
+
   // invite link: ?room=ABCD
   const inv = (q.get('room') || '').toUpperCase().replace(/[^A-Z]/g, '');
   if (inv.length === 4) {
     if (panel) { panel.root.querySelector('#netCode').value = inv; }
     const nm = (ui.settings && ui.settings.playerName) || net.name;
     setTimeout(() => net.join(inv, nm), 600);
+  } else {
+    let auto = false; try { auto = localStorage.getItem(AUTO_KEY) === '1'; } catch { }
+    if (auto && wsURL()) setTimeout(() => { if (net.status === 'offline') net.joinWorld(pname()); }, 4000);
   }
   return net;
 }

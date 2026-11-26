@@ -1,15 +1,18 @@
 # BIGALESSO GAMES – immagine minima per server con poca RAM: niente build dentro Docker.
 # Prima compila sul tuo PC (o in CI):   npm ci && npm run build:prod      -> dist/ con i file .br/.gz
 # poi:                                  docker build -f Dockerfile.prebuilt -t bigalesso .
-# Al runtime il server legge i file dal disco e li manda già compressi: ~40-60 MB di RAM.
+# Al runtime il server legge i file dal disco e li manda già compressi: ~40-60 MB di RAM (di più con molte partite).
+# Salvataggi e classifiche in /data: monta un volume lì.
 FROM node:22-alpine
-ENV NODE_ENV=production PORT=8080 STATIC_DIR=/app/dist NODE_OPTIONS=--max-old-space-size=96
+ENV NODE_ENV=production PORT=8080 STATIC_DIR=/app/dist DATA_DIR=/data NODE_OPTIONS=--max-old-space-size=256
 WORKDIR /app
 COPY server/package.json server/package-lock.json* ./server/
 RUN cd server && npm install --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY server/*.mjs ./server/
+COPY shared ./shared
 COPY dist ./dist
-RUN rm -f ./dist/BIGALESSO-gioca.html
+RUN rm -f ./dist/BIGALESSO-gioca.html && mkdir -p /data && chown node:node /data
+VOLUME /data
 USER node
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s CMD wget -qO- http://127.0.0.1:8080/healthz || exit 1

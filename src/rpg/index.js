@@ -366,7 +366,7 @@ export function installRPG({ scene, camera, ui, audio, level, S, man, npcs }) {
   // ---------------------------------------------------------------- world loot + quests + ui
   const hooks = {
     crateLoot,
-    crateOpened(c, name) { st.crates++; sfx('crate'); addXP(8, 'crate'); if (st.crates >= 10) unlock('crates_10', ACH.find(a => a.id === 'crates_10')); if (st.crates >= 50) unlock('crates_50', ACH.find(a => a.id === 'crates_50')); save(); },
+    crateOpened(c, name) { st.crates++; sfx('crate'); addXP(8, 'crate'); emit('crate', { crate: c.type }); /* cards/: a volte una bustina di figurine */ if (st.crates >= 10) unlock('crates_10', ACH.find(a => a.id === 'crates_10')); if (st.crates >= 50) unlock('crates_50', ACH.find(a => a.id === 'crates_50')); save(); },
     pickItem: it => pickUp(it),
     addMoney(n) { money.add(n, 'pickup'); sfx('coin'); UI.feedAdd('💶', '+ € ' + n, '', '#7dff8a'); return true; },
     addAmmo(t, n) { const k = ammo.add(t, Math.round(n * mods().ammoPack)); if (!k) return false; sfx('ammo'); UI.feedAdd(AMMO[t].icon, `+${k} ${AMMO[t].short}`, '', '#5ff7ff'); return true; },

@@ -12,7 +12,13 @@ services:
       - PORT=8080
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}   # facoltativa: minigiochi e personaggi con Claude
       # - MAX_ROOMS=500
-    mem_limit: 192m
-    memswap_limit: 192m
+      # - WORLD_CAP=24      # giocatori per zona del quartiere pubblico
+      # - MAX_MATCHES=300   # partite arbitrate dal server
+    volumes:
+      - bigalesso-data:/data   # salvataggi dei giocatori e classifiche (SQLite)
+    mem_limit: 384m
+    memswap_limit: 384m
     cpus: 1.0
     restart: unless-stopped
+volumes:
+  bigalesso-data:
